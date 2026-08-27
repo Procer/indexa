@@ -66,12 +66,14 @@ if [ -f "$(dirname "$0")/postgresql.tuning.conf" ]; then
   echo "    -> conf.d/10-tuning.conf copiado. REVISAR antes de producción."
 fi
 
-echo "==> 6/7  pg_hba: solo conexiones locales con scram-sha-256"
+echo "==> 6/7  pg_hba: peer para el superusuario postgres, scram para el resto"
 cat > "$HBA" <<'EOF'
-# TYPE  DATABASE  USER  ADDRESS       METHOD
-local   all       all                 scram-sha-256
-host    all       all   127.0.0.1/32  scram-sha-256
-host    all       all   ::1/128       scram-sha-256
+# TYPE  DATABASE  USER      ADDRESS       METHOD
+# `postgres` por socket = confiar en el usuario del SO (sudo -u postgres psql).
+local   all       postgres                peer
+local   all       all                     scram-sha-256
+host    all       all       127.0.0.1/32  scram-sha-256
+host    all       all       ::1/128       scram-sha-256
 EOF
 
 echo "==> 7/7  Reiniciar y crear base + rol de la app"
