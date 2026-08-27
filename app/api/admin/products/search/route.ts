@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/db/supabase";
+import { sql } from "@/lib/db/sql";
 import { getAdminUser } from "@/lib/auth/adminAuth";
 
 // GET /api/admin/products/search?q=... — busca productos por título para el panel de patrocinados
@@ -13,15 +13,26 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ products: [] });
   }
 
-  const { data, error } = await supabase
-    .from("products")
-    .select("id, title, brand, category, price_cash, image_url")
-    .ilike("title", `%${q}%`)
-    .eq("available", true)
-    .order("click_count", { ascending: false })
-    .limit(10);
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  return NextResponse.json({ products: data ?? [] });
+  try {
+    const data = await sql<
+      {
+        id: string;
+        title: string;
+        brand: string | null;
+        category: string;
+        price_cash: number | null;
+        image_url: string | null;
+      }[]
+    >`
+      SELECT id, title, brand, category, price_cash, image_url
+      FROM products
+      WHERE title ILIKE ${"%" + q + "%"}
+        AND available = true
+      ORDER BY click_count DESC
+      LIMIT 10
+    `;
+    return NextResponse.json({ products: data });
+  } catch (error) {
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
+  }
 }

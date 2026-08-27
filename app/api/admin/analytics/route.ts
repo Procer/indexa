@@ -1,7 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/db/supabase";
+import { sql } from "@/lib/db/sql";
 import { getAdminUser } from "@/lib/auth/adminAuth";
-import type { Slots, SearchAnalytics } from "@/types";
+import type { Slots, SearchAnalytics, ProductCategory } from "@/types";
+
+interface AnalyticsSearchRow {
+  share_token: string;
+  slots: Slots | null;
+  result_count: number;
+  created_at: string;
+}
+interface AnalyticsClickRow {
+  product_id: string;
+  search_share_token: string | null;
+  created_at: string;
+}
 
 const ALLOWED_DAYS = [7, 30, 90];
 
@@ -16,16 +28,22 @@ export async function GET(request: NextRequest) {
   const days = ALLOWED_DAYS.includes(daysParam) ? daysParam : 30;
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-  const [{ data: searches, error: searchesError }, { data: clicks, error: clicksError }] = await Promise.all([
-    supabase.from("searches").select("share_token, slots, result_count, created_at").gte("created_at", cutoff),
-    supabase.from("product_clicks").select("product_id, search_share_token, created_at").gte("created_at", cutoff),
-  ]);
-
-  if (searchesError) return NextResponse.json({ error: searchesError.message }, { status: 500 });
-  if (clicksError) return NextResponse.json({ error: clicksError.message }, { status: 500 });
-
-  const searchRows = searches ?? [];
-  const clickRows = clicks ?? [];
+  let searchRows: AnalyticsSearchRow[];
+  let clickRows: AnalyticsClickRow[];
+  try {
+    [searchRows, clickRows] = await Promise.all([
+      sql<AnalyticsSearchRow[]>`
+        SELECT share_token, slots, result_count, created_at
+        FROM searches WHERE created_at >= ${cutoff}
+      `,
+      sql<AnalyticsClickRow[]>`
+        SELECT product_id, search_share_token, created_at
+        FROM product_clicks WHERE created_at >= ${cutoff}
+      `,
+    ]);
+  } catch (error) {
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
+  }
 
   const totalSearches = searchRows.length;
   const noResultCount = searchRows.filter((s) => s.result_count === 0).length;
@@ -62,10 +80,12 @@ export async function GET(request: NextRequest) {
 
   let topProducts: SearchAnalytics["topProducts"] = [];
   if (topProductIds.length > 0) {
-    const { data: products } = await supabase
-      .from("products")
-      .select("id, title, category, click_count")
-      .in("id", topProductIds);
+    const products = await sql<
+      { id: string; title: string; category: ProductCategory | null; click_count: number }[]
+    >`
+      SELECT id, title, category, click_count
+      FROM products WHERE id = ANY(${topProductIds}::uuid[])
+    `;
     const productsById = new Map((products ?? []).map((p) => [p.id as string, p]));
     topProducts = topProductIds.map((id) => {
       const p = productsById.get(id);
