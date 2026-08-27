@@ -1,5 +1,5 @@
 import { randomBytes } from "crypto";
-import { supabase } from "./supabase";
+import { sql, toVector, parseVector } from "./sql";
 import type {
   PriceHistoryPoint,
   Product,
@@ -9,20 +9,28 @@ import type {
   SponsoredPlacement,
 } from "@/types";
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Lista de columnas de `searches` SIN query_embedding (vector de 1536 — caro
+// e innecesario en el 99% de las lecturas; solo getSearchPipelineInputs lo pide).
+const searchCols = sql`
+  id, raw_input, slots, expanded_query, result_ids, share_token,
+  user_id, session_id, result_count, created_at
+`;
+
 export async function getProductIdsByCategory(
   category: string,
   limit = 150
 ): Promise<string[]> {
-  const { data, error } = await supabase
-    .from("products")
-    .select("id")
-    .eq("category", category)
-    .eq("available", true)
-    .not("embedding", "is", null)
-    .limit(limit);
-
-  if (error) throw error;
-  return (data ?? []).map((p) => p.id as string);
+  const rows = await sql<{ id: string }[]>`
+    SELECT id FROM products
+    WHERE category = ${category}
+      AND available = true
+      AND embedding IS NOT NULL
+    LIMIT ${limit}
+  `;
+  return rows.map((r) => r.id);
 }
 
 // Trae productos de una marca/categoría sin importar precio — usado para
@@ -35,24 +43,21 @@ export async function getProductsByBrand(
   brands: string[],
   limit = 8
 ): Promise<Product[]> {
-  const sanitized = brands.map((b) => b.replace(/[^a-zA-Z0-9À-ÿ\s]/g, "").trim()).filter(Boolean);
+  const sanitized = brands
+    .map((b) => b.replace(/[^a-zA-Z0-9À-ÿ\s]/g, "").trim())
+    .filter(Boolean);
   if (sanitized.length === 0) return [];
 
-  const { data, error } = await supabase
-    .from("products")
-    .select("*")
-    .eq("category", category)
-    .eq("available", true)
-    // PostgREST usa "*" como comodín dentro de un string de filtro .or(), no
-    // "%" (eso es solo para .ilike() como método directo) — con "%" nunca
-    // matcheaba nada, esta query de respaldo devolvía siempre vacío (bug
-    // real: "pedí Dell y no apareció ni marcada como fuera de presupuesto").
-    .or(sanitized.map((b) => `brand.ilike.*${b}*`).join(","))
-    .order("price_cash", { ascending: true })
-    .limit(limit);
-
-  if (error) throw error;
-  return (data ?? []) as Product[];
+  const patterns = sanitized.map((b) => `%${b}%`);
+  const rows = await sql<Product[]>`
+    SELECT * FROM products
+    WHERE category = ${category}
+      AND available = true
+      AND brand ILIKE ANY(${patterns}::text[])
+    ORDER BY price_cash ASC NULLS LAST
+    LIMIT ${limit}
+  `;
+  return rows as unknown as Product[];
 }
 
 // Misma idea que getProductsByBrand pero contra un campo de specs (JSON) en
@@ -64,35 +69,30 @@ export async function getProductsBySpec(
   values: string[],
   limit = 8
 ): Promise<Product[]> {
-  const sanitized = values.map((v) => v.replace(/[^a-zA-Z0-9À-ÿ\s]/g, "").trim()).filter(Boolean);
+  const sanitized = values
+    .map((v) => v.replace(/[^a-zA-Z0-9À-ÿ\s]/g, "").trim())
+    .filter(Boolean);
   if (sanitized.length === 0) return [];
 
-  const { data, error } = await supabase
-    .from("products")
-    .select("*")
-    .eq("category", category)
-    .eq("available", true)
-    .or(sanitized.map((v) => `specs->>${specField}.ilike.*${v}*`).join(","))
-    .order("price_cash", { ascending: true })
-    .limit(limit);
-
-  if (error) throw error;
-  return (data ?? []) as Product[];
+  const patterns = sanitized.map((v) => `%${v}%`);
+  const rows = await sql<Product[]>`
+    SELECT * FROM products
+    WHERE category = ${category}
+      AND available = true
+      AND (specs ->> ${specField}) ILIKE ANY(${patterns}::text[])
+    ORDER BY price_cash ASC NULLS LAST
+    LIMIT ${limit}
+  `;
+  return rows as unknown as Product[];
 }
 
 export async function getProductsByIds(ids: string[]): Promise<Product[]> {
   if (ids.length === 0) return [];
 
-  const { data, error } = await supabase
-    .from("products")
-    .select("*")
-    .in("id", ids);
-
-  if (error) throw error;
-
-  const map = new Map(
-    (data ?? []).map((p) => [p.id as string, p as Product])
-  );
+  const rows = await sql<Product[]>`
+    SELECT * FROM products WHERE id = ANY(${ids}::uuid[])
+  `;
+  const map = new Map(rows.map((p) => [p.id as string, p as Product]));
   return ids
     .map((id) => map.get(id))
     .filter((p): p is Product => p !== undefined);
@@ -104,15 +104,14 @@ export async function getPriceHistory(
 ): Promise<PriceHistoryPoint[]> {
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-  const { data, error } = await supabase
-    .from("price_history")
-    .select("price_cash, price_installment, recorded_at")
-    .eq("product_id", productId)
-    .gte("recorded_at", since)
-    .order("recorded_at", { ascending: true });
-
-  if (error) throw error;
-  return (data ?? []) as PriceHistoryPoint[];
+  const rows = await sql<PriceHistoryPoint[]>`
+    SELECT price_cash, price_installment, recorded_at
+    FROM price_history
+    WHERE product_id = ${productId}
+      AND recorded_at >= ${since}
+    ORDER BY recorded_at ASC
+  `;
+  return rows as unknown as PriceHistoryPoint[];
 }
 
 export async function getActiveSponsoredPlacements(): Promise<
@@ -120,14 +119,12 @@ export async function getActiveSponsoredPlacements(): Promise<
 > {
   const now = new Date().toISOString();
 
-  const { data, error } = await supabase
-    .from("sponsored_placements")
-    .select("*")
-    .eq("active", true)
-    .or(`ends_at.is.null,ends_at.gt.${now}`);
-
-  if (error) throw error;
-  return (data ?? []) as SponsoredPlacement[];
+  const rows = await sql<SponsoredPlacement[]>`
+    SELECT * FROM sponsored_placements
+    WHERE active = true
+      AND (ends_at IS NULL OR ends_at > ${now})
+  `;
+  return rows as unknown as SponsoredPlacement[];
 }
 
 export async function saveSearch(params: {
@@ -141,90 +138,82 @@ export async function saveSearch(params: {
 }): Promise<Search> {
   const shareToken = params.shareToken ?? randomBytes(8).toString("hex");
 
-  const { data, error } = await supabase
-    .from("searches")
-    .insert({
-      share_token: shareToken,
-      raw_input: params.rawInput,
-      slots: params.slots,
-      expanded_query: params.expandedQuery,
-      query_embedding: params.queryEmbedding,
-      result_ids: params.resultIds,
-      session_id: params.sessionId,
-      result_count: params.resultIds.length,
-    })
-    .select("id, raw_input, slots, expanded_query, result_ids, share_token, user_id, session_id, result_count, created_at")
-    .single();
-
-  if (error) throw error;
-  return data as Search;
+  const [row] = await sql<Search[]>`
+    INSERT INTO searches (
+      share_token, raw_input, slots, expanded_query,
+      query_embedding, result_ids, session_id, result_count
+    )
+    VALUES (
+      ${shareToken},
+      ${params.rawInput},
+      ${sql.json(params.slots as never)},
+      ${params.expandedQuery},
+      ${toVector(params.queryEmbedding)}::vector(1536),
+      ${params.resultIds}::uuid[],
+      ${params.sessionId},
+      ${params.resultIds.length}
+    )
+    RETURNING ${searchCols}
+  `;
+  return row as unknown as Search;
 }
 
 export async function getSearchByShareToken(
   token: string
 ): Promise<Search | null> {
-  const FIELDS = "id, raw_input, slots, expanded_query, result_ids, share_token, user_id, session_id, result_count, created_at";
+  const [byToken] = await sql<Search[]>`
+    SELECT ${searchCols} FROM searches WHERE share_token = ${token}
+  `;
+  if (byToken) return byToken as unknown as Search;
 
-  const { data: byToken } = await supabase
-    .from("searches")
-    .select(FIELDS)
-    .eq("share_token", token)
-    .maybeSingle();
-  if (byToken) return byToken as Search;
-
-  const { data: byId } = await supabase
-    .from("searches")
-    .select(FIELDS)
-    .eq("id", token)
-    .maybeSingle();
-  return (byId as Search) ?? null;
+  if (!UUID_RE.test(token)) return null;
+  const [byId] = await sql<Search[]>`
+    SELECT ${searchCols} FROM searches WHERE id = ${token}
+  `;
+  return (byId as unknown as Search) ?? null;
 }
 
 // Solo para re-derivar el pool rankeado en /api/search/[token]/more cuando la
 // caché del pool (lib/search/cache.ts, setPoolCache) ya expiró — no se agrega
-// query_embedding al tipo Search ni a su FIELDS de siempre porque nadie más lo
-// necesita y es un vector de 1536 posiciones (innecesario en el resto de la app).
+// query_embedding al tipo Search ni a su lista de columnas de siempre porque
+// nadie más lo necesita y es un vector de 1536 posiciones.
 export async function getSearchPipelineInputs(
   shareToken: string
 ): Promise<{ slots: Slots; queryEmbedding: number[]; queryText?: string } | null> {
-  const { data, error } = await supabase
-    .from("searches")
-    .select("slots, query_embedding, raw_input")
-    .eq("share_token", shareToken)
-    .maybeSingle();
+  const [row] = await sql<
+    { slots: Slots; query_embedding: string | null; raw_input: string | null }[]
+  >`
+    SELECT slots, query_embedding, raw_input
+    FROM searches
+    WHERE share_token = ${shareToken}
+  `;
 
-  if (error || !data || !data.query_embedding) return null;
+  if (!row || !row.query_embedding) return null;
 
-  const raw = data.query_embedding as unknown;
-  const queryEmbedding = typeof raw === "string" ? (JSON.parse(raw) as number[]) : (raw as number[]);
-  return { slots: data.slots as Slots, queryEmbedding, queryText: data.raw_input ?? undefined };
+  return {
+    slots: row.slots as Slots,
+    queryEmbedding: parseVector(row.query_embedding),
+    queryText: row.raw_input ?? undefined,
+  };
 }
 
 export async function getSearchById(id: string): Promise<Search | null> {
-  const { data, error } = await supabase
-    .from("searches")
-    .select(
-      "id, raw_input, slots, expanded_query, result_ids, share_token, user_id, session_id, result_count, created_at"
-    )
-    .eq("id", id)
-    .maybeSingle();
-
-  if (error) throw error;
-  return (data as Search) ?? null;
+  if (!UUID_RE.test(id)) return null;
+  const [row] = await sql<Search[]>`
+    SELECT ${searchCols} FROM searches WHERE id = ${id}
+  `;
+  return (row as unknown as Search) ?? null;
 }
 
 export async function updateProductAnalysis(
   productId: string,
   analysis: ProductAnalysis
 ): Promise<void> {
-  const { error } = await supabase
-    .from("products")
-    .update({
-      quality_price_score: analysis.quality_price_score,
-      quality_price_analysis: analysis.quality_price_analysis,
-      analysis_generated_at: new Date().toISOString(),
-    })
-    .eq("id", productId);
-
-  if (error) throw error;
+  await sql`
+    UPDATE products SET
+      quality_price_score    = ${analysis.quality_price_score},
+      quality_price_analysis = ${analysis.quality_price_analysis},
+      analysis_generated_at  = ${new Date().toISOString()}
+    WHERE id = ${productId}
+  `;
 }

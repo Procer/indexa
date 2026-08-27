@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/db/supabase";
+import { sql } from "@/lib/db/sql";
 import type { AlternativeProduct, ProductStoreVariant, Slots } from "@/types";
 
 // Caché en Supabase (tabla cache_kv, ver supabase/migrations/021_cache_kv.sql)
@@ -11,26 +11,29 @@ import type { AlternativeProduct, ProductStoreVariant, Slots } from "@/types";
 // devolverla vencida.
 
 async function getCache<T>(key: string): Promise<T | null> {
-  const { data } = await supabase
-    .from("cache_kv")
-    .select("value, expires_at")
-    .eq("key", key)
-    .maybeSingle();
-  if (!data) return null;
-  if (new Date(data.expires_at).getTime() <= Date.now()) {
-    await supabase.from("cache_kv").delete().eq("key", key);
+  const [row] = await sql<{ value: T; expires_at: string }[]>`
+    SELECT value, expires_at FROM cache_kv WHERE key = ${key}
+  `;
+  if (!row) return null;
+  if (new Date(row.expires_at).getTime() <= Date.now()) {
+    await sql`DELETE FROM cache_kv WHERE key = ${key}`;
     return null;
   }
-  return data.value as T;
+  return row.value;
 }
 
 async function setCache<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
-  const expires_at = new Date(Date.now() + ttlSeconds * 1000).toISOString();
-  await supabase.from("cache_kv").upsert({ key, value: value as unknown, expires_at });
+  const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
+  await sql`
+    INSERT INTO cache_kv (key, value, expires_at)
+    VALUES (${key}, ${sql.json(value as never)}, ${expiresAt})
+    ON CONFLICT (key) DO UPDATE
+      SET value = EXCLUDED.value, expires_at = EXCLUDED.expires_at
+  `;
 }
 
 async function deleteCache(key: string): Promise<void> {
-  await supabase.from("cache_kv").delete().eq("key", key);
+  await sql`DELETE FROM cache_kv WHERE key = ${key}`;
 }
 
 const REDIS_TTL_SECONDS = 3600;
