@@ -13,6 +13,9 @@ set -euo pipefail
 PG_VERSION=16
 APP_DB=techsearch
 APP_USER=techsearch
+# El 5432 ya lo ocupa un Postgres en Docker de otra app del VPS — este cluster
+# usa el 5433, aislado.
+APP_PORT=5433
 
 echo "==> 1/7  Repositorio oficial PGDG (Postgres $PG_VERSION)"
 apt-get update -qq
@@ -48,8 +51,9 @@ cron.database_name = '$APP_DB'
 EOF
 fi
 
-echo "==> 4/7  Escuchar SOLO en localhost"
+echo "==> 4/7  Escuchar SOLO en localhost, puerto $APP_PORT"
 sed -i "s/^#\?listen_addresses.*/listen_addresses = 'localhost'/" "$CONF"
+sed -i "s/^#\?port\s*=.*/port = $APP_PORT/" "$CONF"
 
 echo "==> 5/7  Tuning (drop-in conf.d) — AJUSTAR según RAM real del VPS"
 install -d "$PGDATA/conf.d"
@@ -74,18 +78,23 @@ echo "==> 7/7  Reiniciar y crear base + rol de la app"
 systemctl enable postgresql >/dev/null 2>&1 || true
 systemctl restart postgresql
 
-# Rol + base (no falla si ya existen)
-sudo -u postgres psql -v ON_ERROR_STOP=1 <<EOF
+# Password del rol: se toma de $APP_PASSWORD si viene seteada, si no se genera.
+APP_PASSWORD="${APP_PASSWORD:-$(openssl rand -hex 24)}"
+PSQL=(sudo -u postgres psql -p "$APP_PORT" -v ON_ERROR_STOP=1)
+
+# Rol (crea o resetea la password) + base
+"${PSQL[@]}" <<EOF
 DO \$\$ BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$APP_USER') THEN
-    CREATE ROLE $APP_USER LOGIN PASSWORD 'CAMBIAR_ESTA_PASSWORD';
+    CREATE ROLE $APP_USER LOGIN PASSWORD '$APP_PASSWORD';
+  ELSE
+    ALTER ROLE $APP_USER PASSWORD '$APP_PASSWORD';
   END IF;
 END \$\$;
-SELECT 'creando base' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$APP_DB')\gexec
 EOF
-sudo -u postgres createdb -O "$APP_USER" "$APP_DB" 2>/dev/null || true
+sudo -u postgres createdb -p "$APP_PORT" -O "$APP_USER" "$APP_DB" 2>/dev/null || true
 
-sudo -u postgres psql -d "$APP_DB" -v ON_ERROR_STOP=1 <<EOF
+"${PSQL[@]}" -d "$APP_DB" <<EOF
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
@@ -96,14 +105,16 @@ EOF
 cat <<EOF
 
 =============================================================================
- LISTO. Postgres $PG_VERSION corriendo en localhost.
- Próximos pasos:
-   1) Cambiá la password del rol:
-        sudo -u postgres psql -c "ALTER ROLE $APP_USER PASSWORD 'una-password-fuerte';"
-   2) Editá $PGDATA/conf.d/10-tuning.conf con los valores para tu RAM
-      y reiniciá:  systemctl restart postgresql
-   3) Restaurá el dump de Supabase — ver db/vps/README.md (Fase 2).
-   4) DATABASE_URL para la app:
-        postgres://$APP_USER:PASSWORD@127.0.0.1:5432/$APP_DB
+ LISTO. PostgreSQL $PG_VERSION corriendo en 127.0.0.1:$APP_PORT (aislado del
+ Postgres en Docker que usa el 5432).
+
+ >>> GUARDÁ ESTA LÍNEA — es la conexión para la app (.env.local del VPS):
+
+ DATABASE_URL=postgres://$APP_USER:$APP_PASSWORD@127.0.0.1:$APP_PORT/$APP_DB
+
+ Próximos pasos (ver db/vps/README.md):
+   1) psql "\$DATABASE_URL" -f db/vps/schema.sql      # crear el esquema
+   2) traer los datos desde Supabase (Fase 2 del README)
+   3) agregar DATABASE_URL al .env.local y reiniciar la app
 =============================================================================
 EOF

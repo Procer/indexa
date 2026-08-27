@@ -82,7 +82,7 @@ los datos vienen del dump `--data-only` de Supabase. Así no arrastra nada de
 la plataforma.
 
 ```bash
-export PGURL='postgres://techsearch:PASSWORD@127.0.0.1:5432/techsearch'
+export PGURL='postgres://techsearch:PASSWORD@127.0.0.1:5433/techsearch'
 
 # 1. Crear el schema limpio
 psql "$PGURL" -f db/vps/schema.sql
@@ -145,7 +145,7 @@ identificación por email: lo cablea el sistema nuevo, que debe hacer
 - `npm i postgres` ya está en `package.json`.
 - `.env` en el VPS necesita:
   ```
-  DATABASE_URL=postgres://techsearch:PASSWORD@127.0.0.1:5432/techsearch
+  DATABASE_URL=postgres://techsearch:PASSWORD@127.0.0.1:5433/techsearch
   ```
 
 ### Pendiente
