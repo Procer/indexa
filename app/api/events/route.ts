@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/db/supabase";
+import { sql } from "@/lib/db/sql";
 
 const ALLOWED_EVENT_TYPES = new Set([
   "session_start",
@@ -29,17 +29,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid visitId" }, { status: 400 });
   }
 
-  const { error } = await supabase.from("site_events").insert({
-    event_type: body.eventType,
-    visit_id: body.visitId,
-    product_id: body.productId ?? null,
-    path: typeof body.path === "string" ? body.path.slice(0, 500) : null,
-    duration_ms: typeof body.durationMs === "number" && body.durationMs >= 0 ? Math.round(body.durationMs) : null,
-    metadata: body.metadata ?? null,
-  });
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  try {
+    await sql`
+      INSERT INTO site_events (event_type, visit_id, product_id, path, duration_ms, metadata)
+      VALUES (
+        ${body.eventType!},
+        ${body.visitId},
+        ${body.productId ?? null},
+        ${typeof body.path === "string" ? body.path.slice(0, 500) : null},
+        ${typeof body.durationMs === "number" && body.durationMs >= 0 ? Math.round(body.durationMs) : null},
+        ${body.metadata ? sql.json(body.metadata as never) : null}
+      )
+    `;
+  } catch (error) {
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });

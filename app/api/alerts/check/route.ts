@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/db/supabase";
+import { sql } from "@/lib/db/sql";
 
 interface AlertRow {
   id: string;
@@ -15,19 +15,18 @@ interface AlertRow {
   user_email: string;
 }
 
+// Fila plana del JOIN price_alerts + profiles + products.
 interface RawAlert {
   id: string;
   user_id: string | null;
   email: string | null;
   target_price: number;
-  profile: { email: string } | null;
-  product: {
-    id: string;
-    title: string;
-    price_cash: number;
-    url: string;
-    image_url: string | null;
-  } | null;
+  profile_email: string | null;
+  product_id: string | null;
+  product_title: string | null;
+  product_price_cash: number | null;
+  product_url: string | null;
+  product_image_url: string | null;
 }
 
 // Vercel Cron pega un GET con "Authorization: Bearer <CRON_SECRET>" automáticamente.
@@ -58,36 +57,49 @@ export async function POST(request: NextRequest) {
 
 async function runAlertsCheck() {
   // Un solo JOIN: alertas activas + producto + email del usuario vía profiles
-  const { data: alerts, error } = await supabase
-    .from("price_alerts")
-    .select(`
-      id,
-      user_id,
-      email,
-      target_price,
-      profile:profiles(email),
-      product:products(id, title, price_cash, url, image_url)
-    `)
-    .eq("is_active", true);
-
-  if (error || !alerts) {
-    return NextResponse.json({ error: error?.message ?? "Sin datos" }, { status: 500 });
+  let alerts: RawAlert[];
+  try {
+    alerts = await sql<RawAlert[]>`
+      SELECT
+        pa.id,
+        pa.user_id,
+        pa.email,
+        pa.target_price,
+        pr.email      AS profile_email,
+        p.id          AS product_id,
+        p.title       AS product_title,
+        p.price_cash  AS product_price_cash,
+        p.url         AS product_url,
+        p.image_url   AS product_image_url
+      FROM price_alerts pa
+      LEFT JOIN profiles pr ON pr.id = pa.user_id
+      LEFT JOIN products p  ON p.id  = pa.product_id
+      WHERE pa.is_active = true
+    `;
+  } catch (error) {
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 
   const toNotify: AlertRow[] = [];
 
-  for (const raw of alerts as unknown as RawAlert[]) {
-    if (!raw.product || raw.product.price_cash == null) continue;
+  for (const raw of alerts) {
+    if (!raw.product_id || raw.product_price_cash == null) continue;
     // Alertas nuevas guardan el email directo; las viejas (atadas a user_id) lo sacan del profile.
-    const recipientEmail = raw.email ?? raw.profile?.email;
+    const recipientEmail = raw.email ?? raw.profile_email;
     if (!recipientEmail) continue;
-    if (raw.product.price_cash > raw.target_price) continue;
+    if (raw.product_price_cash > raw.target_price) continue;
 
     toNotify.push({
       id: raw.id,
       user_id: raw.user_id ?? "",
       target_price: raw.target_price,
-      product: raw.product,
+      product: {
+        id: raw.product_id,
+        title: raw.product_title ?? "",
+        price_cash: raw.product_price_cash,
+        url: raw.product_url ?? "",
+        image_url: raw.product_image_url,
+      },
       user_email: recipientEmail,
     });
   }
@@ -117,10 +129,11 @@ async function runAlertsCheck() {
     .map((a) => a.id);
 
   if (notifiedIds.length > 0) {
-    await supabase
-      .from("price_alerts")
-      .update({ last_notified_at: new Date().toISOString() })
-      .in("id", notifiedIds);
+    await sql`
+      UPDATE price_alerts
+      SET last_notified_at = ${new Date().toISOString()}
+      WHERE id = ANY(${notifiedIds}::uuid[])
+    `;
   }
 
   return NextResponse.json({ notified: notifiedIds.length, total: toNotify.length });

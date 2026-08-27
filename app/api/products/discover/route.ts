@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/db/supabase";
+import { sql } from "@/lib/db/sql";
 import { ACCESSORY_KEYWORDS } from "@/lib/search/pipeline";
 import type { NotebookSpecs, Product, ProductCategory } from "@/types";
 
@@ -46,17 +46,14 @@ function isRealEquipment(product: Product): boolean {
 }
 
 async function getRandomSection(category: ProductCategory): Promise<{ category: ProductCategory; products: Product[] } | null> {
-  const { data, error } = await supabase
-    .from("products")
-    .select("*")
-    .eq("category", category)
-    .eq("available", true)
-    .limit(SAMPLE_POOL);
+  const data = await sql<Product[]>`
+    SELECT * FROM products
+    WHERE category = ${category} AND available = true
+    ORDER BY random()
+    LIMIT ${SAMPLE_POOL}
+  `;
 
-  if (error) throw error;
-  if (!data) return null;
-
-  const realEquipment = (data as Product[]).filter(isRealEquipment);
+  const realEquipment = (data as unknown as Product[]).filter(isRealEquipment);
   if (realEquipment.length === 0) return null;
 
   return { category, products: shuffle(realEquipment).slice(0, PER_CATEGORY) };

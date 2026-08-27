@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/db/supabase";
+import { sql } from "@/lib/db/sql";
 
 // POST /api/products/[id]/click — incrementa click_count y registra el evento
 // (anónimo, fire-and-forget), vinculado a la búsqueda de origen si se manda.
@@ -13,18 +13,21 @@ export async function POST(
     visitId?: string;
   };
 
-  const [{ error }] = await Promise.all([
-    supabase.rpc("increment_click_count", { product_id: params.id }),
-    supabase.from("product_clicks").insert({
-      product_id: params.id,
-      search_share_token: body.searchShareToken ?? null,
-      session_id: body.sessionId ?? null,
-      visit_id: body.visitId ?? null,
-    }),
-  ]);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  try {
+    await Promise.all([
+      sql`SELECT increment_click_count(${params.id}::uuid)`,
+      sql`
+        INSERT INTO product_clicks (product_id, search_share_token, session_id, visit_id)
+        VALUES (
+          ${params.id}::uuid,
+          ${body.searchShareToken ?? null},
+          ${body.sessionId ?? null},
+          ${body.visitId ?? null}
+        )
+      `,
+    ]);
+  } catch (error) {
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });

@@ -1,8 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProductsByIds } from "@/lib/db/queries";
-import { supabase } from "@/lib/db/supabase";
+import { sql } from "@/lib/db/sql";
 import { isLikelySameProduct } from "@/lib/domain/dedupe";
-import type { ProductStoreVariant } from "@/types";
+import type { ProductSource, ProductStoreVariant } from "@/types";
+
+interface OtherStoreCandidate {
+  id: string;
+  title: string;
+  brand: string | null;
+  category: string;
+  specs: unknown;
+  source: ProductSource;
+  price_cash: number | null;
+  price_installment: number | null;
+  installment_count: number | null;
+  url: string;
+  affiliate_url: string | null;
+}
 
 // A diferencia de `also_at` (calculado solo cuando dos variantes del mismo
 // producto caen dentro del pool rankeado de una búsqueda puntual, ver
@@ -24,18 +38,18 @@ export async function GET(
       return NextResponse.json({ error: "Producto no encontrado" }, { status: 404 });
     }
 
-    const { data: candidates, error } = await supabase
-      .from("products")
-      .select("id, title, brand, category, specs, source, price_cash, price_installment, installment_count, url, affiliate_url")
-      .eq("category", product.category)
-      .ilike("brand", product.brand ?? "")
-      .eq("available", true)
-      .neq("id", product.id)
-      .limit(300);
+    const candidates = await sql<OtherStoreCandidate[]>`
+      SELECT id, title, brand, category, specs, source,
+             price_cash, price_installment, installment_count, url, affiliate_url
+      FROM products
+      WHERE category = ${product.category}
+        AND brand ILIKE ${product.brand ?? ""}
+        AND available = true
+        AND id <> ${product.id}::uuid
+      LIMIT 300
+    `;
 
-    if (error) throw error;
-
-    const variants: ProductStoreVariant[] = (candidates ?? [])
+    const variants: ProductStoreVariant[] = candidates
       .filter((c) => isLikelySameProduct(product, c))
       .map((c) => ({
         source: c.source,
