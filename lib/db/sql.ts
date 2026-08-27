@@ -4,15 +4,23 @@ import postgres from "postgres";
 // reemplaza al cliente Supabase/PostgREST. Todas las llamadas del server
 // van por acá: sin hop HTTP, sin São Paulo, conexión por socket local.
 //
-// Se cachea en globalThis para sobrevivir el hot-reload de `next dev`
-// (si no, cada recompilación abre un pool nuevo y se agotan las conexiones).
+// El pool se crea de forma PEREZOSA (en la primera query real), no al
+// importar el módulo — así `next build` no rompe si DATABASE_URL todavía no
+// está en el entorno de build. Se cachea en globalThis para sobrevivir el
+// hot-reload de `next dev`.
+
+type Sql = ReturnType<typeof postgres>;
 
 declare global {
   // eslint-disable-next-line no-var
-  var __techsearch_sql__: ReturnType<typeof createClient> | undefined;
+  var __techsearch_sql__: Sql | undefined;
 }
 
-function createClient() {
+let pool: Sql | undefined = globalThis.__techsearch_sql__;
+
+function getPool(): Sql {
+  if (pool) return pool;
+
   const url = process.env.DATABASE_URL;
   if (!url) {
     throw new Error(
@@ -20,7 +28,7 @@ function createClient() {
     );
   }
 
-  return postgres(url, {
+  pool = postgres(url, {
     max: 12, // pool chico: la app corre en el mismo box que Postgres
     idle_timeout: 20, // cerrar conexiones ociosas a los 20 s
     connect_timeout: 10,
@@ -47,13 +55,28 @@ function createClient() {
       },
     },
   });
+
+  if (process.env.NODE_ENV !== "production") {
+    globalThis.__techsearch_sql__ = pool;
+  }
+  return pool;
 }
 
-export const sql = globalThis.__techsearch_sql__ ?? createClient();
-
-if (process.env.NODE_ENV !== "production") {
-  globalThis.__techsearch_sql__ = sql;
-}
+// `sql` se comporta igual que el cliente de postgres.js (tagged template,
+// sql(obj) para helpers, sql.json(), sql.begin(), etc.) pero difiere la
+// creación del pool al primer uso.
+export const sql: Sql = new Proxy(function () {} as unknown as Sql, {
+  apply(_target, _thisArg, args: unknown[]) {
+    return (getPool() as unknown as (...a: unknown[]) => unknown)(...args);
+  },
+  get(_target, prop: string | symbol) {
+    const client = getPool() as unknown as Record<string | symbol, unknown>;
+    const value = client[prop];
+    return typeof value === "function"
+      ? (value as (...a: unknown[]) => unknown).bind(client)
+      : value;
+  },
+});
 
 // Serializa un embedding (number[]) al literal que espera una columna/param
 // `vector(1536)` de pgvector: '[0.1,0.2,...]'. Usar así:

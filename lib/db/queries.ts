@@ -14,7 +14,9 @@ const UUID_RE =
 
 // Lista de columnas de `searches` SIN query_embedding (vector de 1536 — caro
 // e innecesario en el 99% de las lecturas; solo getSearchPipelineInputs lo pide).
-const searchCols = sql`
+// Función (no constante) para no invocar `sql` en la carga del módulo — el
+// pool se crea perezosamente y no debe existir en tiempo de build.
+const searchCols = () => sql`
   id, raw_input, slots, expanded_query, result_ids, share_token,
   user_id, session_id, result_count, created_at
 `;
@@ -153,7 +155,7 @@ export async function saveSearch(params: {
       ${params.sessionId},
       ${params.resultIds.length}
     )
-    RETURNING ${searchCols}
+    RETURNING ${searchCols()}
   `;
   return row as unknown as Search;
 }
@@ -162,13 +164,13 @@ export async function getSearchByShareToken(
   token: string
 ): Promise<Search | null> {
   const [byToken] = await sql<Search[]>`
-    SELECT ${searchCols} FROM searches WHERE share_token = ${token}
+    SELECT ${searchCols()} FROM searches WHERE share_token = ${token}
   `;
   if (byToken) return byToken as unknown as Search;
 
   if (!UUID_RE.test(token)) return null;
   const [byId] = await sql<Search[]>`
-    SELECT ${searchCols} FROM searches WHERE id = ${token}
+    SELECT ${searchCols()} FROM searches WHERE id = ${token}
   `;
   return (byId as unknown as Search) ?? null;
 }
@@ -200,7 +202,7 @@ export async function getSearchPipelineInputs(
 export async function getSearchById(id: string): Promise<Search | null> {
   if (!UUID_RE.test(id)) return null;
   const [row] = await sql<Search[]>`
-    SELECT ${searchCols} FROM searches WHERE id = ${id}
+    SELECT ${searchCols()} FROM searches WHERE id = ${id}
   `;
   return (row as unknown as Search) ?? null;
 }

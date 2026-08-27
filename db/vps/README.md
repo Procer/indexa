@@ -130,17 +130,38 @@ identificación por email: lo cablea el sistema nuevo, que debe hacer
 
 ---
 
-## Fase 3 — App (la hace Claude en el repo)
+## Fase 3 — App
 
-- `lib/db/sql.ts` — pool de `postgres` (postgres.js) contra `DATABASE_URL`.
-- Reescritura de `lib/db/queries.ts`, `lib/search/cache.ts`,
-  `lib/search/hybridSearch.ts` y las rutas `app/api/**` que usaban
-  `supabase.from()/.rpc()`.
+### Hecho (capa de datos)
+- `lib/db/sql.ts` — pool `postgres` (postgres.js) contra `DATABASE_URL`.
+  numeric→number, timestamptz→string ISO (paridad con lo que devolvía PostgREST).
+- Migrados a SQL directo: `lib/db/queries.ts`, `lib/search/cache.ts`,
+  `lib/search/hybridSearch.ts`, y las rutas: `api/events`,
+  `api/products/[id]/click`, `api/products/[id]/other-stores`,
+  `api/products/discover`, `api/alerts` (+ `[id]`, `check`, `manage/[token]`),
+  `api/searches/sync`, `api/searches/manage/[token]`, `api/cron/analyze`,
+  `api/admin/analytics`, `api/admin/sponsors` (+ `[id]`),
+  `api/admin/products/search`.
+- `npm i postgres` ya está en `package.json`.
 - `.env` en el VPS necesita:
   ```
   DATABASE_URL=postgres://techsearch:PASSWORD@127.0.0.1:5432/techsearch
   ```
-- Al final: `npm remove @supabase/supabase-js @upstash/ratelimit @upstash/redis`.
+
+### Pendiente
+- **Auth**: `lib/auth/*`, `hooks/useUser.ts`, `components/AuthModal.tsx`,
+  `app/auth/callback`, `app/admin/layout.tsx`,
+  `app/api/auth/sync-searches` — ver `docs/AUTH_MIGRATION.md`.
+- **Scripts** (`scripts/*.ts`): sync de catálogo, embeddings, debug. Offline,
+  no bloquean el sitio. Migrar a `lib/db/sql` cuando se apague Supabase.
+- Al terminar: `npm remove @supabase/supabase-js @upstash/ratelimit @upstash/redis`
+  y borrar `lib/db/supabase.ts` + `lib/db/supabaseClient.ts`.
+
+### Verificar
+```bash
+npm run typecheck   # debe pasar limpio
+npm run build
+```
 
 ---
 
