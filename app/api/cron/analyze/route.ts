@@ -12,8 +12,19 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { sql } from "@/lib/db/sql";
 import { generateBatchAnalysis } from "@/lib/llm/batchAnalysis";
+import type { ProductCategory, ProductSpecs } from "@/types";
+
+interface AnalyzeProductRow {
+  id: string;
+  title: string;
+  brand: string | null;
+  category: ProductCategory;
+  price_cash: number | null;
+  price_installment: number | null;
+  specs: ProductSpecs;
+}
 
 const BATCH_SIZE = 10;
 const DEFAULT_LIMIT = 50;
@@ -35,26 +46,26 @@ export async function POST(request: NextRequest) {
   const limit = Math.min(body.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
   const regenerate = body.regenerate ?? false;
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-
-  const baseQuery = supabase
-    .from("products")
-    .select("id, title, brand, category, price_cash, price_installment, specs")
-    .eq("available", true)
-    .limit(limit);
-
-  const { data: products, error } = await (
-    regenerate ? baseQuery : baseQuery.is("quality_price_score", null)
-  );
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  let products: AnalyzeProductRow[];
+  try {
+    products = regenerate
+      ? await sql<AnalyzeProductRow[]>`
+          SELECT id, title, brand, category, price_cash, price_installment, specs
+          FROM products
+          WHERE available = true
+          LIMIT ${limit}
+        `
+      : await sql<AnalyzeProductRow[]>`
+          SELECT id, title, brand, category, price_cash, price_installment, specs
+          FROM products
+          WHERE available = true AND quality_price_score IS NULL
+          LIMIT ${limit}
+        `;
+  } catch (error) {
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 
-  if (!products || products.length === 0) {
+  if (products.length === 0) {
     return NextResponse.json({ ok: true, processed: 0, failed: 0, message: "No products pending analysis" });
   }
 
@@ -68,17 +79,13 @@ export async function POST(request: NextRequest) {
     const results = await Promise.allSettled(
       batch.map(async (product) => {
         const analysis = await generateBatchAnalysis(product);
-
-        const { error: updateErr } = await supabase
-          .from("products")
-          .update({
-            quality_price_score: analysis.quality_price_score,
-            quality_price_analysis: analysis.quality_price_analysis,
-            analysis_generated_at: new Date().toISOString(),
-          })
-          .eq("id", product.id);
-
-        if (updateErr) throw new Error(updateErr.message);
+        await sql`
+          UPDATE products SET
+            quality_price_score    = ${analysis.quality_price_score},
+            quality_price_analysis = ${analysis.quality_price_analysis},
+            analysis_generated_at  = ${new Date().toISOString()}
+          WHERE id = ${product.id}::uuid
+        `;
       })
     );
 

@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/db/supabase";
+import { sql } from "@/lib/db/sql";
 import { withBasePath } from "@/lib/basePath";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -23,29 +23,32 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Email inválido" }, { status: 400 });
   }
 
-  const { data: existing } = await supabase
-    .from("saved_search_contacts")
-    .select("manage_token, share_tokens")
-    .eq("email", email)
-    .maybeSingle();
+  const [existing] = await sql<
+    { manage_token: string; share_tokens: string[] }[]
+  >`
+    SELECT manage_token, share_tokens
+    FROM saved_search_contacts
+    WHERE email = ${email}
+  `;
 
   const manageToken = existing?.manage_token ?? randomUUID();
   const mergedTokens = Array.from(
     new Set([...(existing?.share_tokens ?? []), ...shareTokens])
   );
 
-  const { error } = await supabase.from("saved_search_contacts").upsert(
-    {
-      email,
-      manage_token: manageToken,
-      share_tokens: mergedTokens,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "email" }
-  );
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  try {
+    await sql`
+      INSERT INTO saved_search_contacts (email, manage_token, share_tokens, updated_at)
+      VALUES (
+        ${email}, ${manageToken}::uuid, ${mergedTokens}::text[], ${new Date().toISOString()}
+      )
+      ON CONFLICT (email) DO UPDATE SET
+        manage_token = EXCLUDED.manage_token,
+        share_tokens = EXCLUDED.share_tokens,
+        updated_at   = EXCLUDED.updated_at
+    `;
+  } catch (error) {
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 
   const link = `${request.nextUrl.origin}${withBasePath(`/mis-busquedas/${manageToken}`)}`;

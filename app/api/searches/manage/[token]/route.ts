@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/db/supabase";
+import { sql } from "@/lib/db/sql";
 import { getSearchByShareToken } from "@/lib/db/queries";
 import type { SavedSearchListItem } from "@/types";
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // GET /api/searches/manage/[token] — búsquedas asociadas a un manage_token
 // (sin login), mismo patrón que app/api/alerts/manage/[token]/route.ts.
@@ -9,14 +12,19 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: { token: string } }
 ) {
-  const { data: contact, error } = await supabase
-    .from("saved_search_contacts")
-    .select("share_tokens")
-    .eq("manage_token", params.token)
-    .maybeSingle();
+  if (!UUID_RE.test(params.token)) {
+    return NextResponse.json({ searches: [] });
+  }
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  let contact: { share_tokens: string[] } | undefined;
+  try {
+    [contact] = await sql<{ share_tokens: string[] }[]>`
+      SELECT share_tokens
+      FROM saved_search_contacts
+      WHERE manage_token = ${params.token}::uuid
+    `;
+  } catch (error) {
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
   if (!contact) {
     return NextResponse.json({ searches: [] });
