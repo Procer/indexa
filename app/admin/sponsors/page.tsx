@@ -1,0 +1,460 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { adminFetch } from "@/lib/auth/adminClient";
+import type { SponsoredPlacement, ProductCategory } from "@/types";
+
+// ─── tipos locales ────────────────────────────────────────────────────────────
+
+interface ProductHit {
+  id: string;
+  title: string;
+  brand: string | null;
+  category: string;
+  price_cash: number | null;
+  image_url: string | null;
+}
+
+const BOOST_MIN = 0.01;
+const BOOST_MAX = 0.10;
+const RELEVANCE_MIN = 0.5;
+const RELEVANCE_MAX = 0.95;
+
+const CATEGORIES: ProductCategory[] = ["notebook", "desktop", "tablet", "tv"];
+
+// ─── helpers ─────────────────────────────────────────────────────────────────
+
+function formatDate(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("es-AR");
+}
+
+function formatPrice(n: number | null): string {
+  if (n == null) return "—";
+  return `$${Math.round(n).toLocaleString("es-AR")}`;
+}
+
+// ─── componente ──────────────────────────────────────────────────────────────
+
+export default function SponsorsAdminPage() {
+  const [placements, setPlacements] = useState<SponsoredPlacement[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  // form nueva campaña
+  const [showForm, setShowForm] = useState(false);
+  const [formAdvertiser, setFormAdvertiser] = useState("");
+  const [formBoost, setFormBoost] = useState(0.05);
+  const [formMinRelevance, setFormMinRelevance] = useState(0.65);
+  const [formStartsAt, setFormStartsAt] = useState("");
+  const [formEndsAt, setFormEndsAt] = useState("");
+  const [formCategories, setFormCategories] = useState<ProductCategory[]>([]);
+  const [formProducts, setFormProducts] = useState<ProductHit[]>([]);
+  const [formSubmitting, setFormSubmitting] = useState(false);
+
+  // buscador de productos
+  const [productQuery, setProductQuery] = useState("");
+  const [productResults, setProductResults] = useState<ProductHit[]>([]);
+  const [productSearching, setProductSearching] = useState(false);
+
+  const loadPlacements = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    const res = await adminFetch("/api/admin/sponsors");
+    if (res.ok) {
+      const data = (await res.json()) as { placements: SponsoredPlacement[] };
+      setPlacements(data.placements);
+    } else {
+      setError("No autorizado o error al cargar campañas.");
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadPlacements();
+  }, [loadPlacements]);
+
+  // Buscar productos con debounce
+  useEffect(() => {
+    if (productQuery.length < 2) { setProductResults([]); return; }
+    const t = setTimeout(async () => {
+      setProductSearching(true);
+      const res = await adminFetch(`/api/admin/products/search?q=${encodeURIComponent(productQuery)}`);
+      if (res.ok) {
+        const data = (await res.json()) as { products: ProductHit[] };
+        setProductResults(data.products);
+      }
+      setProductSearching(false);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [productQuery]);
+
+  async function toggleActive(p: SponsoredPlacement) {
+    await adminFetch(`/api/admin/sponsors/${p.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ active: !p.active }),
+    });
+    setPlacements((prev) =>
+      prev.map((x) => (x.id === p.id ? { ...x, active: !x.active } : x))
+    );
+  }
+
+  async function deletePlacement(p: SponsoredPlacement) {
+    if (!confirm(`¿Eliminar campaña de ${p.advertiser}?`)) return;
+    await adminFetch(`/api/admin/sponsors/${p.id}`, { method: "DELETE" });
+    setPlacements((prev) => prev.filter((x) => x.id !== p.id));
+  }
+
+  function addProductToForm(hit: ProductHit) {
+    if (formProducts.find((p) => p.id === hit.id)) return;
+    setFormProducts((prev) => [...prev, hit]);
+    setProductQuery("");
+    setProductResults([]);
+  }
+
+  function removeProductFromForm(id: string) {
+    setFormProducts((prev) => prev.filter((p) => p.id !== id));
+  }
+
+  function toggleCategory(cat: ProductCategory) {
+    setFormCategories((prev) =>
+      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
+    );
+  }
+
+  async function handleCreateCampaign(e: React.FormEvent) {
+    e.preventDefault();
+    if (!formAdvertiser.trim() || formProducts.length === 0) return;
+    setFormSubmitting(true);
+
+    const res = await adminFetch("/api/admin/sponsors", {
+      method: "POST",
+      body: JSON.stringify({
+        advertiser: formAdvertiser,
+        product_ids: formProducts.map((p) => p.id),
+        categories: formCategories,
+        score_boost: formBoost,
+        min_relevance: formMinRelevance,
+        starts_at: formStartsAt || null,
+        ends_at: formEndsAt || null,
+      }),
+    });
+
+    if (res.ok) {
+      setShowForm(false);
+      setFormAdvertiser("");
+      setFormBoost(0.05);
+      setFormMinRelevance(0.65);
+      setFormStartsAt("");
+      setFormEndsAt("");
+      setFormCategories([]);
+      setFormProducts([]);
+      await loadPlacements();
+    } else {
+      const data = (await res.json()) as { error?: string };
+      alert(data.error ?? "Error al crear campaña");
+    }
+    setFormSubmitting(false);
+  }
+
+  // ── panel principal ────────────────────────────────────────────────────────
+  return (
+    <main className="min-h-screen bg-gray-50 px-4 py-8">
+      <div className="mx-auto max-w-5xl space-y-6">
+
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Campañas patrocinadas</h1>
+            <p className="mt-1 text-sm text-gray-500">
+              Los productos patrocinados aparecen solo si su similitud supera el umbral mínimo.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowForm(true)}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            + Nueva campaña
+          </button>
+        </div>
+
+        {error && (
+          <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        )}
+
+        {/* Lista de campañas */}
+        {loading ? (
+          <div className="py-12 text-center text-sm text-gray-400">Cargando...</div>
+        ) : placements.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-gray-200 py-16 text-center">
+            <p className="text-sm text-gray-400">No hay campañas todavía.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {placements.map((p) => (
+              <PlacementRow
+                key={p.id}
+                placement={p}
+                onToggle={() => toggleActive(p)}
+                onDelete={() => deletePlacement(p)}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Formulario nueva campaña */}
+        {showForm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+            <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+              <div className="mb-5 flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-gray-900">Nueva campaña</h2>
+                <button
+                  type="button"
+                  onClick={() => setShowForm(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >✕</button>
+              </div>
+
+              <form onSubmit={handleCreateCampaign} className="space-y-4">
+
+                {/* Advertiser */}
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Anunciante</label>
+                  <input
+                    type="text"
+                    value={formAdvertiser}
+                    onChange={(e) => setFormAdvertiser(e.target.value)}
+                    placeholder="Frávega, Garbarino..."
+                    required
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
+                  />
+                </div>
+
+                {/* Búsqueda de productos */}
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">
+                    Productos ({formProducts.length} seleccionados)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={productQuery}
+                      onChange={(e) => setProductQuery(e.target.value)}
+                      placeholder="Buscar producto por título..."
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
+                    />
+                    {(productResults.length > 0 || productSearching) && (
+                      <div className="absolute z-10 mt-1 w-full rounded-lg border border-gray-100 bg-white shadow-lg">
+                        {productSearching ? (
+                          <p className="px-3 py-2 text-xs text-gray-400">Buscando...</p>
+                        ) : (
+                          productResults.map((hit) => (
+                            <button
+                              key={hit.id}
+                              type="button"
+                              onClick={() => addProductToForm(hit)}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50"
+                            >
+                              {hit.image_url && (
+                                <img src={hit.image_url} alt="" className="h-8 w-8 rounded object-contain" />
+                              )}
+                              <div className="min-w-0">
+                                <p className="truncate font-medium text-gray-800">{hit.title}</p>
+                                <p className="text-xs text-gray-400">{hit.category} · {formatPrice(hit.price_cash)}</p>
+                              </div>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Productos seleccionados */}
+                  {formProducts.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {formProducts.map((p) => (
+                        <span
+                          key={p.id}
+                          className="flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700"
+                        >
+                          {p.title.slice(0, 30)}…
+                          <button
+                            type="button"
+                            onClick={() => removeProductFromForm(p.id)}
+                            className="text-blue-400 hover:text-blue-600"
+                          >✕</button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Categorías */}
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">
+                    Categorías objetivo (vacío = todas)
+                  </label>
+                  <div className="flex gap-2">
+                    {CATEGORIES.map((cat) => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => toggleCategory(cat)}
+                        className={`rounded-full px-3 py-1 text-xs font-medium capitalize transition-colors ${
+                          formCategories.includes(cat)
+                            ? "bg-blue-600 text-white"
+                            : "border border-gray-200 text-gray-600 hover:bg-gray-50"
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Boost y relevancia mínima */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">
+                      Score boost ({formBoost.toFixed(2)})
+                    </label>
+                    <input
+                      type="range"
+                      min={BOOST_MIN}
+                      max={BOOST_MAX}
+                      step={0.01}
+                      value={formBoost}
+                      onChange={(e) => setFormBoost(Number(e.target.value))}
+                      className="w-full"
+                    />
+                    <div className="flex justify-between text-xs text-gray-400">
+                      <span>{BOOST_MIN}</span><span>{BOOST_MAX}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">
+                      Relevancia mínima ({formMinRelevance.toFixed(2)})
+                    </label>
+                    <input
+                      type="range"
+                      min={RELEVANCE_MIN}
+                      max={RELEVANCE_MAX}
+                      step={0.01}
+                      value={formMinRelevance}
+                      onChange={(e) => setFormMinRelevance(Number(e.target.value))}
+                      className="w-full"
+                    />
+                    <div className="flex justify-between text-xs text-gray-400">
+                      <span>{RELEVANCE_MIN}</span><span>{RELEVANCE_MAX}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Fechas */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">Desde (opcional)</label>
+                    <input
+                      type="date"
+                      value={formStartsAt}
+                      onChange={(e) => setFormStartsAt(e.target.value)}
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">Hasta (opcional)</label>
+                    <input
+                      type="date"
+                      value={formEndsAt}
+                      onChange={(e) => setFormEndsAt(e.target.value)}
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowForm(false)}
+                    className="flex-1 rounded-lg border border-gray-200 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={formSubmitting || formProducts.length === 0}
+                    className="flex-1 rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                  >
+                    {formSubmitting ? "Creando..." : "Crear campaña"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}
+
+// ─── fila de campaña ──────────────────────────────────────────────────────────
+
+function PlacementRow({
+  placement,
+  onToggle,
+  onDelete,
+}: {
+  placement: SponsoredPlacement;
+  onToggle: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className={`rounded-xl border bg-white p-4 shadow-sm ${placement.active ? "border-gray-100" : "border-gray-100 opacity-60"}`}>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-gray-900">{placement.advertiser}</span>
+            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${placement.active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+              {placement.active ? "Activa" : "Pausada"}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+            <span>{placement.product_ids.length} producto{placement.product_ids.length !== 1 ? "s" : ""}</span>
+            <span>Boost: +{placement.score_boost}</span>
+            <span>Relevancia mín: {placement.min_relevance}</span>
+            {placement.categories.length > 0 && (
+              <span>Categorías: {placement.categories.join(", ")}</span>
+            )}
+            {(placement.starts_at || placement.ends_at) && (
+              <span>
+                {formatDate(placement.starts_at)} → {formatDate(placement.ends_at)}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex shrink-0 gap-2">
+          <button
+            type="button"
+            onClick={onToggle}
+            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+              placement.active
+                ? "border-amber-200 text-amber-700 hover:bg-amber-50"
+                : "border-green-200 text-green-700 hover:bg-green-50"
+            }`}
+          >
+            {placement.active ? "Pausar" : "Activar"}
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="rounded-lg border border-red-100 px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50"
+          >
+            Eliminar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+

@@ -1,0 +1,329 @@
+========================================================================
+INFORME: CÓMO SE DEFINE QUÉ DISPOSITIVO BUSCAR SEGÚN SEGMENTO Y USO
+TechSearch AR — actualizado 2026-08-24
+========================================================================
+
+Este documento explica, en lenguaje simple, cómo el sistema traduce
+"quiero una notebook para trabajar" (o cualquier pedido similar) en
+especificaciones técnicas concretas, y qué archivos del código son la
+fuente de verdad de cada regla. Está pensado para que cualquiera del
+equipo pueda entender el criterio sin leer código.
+
+
+------------------------------------------------------------------------
+1. LOS 5 SEGMENTOS (categorías) QUE MANEJA EL SISTEMA
+------------------------------------------------------------------------
+
+  - notebook
+  - desktop (PC de escritorio)
+  - tablet
+  - tv (Smart TV)
+  - phone (celular)
+
+Fuente: types/index.ts (ProductCategory)
+
+El usuario nunca elige la categoría de una lista técnica: la dice con
+sus propias palabras ("compu portátil", "torre", "tele", "Android") y
+un modelo de lenguaje (GPT-4o mini) la detecta. Reglas de detección
+(lib/llm/prompts.ts, SLOT_FILLING_PROMPT):
+
+  notebook  → "notebook", "laptop", "compu portátil"
+  desktop   → "PC", "computadora de escritorio", "torre", "all-in-one"
+  tablet    → "tablet", "iPad", "tableta"
+  tv        → "TV", "televisor", "smart TV", "tele"
+  phone     → "celular", "teléfono", "smartphone", "iPhone", "Android"
+
+Si el usuario no nombra un dispositivo explícito, la categoría queda
+en null y el sistema PREGUNTA (nunca la adivina a partir del uso).
+
+
+------------------------------------------------------------------------
+2. EL "USO" (use case): CÓMO SE DETECTA
+------------------------------------------------------------------------
+
+El uso también lo dice el usuario en lenguaje natural, nunca se infiere
+solo. Hay dos listas de usos posibles según el tipo de dispositivo:
+
+  A) Computadoras (notebook / desktop / tablet comparten esta lista):
+     - casual_browsing  (uso general, navegar, redes)
+     - office           (trabajar, oficina, Excel)
+     - study            (estudiar, facultad)
+     - multimedia        (ver películas, Netflix, series, YouTube)
+     - photo_editing_light / photo_editing_pro  (edición de fotos)
+     - video_editing_1080 / video_editing_4k    (edición de video)
+     - programming       (programar, código)
+     - gaming_casual / gaming_competitive        (jugar)
+     - graphic_design    (diseño gráfico)
+     - cad_3d            (diseño técnico/3D)
+     - portability        (que sea liviana, buena batería)
+     - stationary         (uso fijo, no importa el peso)
+
+  B) Celulares:
+     - photography        (fotos, cámara)
+     - battery_life        (batería, autonomía)
+     - gaming_mobile        (jugar)
+     - basic_use            (llamadas, WhatsApp, uso básico)
+     - social_media          (Instagram, TikTok, redes)
+     - professional_mobile   (trabajo, email, videollamadas)
+
+Fuente: types/index.ts (UseCase) + lib/llm/prompts.ts (mapeo de
+frases → uso). El modelo NUNCA debe "inventar" un uso que el usuario
+no dijo explícitamente — si no queda claro, el sistema pregunta con
+tags tipo botón (💼 Trabajo, 🎮 Gaming, etc. — ver
+lib/llm/slotFilling.ts, getGuidingQuestions), distintos según la
+categoría (los tags de celular no son los mismos que los de notebook).
+
+Si el usuario menciona VARIOS usos a la vez (ej. "para trabajar y
+jugar"), el sistema combina las specs de ambos y se queda con la más
+exigente de cada campo (ver sección 3).
+
+
+------------------------------------------------------------------------
+3. NOTEBOOK / DESKTOP — TABLA DE SPECS REQUERIDAS POR USO
+------------------------------------------------------------------------
+
+Archivo fuente de verdad: lib/domain/usageToSpecs.ts (USE_CASE_SPECS)
+
+Para cada uso, el sistema define 6 campos mínimos: nivel de procesador,
+RAM, tipo de GPU, almacenamiento (GB y tipo), tamaño mínimo de pantalla
+y peso máximo.
+
+  Uso                    | Procesador  | RAM  | GPU        | Almacenam.        | Pantalla | Peso
+  ------------------------|-------------|------|------------|--------------------|----------|--------
+  casual_browsing         | low         | 8GB  | integrada  | 256GB SSD SATA     | -        | -
+  study                   | low         | 8GB  | integrada  | 256GB SSD SATA     | -        | -
+  multimedia               | low         | 8GB  | integrada  | 256GB SSD SATA     | ≥15"     | -
+  portability               | low         | 8GB  | integrada  | 256GB SSD SATA     | -        | ≤1.5kg
+  stationary                 | low         | 8GB  | integrada  | 256GB SSD SATA     | ≥15"     | -
+  office                     | mid         | 16GB | integrada  | 512GB SSD SATA     | -        | -
+  photo_editing_light        | mid         | 16GB | integrada  | 512GB SSD SATA     | -        | -
+  programming                 | mid         | 16GB | integrada  | 512GB SSD SATA     | -        | -
+  gaming_casual                | mid         | 16GB | dedicada   | 512GB SSD SATA     | -        | -
+  photo_editing_pro              | high        | 16GB | dedicada   | 512GB SSD NVMe      | -        | -
+  video_editing_1080              | high        | 16GB | dedicada   | 1TB SSD NVMe        | -        | -
+  graphic_design                    | high        | 16GB | dedicada   | 512GB SSD NVMe      | -        | -
+  gaming_competitive                  | high        | 16GB | dedicada   | 512GB SSD NVMe      | -        | -
+  video_editing_4k                      | enthusiast  | 32GB | dedicada   | 1TB SSD NVMe         | -        | -
+  cad_3d                                  | enthusiast  | 32GB | dedicada   | 1TB SSD NVMe         | -        | -
+
+Niveles de procesador, de menor a mayor exigencia:
+  low → mid → high → enthusiast
+(en el análisis de calidad/precio existe además un nivel intermedio
+"low-mid" y "mid-high" para matices, ver sección 6)
+
+Cuando el usuario combina usos (ej. "trabajar y ver películas"), el
+sistema NO promedia: toma el valor MÁS EXIGENTE de cada campo por
+separado (función getRequiredSpecs). Ejemplo: "office + multimedia"
+da mid + 16GB + pantalla ≥15" (el procesador y RAM vienen de office,
+la pantalla de multimedia).
+
+IMPORTANTE — esta tabla no siempre se usa como filtro DURO en la
+búsqueda SQL. Ver sección 5 para cómo se aplica realmente.
+
+
+------------------------------------------------------------------------
+4. CELULARES — TABLA DE SPECS REQUERIDAS POR USO
+------------------------------------------------------------------------
+
+Archivo fuente: lib/domain/usageToSpecs.ts (PHONE_USE_CASE_SPECS)
+
+  Uso                   | RAM  | Almacenam. | Cámara    | Pantalla AMOLED | Alta tasa refresco | Batería grande
+  -----------------------|------|------------|-----------|------------------|----------------------|------------------
+  basic_use               | 4GB  | 64GB       | -         | No               | No                   | No
+  battery_life              | 4GB  | 64GB       | -         | No               | No                   | Sí
+  social_media                | 6GB  | 128GB      | 48MP      | Sí               | No                   | No
+  photography                   | 8GB  | 128GB      | 64MP      | Sí               | No                   | No
+  gaming_mobile                    | 8GB  | 128GB      | -         | Sí               | Sí                   | Sí
+  professional_mobile                | 8GB  | 256GB      | 48MP      | Sí               | Sí                   | No
+
+Esta tabla hoy se usa para EXPLICARLE al usuario por qué un producto
+le sirve o no (lib/domain/specExplainer.ts) — no filtra la búsqueda en
+SQL como sí ocurre con notebook/desktop (ver sección 5).
+
+
+------------------------------------------------------------------------
+5. QUÉ SE FILTRA REALMENTE EN LA BÚSQUEDA (SQL) VS. QUÉ SE EVALÚA CON IA
+------------------------------------------------------------------------
+
+Archivo: lib/domain/usageToSpecs.ts (buildSQLFilters)
+
+Este es el punto más importante y menos obvio: las tablas de las
+secciones 3 y 4 casi NUNCA se usan como filtro estricto en la base de
+datos. La búsqueda SQL solo aplica como filtro duro:
+
+  - Categoría (notebook/desktop/tablet/tv/phone)
+  - Presupuesto (con 20% de margen hacia arriba, para que productos
+    apenas por encima del presupuesto igual lleguen a mostrarse
+    marcados como "supera tu presupuesto")
+  - Marcas excluidas (si el usuario pidió explícitamente "sin Samsung")
+  - Peso máximo (solo si el uso es "portability" o el usuario pidió
+    "liviana" explícitamente)
+  - GPU dedicada (SOLO si el usuario lo pidió con una frase exacta:
+    "con placa de video", "GPU dedicada", "RTX", "GTX" — el sistema
+    tiene prohibido inferir esto de "gaming" solo)
+
+Los filtros de RAM y tipo de almacenamiento están DESACTIVADOS como
+filtro SQL a propósito — quedó registrado en el código como lección
+aprendida: antes el sistema inferís RAM/SSD de usos como "gaming" y
+eso dejaba 0 resultados en presupuestos ajustados. Esta regla solo se
+excluye de "notebook" y "desktop": tablet, tv y phone nunca aplican
+estos filtros de specs en SQL (applySpecFilters en el código).
+
+En cambio, la evaluación de "¿esta notebook realmente sirve para lo
+que este usuario quiere?" queda en manos de un segundo modelo de IA
+(GPT-4o mini) que analiza cada producto ya traído por la búsqueda y le
+pone una nota de calidad/precio — ver sección 6. Es decir: la tabla de
+specs por uso funciona hoy principalmente como REFERENCIA para que la
+IA evalúe y explique, no como filtro que descarta productos de la
+lista de resultados.
+
+
+------------------------------------------------------------------------
+6. ANÁLISIS DE CALIDAD/PRECIO POR PRODUCTO (el sello "EXCELENTE/MUY
+   BUENO/BUENO/REGULAR")
+------------------------------------------------------------------------
+
+Archivo: lib/llm/prompts.ts (PRODUCT_ANALYSIS_PROMPT, y su versión sin
+contexto de usuario BATCH_ANALYSIS_PROMPT)
+Se genera por producto (no por búsqueda) y se cachea en la base de
+datos — ver CLAUDE.md, regla 4.
+
+Criterios que usa la IA para poner la nota:
+  - EXCELENTE (equivale a un score interno 0.85–1.00): specs muy
+    buenas para el precio.
+  - MUY BUENO (0.70–0.84): buen equilibrio, nada claramente flojo.
+  - BUENO (0.55–0.69): aceptable, algún componente justo.
+  - REGULAR (<0.55): precio alto para las specs, o algún componente
+    clave inadecuado para el uso declarado.
+
+Reglas especiales que aplica la IA:
+  - Si el procesador o la GPU no alcanzan el nivel mínimo que pide el
+    uso declarado (ver tabla sección 3), el score queda topeado en
+    BUENO como máximo — no puede ser EXCELENTE ni MUY BUENO.
+  - "Over-spec" (procesador MÁS potente de lo necesario): no penaliza
+    por sí solo. Solo baja la nota si además el precio es alto en
+    relación a lo que el usuario realmente va a aprovechar.
+  - Comparación automática contra el presupuesto declarado: si el
+    precio contado supera el presupuesto hasta un 20%, el score queda
+    topeado en MUY BUENO; si supera más de 20%, tope BUENO; si supera
+    más de 50%, tope REGULAR. Lo mismo se calcula para cuota mensual
+    vs. presupuesto en cuotas.
+  - Desconfía explícitamente de RAM "inflada" en tablets/celulares de
+    marcas genéricas o poco conocidas (ej. PEICHENG, ATOZEE, ICONLINK,
+    ANTEMPER): más de 8GB a precio muy bajo casi siempre es "RAM
+    virtual/expandida", no RAM real — en ese caso el score no puede
+    superar BUENO solo por ese número inflado.
+
+Qué se considera "mejorable" (upgrade_note) según el tipo de equipo:
+  - Notebook: procesador/pantalla/GPU/peso/teclado NO son mejorables;
+    RAM (si hay slot libre), almacenamiento SSD y batería sí pueden
+    serlo.
+  - PC de escritorio: procesador (según socket), RAM, almacenamiento,
+    GPU y fuente sí son mejorables.
+  - Tablet y TV: prácticamente nada es mejorable — upgrade_note casi
+    siempre queda vacío.
+  - Celular: nada es mejorable — upgrade_note siempre vacío.
+
+(Ver también lib/domain/upgradeability.ts para el mapa completo de
+componentes fijos vs. mejorables por categoría, usado en la ficha de
+producto.)
+
+
+------------------------------------------------------------------------
+7. PRESUPUESTO: CÓMO SE DECIDE SI ES "CUOTA" O "CONTADO"
+------------------------------------------------------------------------
+
+Archivo: lib/llm/prompts.ts (sección "DETECCIÓN AUTOMÁTICA DE TIPO DE
+PRESUPUESTO")
+
+Cuando el usuario da un monto sin aclarar si es cuota o contado, el
+sistema lo compara contra un piso de precio de mercado por categoría:
+
+    notebook/desktop → $370.000   |   phone → $90.000
+    tablet → $160.000              |   tv → $220.000
+
+  - Monto menor al 85% del piso → es CUOTA obvia (no existe ese
+    producto a ese precio de contado).
+  - Monto entre 85% y el doble del piso → ZONA GRIS: el sistema
+    pregunta explícitamente "¿es la cuota o el precio total?".
+  - Monto mayor al doble del piso → es CONTADO claro.
+
+Si el usuario usa lenguaje relativo sin número ("barato", "lo más
+económico", "algo intermedio", "lo mejor sin importar el precio"), el
+sistema infiere un monto de referencia según la categoría (ej. "barato"
+en notebook → $400.000; "barato" en celular → $180.000). Estos montos
+de referencia también están hardcodeados en el prompt, no en una tabla
+de configuración aparte.
+
+
+------------------------------------------------------------------------
+8. QUÉ TEXTO TÉCNICO GENERA EL SISTEMA PARA CADA CATEGORÍA
+   (expanded_query — usado para la búsqueda semántica)
+------------------------------------------------------------------------
+
+Archivo: lib/llm/prompts.ts (dentro de COMBINED_SLOT_EXPANSION_PROMPT)
+
+Para orientar la búsqueda semántica (embeddings), el sistema le pide a
+la IA que describa en prosa el "producto ideal" según la categoría:
+
+  - phone: chipset ideal, RAM, almacenamiento, cámara en MP, batería
+    en mAh, tipo de pantalla (AMOLED > IPS), tasa de refresco, 5G/NFC.
+  - tv: tamaño, tipo de panel (OLED > QLED > NanoCell/MiniLED > LED),
+    resolución (4K a partir de 43"), Hz, HDR, sistema operativo smart
+    TV.
+  - tablet: RAM, almacenamiento, tamaño de pantalla, sistema operativo
+    (iPadOS vs Android), soporte de lápiz/stylus si aplica.
+  - notebook/desktop: procesador, RAM, almacenamiento, GPU si aplica,
+    características de pantalla.
+
+Esta descripción se ajusta al presupuesto declarado con rangos de
+referencia explícitos, por ejemplo para notebooks:
+    < $400k     → i3/Ryzen 3 entry (nunca Celeron/Pentium/Athlon), 8GB, SSD 256GB
+    $400k–800k  → i5/Ryzen 5, 8-16GB, SSD 512GB
+    $800k–1.5M  → i5/i7 o Ryzen 5/7, 16GB, SSD 512GB+
+    > $1.5M     → i7/i9 o Ryzen 7/9, 16-32GB, GPU dedicada RTX/RX
+y para celulares:
+    < $180k     → Helio G/Dimensity 6xx, 4-6GB, 64-128GB
+    $180k–450k  → Snapdragon 6xx/Dimensity 7xx, 6-8GB, 128GB
+    > $450k     → Snapdragon 7xx/8xx, 8-12GB, 256GB, AMOLED 120Hz
+
+
+------------------------------------------------------------------------
+9. RESUMEN DEL FLUJO COMPLETO
+------------------------------------------------------------------------
+
+  1. El usuario escribe en lenguaje natural.
+  2. GPT-4o mini extrae: categoría, uso(s), presupuesto, marcas,
+     filtros técnicos explícitos (lib/llm/slotFilling.ts).
+  3. Si falta categoría, uso o presupuesto, el sistema pregunta con
+     botones — nunca asume (lib/llm/slotFilling.ts, getGuidingQuestions).
+  4. Se arma un filtro SQL básico (categoría + presupuesto + marca
+     excluida + GPU si se pidió explícita + peso si aplica) —
+     lib/domain/usageToSpecs.ts, buildSQLFilters.
+  5. Se arma también una descripción técnica en prosa del "producto
+     ideal" para reforzar la búsqueda semántica por embeddings.
+  6. Sobre los productos que trae esa búsqueda híbrida (SQL + semántica,
+     lib/search/hybridSearch.ts), un segundo paso de IA por producto le
+     pone la nota de calidad/precio comparando sus specs reales contra
+     la tabla de requisitos del uso declarado y contra el presupuesto
+     — lib/llm/prompts.ts, PRODUCT_ANALYSIS_PROMPT.
+  7. Esa nota (EXCELENTE/MUY BUENO/BUENO/REGULAR) se cachea por
+     producto y es lo que finalmente ve el usuario, junto con el
+     ranking final que además pondera patrocinados y popularidad
+     (lib/search/scorer.ts).
+
+
+------------------------------------------------------------------------
+Archivos clave para volver a consultar
+------------------------------------------------------------------------
+  lib/domain/usageToSpecs.ts   → tablas de specs por uso + filtro SQL
+  lib/llm/prompts.ts            → todos los prompts (detección de
+                                   categoría/uso/presupuesto, análisis
+                                   de calidad/precio, texto técnico)
+  lib/llm/slotFilling.ts        → preguntas guiadas por categoría
+  lib/domain/specExplainer.ts   → cómo se le explica cada spec al
+                                   usuario en lenguaje simple
+  lib/domain/upgradeability.ts  → qué es mejorable por categoría
+  types/index.ts                → enums de categoría y uso, specs por
+                                   tipo de producto
+========================================================================

@@ -1,0 +1,170 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* El sitio es claro siempre (identidad visual fija, no depende de si el SO
+   pide modo claro/oscuro) — mismos valores que gathering-background/
+   gathering-on-surface en tailwind.config.ts, para que bg-background/
+   text-foreground ya alcancen en cualquier pantalla sin necesitar un div de
+   fondo propio por página. */
+:root {
+  --background: #f4f5f7;
+  --foreground: #14171f;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-josefin), Arial, Helvetica, sans-serif;
+}
+
+/* Scrollbar oscuro acorde al resto del sitio (Chrome/Edge/Safari) — sin esto
+   se ve la barra de scroll clara por defecto del navegador sobre el fondo
+   oscuro, en cualquier panel con scroll propio (chat, panel de detalle,
+   popups). Firefox usa el fallback scrollbar-color más abajo. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #c7cbd3;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #aeb4c0;
+  background-clip: padding-box;
+}
+* {
+  scrollbar-color: #c7cbd3 transparent;
+  scrollbar-width: thin;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Dot-grid background */
+.bg-dot-grid {
+  background-image: radial-gradient(circle, #d1d5db 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.search-wrapper {
+  transition:
+    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.2s ease;
+}
+
+.search-wrapper:focus-within {
+  transform: scale(1.03) !important;
+  border-color: #60a5fa !important;
+  box-shadow:
+    0 0 0 5px rgba(59, 130, 246, 0.16),
+    0 10px 32px rgba(59, 130, 246, 0.18) !important;
+}
+
+/* ─── Flujo de búsqueda/resultados (tema claro corporativo) ────────────────
+   Usadas por GuidedSearchChat, la grilla de resultados y el resto de la
+   pantalla en app/search/[token]/page.tsx — y por extensión, todo el sitio,
+   que comparte el mismo tema. Prefijo "gathering-" por historia (nació
+   acotada a la fase de preguntas guiadas). */
+
+.material-symbols-outlined {
+  font-family: "Material Symbols Outlined";
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: "liga";
+  font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
+}
+
+.gathering-glass-panel {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(20, 23, 31, 0.08);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 1px 2px rgba(20, 23, 31, 0.04), 0 8px 24px rgba(20, 23, 31, 0.06);
+}
+
+.gathering-interactive-card {
+  background: #ffffff;
+  border: 1px solid rgba(20, 23, 31, 0.09);
+  box-shadow: 0 1px 2px rgba(20, 23, 31, 0.04);
+  transition: all 0.3s ease;
+}
+
+.gathering-interactive-card:hover {
+  transform: scale(1.02);
+  border-color: rgba(52, 82, 225, 0.4);
+  box-shadow: 0 4px 14px rgba(20, 23, 31, 0.08);
+}
+
+/* Tarjetas de producto (ProductChatCard / ProductCard) — superficie plana,
+   sin blur (el diseño elegido es tema claro corporativo, no glassmorphism). */
+.gathering-glass-card {
+  background: #ffffff;
+  border: 1px solid #e2e4e9;
+  box-shadow: 0 1px 2px rgba(20, 23, 31, 0.04);
+  transition: all 0.3s ease;
+}
+
+.gathering-glass-card:hover {
+  border-color: rgba(52, 82, 225, 0.4);
+  box-shadow: 0 8px 24px rgba(20, 23, 31, 0.08);
+}
+
+.gathering-ambient-glow-primary {
+  position: absolute;
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(52, 82, 225, 0.07) 0%, rgba(244, 245, 247, 0) 70%);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.gathering-ambient-glow-secondary {
+  position: absolute;
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(109, 40, 217, 0.06) 0%, rgba(244, 245, 247, 0) 70%);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.gathering-chat-input-focus:focus-within {
+  border-color: #3452e1;
+  box-shadow: 0 0 0 3px rgba(52, 82, 225, 0.15);
+}
+
+.gathering-btn-primary-gradient {
+  background: #3452e1;
+  transition: all 0.3s ease;
+}
+
+.gathering-btn-primary-gradient:hover {
+  box-shadow: 0 4px 14px rgba(52, 82, 225, 0.35);
+}
+

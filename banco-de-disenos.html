@@ -1,0 +1,402 @@
+<title>Banco de Diseños</title>
+<style>
+  :root{
+    --paper: #EEEEE8; --paper-raised: #FFFFFF; --ink: #14171B; --ink-muted: #565C63;
+    --line: #D8D9D2; --accent: #D8431F; --accent-soft: #FBE1D6; --mono-tint: rgba(20,23,27,.045);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#121316; --paper-raised:#191B1F; --ink:#ECEAE3; --ink-muted:#9A9D9E;
+      --line:#2B2D30; --accent:#FF6A45; --accent-soft:rgba(255,106,69,.16); --mono-tint:rgba(255,255,255,.045);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#121316; --paper-raised:#191B1F; --ink:#ECEAE3; --ink-muted:#9A9D9E;
+    --line:#2B2D30; --accent:#FF6A45; --accent-soft:rgba(255,106,69,.16); --mono-tint:rgba(255,255,255,.045);
+  }
+  --font-display:"Segoe UI Semibold","Helvetica Neue",Arial,sans-serif;
+  --font-body:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --font-mono:ui-monospace,"Cascadia Code","SF Mono",Consolas,monospace;
+
+  *{ box-sizing:border-box; }
+  html{ background:var(--paper); }
+  body{ margin:0; background:var(--paper); color:var(--ink); font-family:var(--font-body); line-height:1.6; -webkit-font-smoothing:antialiased; }
+  a{ color:inherit; } button{ font:inherit; color:inherit; }
+  .wrap{ max-width:1180px; margin:0 auto; padding:0 20px; }
+
+  .hero{ padding:56px 0 34px; border-bottom:1px solid var(--line); }
+  .eyebrow{ font-family:var(--font-mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); display:flex; align-items:center; gap:10px; margin:0 0 16px; }
+  .eyebrow::before{ content:""; width:22px; height:1px; background:var(--accent); display:inline-block; }
+  .hero h1{ font-family:var(--font-display); font-weight:800; font-size:clamp(1.9rem,4vw,2.8rem); letter-spacing:-.01em; margin:0 0 14px; text-wrap:balance; }
+  .hero p{ max-width:66ch; font-size:1.02rem; color:var(--ink-muted); margin:0; }
+  .legend{ display:flex; flex-wrap:wrap; gap:8px 10px; font-family:var(--font-mono); font-size:12px; color:var(--ink-muted); margin-top:18px; }
+  .legend span{ background:var(--mono-tint); border:1px solid var(--line); border-radius:6px; padding:5px 9px; white-space:nowrap; }
+
+  .index-nav{ position:sticky; top:0; z-index:20; background:color-mix(in srgb, var(--paper) 88%, transparent); backdrop-filter:blur(10px); border-bottom:1px solid var(--line); }
+  .index-nav ol{ list-style:none; margin:0; padding:0; display:flex; overflow-x:auto; max-width:1180px; margin:0 auto; padding:0 20px; }
+  .index-nav a{ display:flex; align-items:baseline; gap:8px; padding:14px 16px; text-decoration:none; font-family:var(--font-mono); font-size:12.5px; color:var(--ink-muted); white-space:nowrap; border-bottom:2px solid transparent; transition:color .15s, border-color .15s; }
+  .index-nav a:hover, .index-nav a:focus-visible{ color:var(--ink); border-bottom-color:var(--accent); }
+  .index-nav a b{ color:var(--accent); font-weight:600; }
+
+  .version{ padding:52px 0 8px; border-bottom:1px solid var(--line); scroll-margin-top:56px; }
+  .version-head{ display:flex; flex-wrap:wrap; align-items:baseline; gap:12px 20px; margin-bottom:6px; }
+  .version-tag{ font-family:var(--font-mono); font-size:12px; color:var(--accent); background:var(--accent-soft); border-radius:5px; padding:3px 8px; }
+  .version h2{ font-family:var(--font-display); font-weight:800; font-size:clamp(1.2rem,2.2vw,1.5rem); margin:0; }
+  .version .note{ max-width:74ch; color:var(--ink-muted); margin:6px 0 26px; font-size:.95rem; }
+
+  .stage{ border-radius:16px; padding:24px; margin-bottom:50px; }
+  .stage-grid{ display:grid; grid-template-columns:1fr; gap:14px; }
+  @media (min-width:640px){ .stage-grid{ grid-template-columns:repeat(2,1fr); } }
+  @media (min-width:980px){ .stage-grid{ grid-template-columns:repeat(3,1fr); } }
+  .stage-divider{ display:flex; align-items:center; gap:14px; margin:20px 0; font-family:var(--font-mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; opacity:.75; }
+  .stage-divider hr{ flex:1; border:none; border-top:1px solid currentColor; opacity:.35; }
+
+  footer.colophon{ padding:40px 0 76px; color:var(--ink-muted); font-size:.92rem; }
+  footer.colophon strong{ color:var(--ink); }
+
+  /* =========================================================
+     Componente de tarjeta compartido — misma estructura que la
+     captura original en las 5 versiones. Cada .theme-vN define
+     estas variables; nada más cambia entre versiones.
+     ========================================================= */
+  .stage{
+    background:var(--v-bg);
+  }
+  .p-card{
+    background:var(--v-card); border:1px solid var(--v-border); border-radius:var(--v-radius,14px);
+    padding:14px; box-shadow:var(--v-shadow, none);
+  }
+  @media (prefers-reduced-motion:no-preference){
+    .p-card{ transition:border-color .15s ease, transform .15s ease; }
+    .p-card:hover{ border-color:var(--v-accent); transform:translateY(-1px); }
+  }
+  .p-top{ display:flex; gap:12px; margin-bottom:12px; }
+  .p-media{
+    flex-shrink:0; width:56px; height:56px; border-radius:10px;
+    background:var(--v-media-bg); border:1px solid var(--v-border);
+    display:flex; align-items:center; justify-content:center;
+    font-family:var(--font-mono); font-weight:700; font-size:13px; color:var(--v-accent);
+  }
+  .p-head{ min-width:0; flex:1; }
+  .p-badges{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:5px; }
+  .p-badge-pick{
+    font-family:var(--font-mono); font-size:10px; font-weight:700; letter-spacing:.03em; text-transform:uppercase;
+    color:var(--v-pick); background:var(--v-pick-bg); border-radius:5px; padding:2px 6px;
+    display:flex; align-items:center; gap:3px;
+  }
+  .p-badge-quality{ font-size:10.5px; font-weight:600; border-radius:5px; padding:2px 7px; white-space:nowrap; }
+  .tier-excelente{ color:var(--v-tier-excelente); background:var(--v-tier-excelente-bg); }
+  .tier-muybueno{ color:var(--v-tier-muybueno); background:var(--v-tier-muybueno-bg); }
+  .tier-bueno{ color:var(--v-tier-bueno); background:var(--v-tier-bueno-bg); }
+  .tier-regular{ color:var(--v-tier-regular); background:var(--v-tier-regular-bg); }
+  .p-brand{ margin:0; font-size:11.5px; color:var(--v-muted); }
+  .p-title{ margin:1px 0 0; font-size:13.5px; font-weight:700; line-height:1.32; color:var(--v-text); }
+  .p-price-block{ margin-top:5px; }
+  .p-price{ margin:0; font-size:1.15rem; font-weight:800; color:var(--v-accent); font-variant-numeric:tabular-nums; line-height:1.15; }
+  .p-installment{ margin:0; font-size:11.5px; color:var(--v-muted); font-variant-numeric:tabular-nums; }
+  .p-tags{ display:flex; flex-wrap:wrap; gap:5px 12px; font-size:11.5px; margin-bottom:12px; }
+  .p-tags span{ display:flex; align-items:center; gap:4px; }
+  .p-tags .ok{ color:var(--v-ok); }
+  .p-tags .warn{ color:var(--v-warn); }
+  .p-actions{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; }
+  .p-actions button, .p-actions a{
+    border-radius:8px; padding:8px 4px; font-size:11.5px; font-weight:700; text-align:center;
+    text-decoration:none; cursor:pointer; line-height:1.25;
+  }
+  .btn-outline{ background:none; border:1px solid var(--v-accent); color:var(--v-accent); }
+  .btn-primary{ background:var(--v-primary-bg); border:1px solid transparent; color:var(--v-primary-fg); }
+  .btn-compare{ background:none; border:1px solid var(--v-border); color:var(--v-muted); }
+
+  /* ---- V1 Original refinado (dark cian/violeta) ---- */
+  .theme-v1{
+    --v-bg:#0E1321; --v-card:#161B2A; --v-border:#262C3D; --v-media-bg:#0F1424;
+    --v-text:#F1F3FC; --v-muted:#8892AC; --v-accent:#00DBE9;
+    --v-primary-bg:linear-gradient(135deg,#00DBE9,#7000FF); --v-primary-fg:#fff;
+    --v-pick:#FBBF24; --v-pick-bg:rgba(251,191,36,.12);
+    --v-tier-excelente:#34D399; --v-tier-excelente-bg:rgba(52,211,153,.12);
+    --v-tier-muybueno:#00DBE9; --v-tier-muybueno-bg:rgba(0,219,233,.12);
+    --v-tier-bueno:#FBBF24; --v-tier-bueno-bg:rgba(251,191,36,.12);
+    --v-tier-regular:#94A3B8; --v-tier-regular-bg:rgba(148,163,184,.14);
+    --v-ok:#5EEAD4; --v-warn:#FBBF24;
+    color:#F1F3FC;
+  }
+  /* ---- V2 Claro corporativo ---- */
+  .theme-v2{
+    --v-bg:#F4F5F7; --v-card:#FFFFFF; --v-border:#E2E4E9; --v-media-bg:#F0F1F5; --v-radius:10px;
+    --v-shadow:0 1px 2px rgba(20,23,40,.05), 0 6px 16px rgba(20,23,40,.05);
+    --v-text:#14171F; --v-muted:#5B6270; --v-accent:#3452E1;
+    --v-primary-bg:#3452E1; --v-primary-fg:#fff;
+    --v-pick:#B45309; --v-pick-bg:rgba(180,83,9,.1);
+    --v-tier-excelente:#0F9D58; --v-tier-excelente-bg:rgba(15,157,88,.1);
+    --v-tier-muybueno:#3452E1; --v-tier-muybueno-bg:rgba(52,82,225,.1);
+    --v-tier-bueno:#B45309; --v-tier-bueno-bg:rgba(180,83,9,.1);
+    --v-tier-regular:#6B7280; --v-tier-regular-bg:rgba(107,114,128,.1);
+    --v-ok:#0F9D58; --v-warn:#B45309;
+    color:#14171F;
+  }
+  /* ---- V3 Grafito cálido (dark, ámbar) ---- */
+  .theme-v3{
+    --v-bg:#17140F; --v-card:#211C15; --v-border:#332C21; --v-media-bg:#1A1610;
+    --v-text:#F3ECE1; --v-muted:#A79B87; --v-accent:#E8A33D;
+    --v-primary-bg:#E8A33D; --v-primary-fg:#1A140A;
+    --v-pick:#E8A33D; --v-pick-bg:rgba(232,163,61,.12);
+    --v-tier-excelente:#6FCF97; --v-tier-excelente-bg:rgba(111,207,151,.12);
+    --v-tier-muybueno:#7FB5D9; --v-tier-muybueno-bg:rgba(127,181,217,.12);
+    --v-tier-bueno:#E8A33D; --v-tier-bueno-bg:rgba(232,163,61,.14);
+    --v-tier-regular:#8A7F6D; --v-tier-regular-bg:rgba(138,127,109,.16);
+    --v-ok:#6FCF97; --v-warn:#F0653D;
+    color:#F3ECE1;
+  }
+  /* ---- V4 Claro esmeralda ---- */
+  .theme-v4{
+    --v-bg:#F5F7F5; --v-card:#FFFFFF; --v-border:#DCE5DF; --v-media-bg:#EFF4F1; --v-radius:10px;
+    --v-shadow:0 1px 2px rgba(19,32,24,.05), 0 6px 16px rgba(19,32,24,.05);
+    --v-text:#132018; --v-muted:#5C6D63; --v-accent:#0E7C55;
+    --v-primary-bg:#0E7C55; --v-primary-fg:#fff;
+    --v-pick:#B7791F; --v-pick-bg:rgba(183,121,31,.1);
+    --v-tier-excelente:#0E7C55; --v-tier-excelente-bg:rgba(14,124,85,.1);
+    --v-tier-muybueno:#2E8B7A; --v-tier-muybueno-bg:rgba(46,139,122,.1);
+    --v-tier-bueno:#B7791F; --v-tier-bueno-bg:rgba(183,121,31,.1);
+    --v-tier-regular:#6B786F; --v-tier-regular-bg:rgba(107,120,111,.12);
+    --v-ok:#0E7C55; --v-warn:#B7791F;
+    color:#132018;
+  }
+  /* ---- V5 Azul medianoche ---- */
+  .theme-v5{
+    --v-bg:#0A0E17; --v-card:#111827; --v-border:#1F2A3D; --v-media-bg:#0D1420;
+    --v-text:#E7ECF7; --v-muted:#8996AC; --v-accent:#4C9AFF;
+    --v-primary-bg:#4C9AFF; --v-primary-fg:#06111F;
+    --v-pick:#FBBF24; --v-pick-bg:rgba(251,191,36,.12);
+    --v-tier-excelente:#4ADE80; --v-tier-excelente-bg:rgba(74,222,128,.12);
+    --v-tier-muybueno:#4C9AFF; --v-tier-muybueno-bg:rgba(76,154,255,.12);
+    --v-tier-bueno:#FBBF24; --v-tier-bueno-bg:rgba(251,191,36,.12);
+    --v-tier-regular:#8996AC; --v-tier-regular-bg:rgba(137,150,172,.14);
+    --v-ok:#4ADE80; --v-warn:#FBBF24;
+    color:#E7ECF7;
+  }
+  /* ---- V6 Malva claro ---- */
+  .theme-v6{
+    --v-bg:#F7F3F4; --v-card:#FFFFFF; --v-border:#E8DEE1; --v-media-bg:#F2E8EC; --v-radius:10px;
+    --v-shadow:0 1px 2px rgba(36,26,32,.05), 0 6px 16px rgba(36,26,32,.05);
+    --v-text:#241A20; --v-muted:#7A6670; --v-accent:#8B3A62;
+    --v-primary-bg:#8B3A62; --v-primary-fg:#fff;
+    --v-pick:#9C6B1F; --v-pick-bg:rgba(156,107,31,.1);
+    --v-tier-excelente:#2F7A4F; --v-tier-excelente-bg:rgba(47,122,79,.1);
+    --v-tier-muybueno:#8B3A62; --v-tier-muybueno-bg:rgba(139,58,98,.1);
+    --v-tier-bueno:#9C6B1F; --v-tier-bueno-bg:rgba(156,107,31,.1);
+    --v-tier-regular:#8A7A80; --v-tier-regular-bg:rgba(138,122,128,.12);
+    --v-ok:#2F7A4F; --v-warn:#9C6B1F;
+    color:#241A20;
+  }
+  /* ---- V7 Alto contraste + cereza ---- */
+  .theme-v7{
+    --v-bg:#0A0A0A; --v-card:#151515; --v-border:#2B2B2B; --v-media-bg:#111111;
+    --v-text:#FFFFFF; --v-muted:#A3A3A3; --v-accent:#E11D48;
+    --v-primary-bg:#E11D48; --v-primary-fg:#fff;
+    --v-pick:#E11D48; --v-pick-bg:rgba(225,29,72,.14);
+    --v-tier-excelente:#FFFFFF; --v-tier-excelente-bg:rgba(255,255,255,.14);
+    --v-tier-muybueno:#D4D4D4; --v-tier-muybueno-bg:rgba(255,255,255,.08);
+    --v-tier-bueno:#A3A3A3; --v-tier-bueno-bg:rgba(255,255,255,.06);
+    --v-tier-regular:#6B6B6B; --v-tier-regular-bg:rgba(255,255,255,.04);
+    --v-ok:#D4D4D4; --v-warn:#E11D48;
+    color:#FFFFFF;
+  }
+  /* ---- V8 Slate claro + violeta profundo ---- */
+  .theme-v8{
+    --v-bg:#F1F2F5; --v-card:#FFFFFF; --v-border:#E0E2E8; --v-media-bg:#EDEEF3; --v-radius:10px;
+    --v-shadow:0 1px 2px rgba(27,29,36,.05), 0 6px 16px rgba(27,29,36,.05);
+    --v-text:#1B1D24; --v-muted:#5F6472; --v-accent:#5B3DE0;
+    --v-primary-bg:#5B3DE0; --v-primary-fg:#fff;
+    --v-pick:#B45309; --v-pick-bg:rgba(180,83,9,.1);
+    --v-tier-excelente:#0F9D58; --v-tier-excelente-bg:rgba(15,157,88,.1);
+    --v-tier-muybueno:#5B3DE0; --v-tier-muybueno-bg:rgba(91,61,224,.1);
+    --v-tier-bueno:#B45309; --v-tier-bueno-bg:rgba(180,83,9,.1);
+    --v-tier-regular:#6B7280; --v-tier-regular-bg:rgba(107,114,128,.1);
+    --v-ok:#0F9D58; --v-warn:#B45309;
+    color:#1B1D24;
+  }
+  /* ---- V9 Bosque oscuro + dorado ---- */
+  .theme-v9{
+    --v-bg:#0E1712; --v-card:#16211A; --v-border:#26362C; --v-media-bg:#12190F;
+    --v-text:#E8EFE7; --v-muted:#8FA093; --v-accent:#D2A344;
+    --v-primary-bg:#D2A344; --v-primary-fg:#1A1408;
+    --v-pick:#D2A344; --v-pick-bg:rgba(210,163,68,.14);
+    --v-tier-excelente:#5FCB8B; --v-tier-excelente-bg:rgba(95,203,139,.14);
+    --v-tier-muybueno:#79B7A6; --v-tier-muybueno-bg:rgba(121,183,166,.14);
+    --v-tier-bueno:#D2A344; --v-tier-bueno-bg:rgba(210,163,68,.14);
+    --v-tier-regular:#6F8478; --v-tier-regular-bg:rgba(111,132,120,.16);
+    --v-ok:#5FCB8B; --v-warn:#E08B4C;
+    color:#E8EFE7;
+  }
+  /* ---- V10 Arena cálida + petróleo ---- */
+  .theme-v10{
+    --v-bg:#F6F1E8; --v-card:#FFFFFF; --v-border:#E7DCC5; --v-media-bg:#F1E9D8; --v-radius:10px;
+    --v-shadow:0 1px 2px rgba(35,30,20,.05), 0 6px 16px rgba(35,30,20,.05);
+    --v-text:#231E14; --v-muted:#7A705C; --v-accent:#0B6E75;
+    --v-primary-bg:#0B6E75; --v-primary-fg:#fff;
+    --v-pick:#B4581F; --v-pick-bg:rgba(180,88,31,.1);
+    --v-tier-excelente:#157A63; --v-tier-excelente-bg:rgba(21,122,99,.1);
+    --v-tier-muybueno:#0B6E75; --v-tier-muybueno-bg:rgba(11,110,117,.1);
+    --v-tier-bueno:#B4581F; --v-tier-bueno-bg:rgba(180,88,31,.1);
+    --v-tier-regular:#8A7F68; --v-tier-regular-bg:rgba(138,127,104,.14);
+    --v-ok:#157A63; --v-warn:#B4581F;
+    color:#231E14;
+  }
+</style>
+
+<header class="hero wrap">
+  <p class="eyebrow">TechSearch AR · Revisión de interfaz</p>
+  <h1>Banco de diseños</h1>
+  <p>
+    Misma estructura exacta que tu captura — miniatura, badge, pill de calidad, marca, título,
+    precio, tags de specs y los 3 botones al pie — en diez pieles visuales distintas. Datos de
+    producto totalmente inventados, para no confundir con el catálogo real.
+  </p>
+  <div class="legend">
+    <span>estructura idéntica en las 10</span>
+    <span>solo cambia color/tipografía/pulido</span>
+    <span>datos ficticios</span>
+    <span>2 posiciones destacadas + 4 alternativas</span>
+  </div>
+</header>
+
+<nav class="index-nav">
+  <ol>
+    <li><a href="#v1"><b>01</b> Cian/violeta</a></li>
+    <li><a href="#v2"><b>02</b> Claro corporativo</a></li>
+    <li><a href="#v3"><b>03</b> Grafito ámbar</a></li>
+    <li><a href="#v4"><b>04</b> Claro esmeralda</a></li>
+    <li><a href="#v5"><b>05</b> Azul medianoche</a></li>
+    <li><a href="#v6"><b>06</b> Malva claro</a></li>
+    <li><a href="#v7"><b>07</b> Alto contraste</a></li>
+    <li><a href="#v8"><b>08</b> Slate violeta</a></li>
+    <li><a href="#v9"><b>09</b> Bosque dorado</a></li>
+    <li><a href="#v10"><b>10</b> Arena petróleo</a></li>
+  </ol>
+</nav>
+
+<main class="wrap">
+  <section class="version" id="v1">
+    <div class="version-head"><span class="version-tag">VERSIÓN 01 / 10</span><h2>Cian / violeta refinado</h2></div>
+    <p class="note">La paleta de marca actual, pero con espaciado más prolijo y menos ruido visual que el original.</p>
+    <div class="stage theme-v1"><div class="stage-grid" id="g1-top"></div><div class="stage-divider">También podrías considerar</div><div class="stage-grid" id="g1-rest"></div></div>
+  </section>
+
+  <section class="version" id="v2">
+    <div class="version-head"><span class="version-tag">VERSIÓN 02 / 10</span><h2>Claro corporativo</h2></div>
+    <p class="note">Tema claro, acento índigo, sombras suaves — look de producto SaaS profesional.</p>
+    <div class="stage theme-v2"><div class="stage-grid" id="g2-top"></div><div class="stage-divider">También podrías considerar</div><div class="stage-grid" id="g2-rest"></div></div>
+  </section>
+
+  <section class="version" id="v3">
+    <div class="version-head"><span class="version-tag">VERSIÓN 03 / 10</span><h2>Grafito cálido + ámbar</h2></div>
+    <p class="note">Fondo oscuro neutro cálido (no azulado) con un único acento ámbar, cálido y de alto contraste.</p>
+    <div class="stage theme-v3"><div class="stage-grid" id="g3-top"></div><div class="stage-divider">También podrías considerar</div><div class="stage-grid" id="g3-rest"></div></div>
+  </section>
+
+  <section class="version" id="v4">
+    <div class="version-head"><span class="version-tag">VERSIÓN 04 / 10</span><h2>Claro esmeralda</h2></div>
+    <p class="note">Tema claro con acento verde esmeralda profundo — transmite confianza/calidad sin ser genérico.</p>
+    <div class="stage theme-v4"><div class="stage-grid" id="g4-top"></div><div class="stage-divider">También podrías considerar</div><div class="stage-grid" id="g4-rest"></div></div>
+  </section>
+
+  <section class="version" id="v5">
+    <div class="version-head"><span class="version-tag">VERSIÓN 05 / 10</span><h2>Azul medianoche</h2></div>
+    <p class="note">Dark theme distinto al de marca — azul-negro profundo con un único acento celeste.</p>
+    <div class="stage theme-v5"><div class="stage-grid" id="g5-top"></div><div class="stage-divider">También podrías considerar</div><div class="stage-grid" id="g5-rest"></div></div>
+  </section>
+
+  <section class="version" id="v6">
+    <div class="version-head"><span class="version-tag">VERSIÓN 06 / 10</span><h2>Malva claro</h2></div>
+    <p class="note">Tema claro cálido con un acento ciruela/malva poco habitual en catálogos de tecnología — distintivo sin perder seriedad.</p>
+    <div class="stage theme-v6"><div class="stage-grid" id="g6-top"></div><div class="stage-divider">También podrías considerar</div><div class="stage-grid" id="g6-rest"></div></div>
+  </section>
+
+  <section class="version" id="v7">
+    <div class="version-head"><span class="version-tag">VERSIÓN 07 / 10</span><h2>Alto contraste</h2></div>
+    <p class="note">Negro casi puro, tipografía blanca, y un único acento cereza reservado para precio, CTA y advertencias — nada compite con eso.</p>
+    <div class="stage theme-v7"><div class="stage-grid" id="g7-top"></div><div class="stage-divider">También podrías considerar</div><div class="stage-grid" id="g7-rest"></div></div>
+  </section>
+
+  <section class="version" id="v8">
+    <div class="version-head"><span class="version-tag">VERSIÓN 08 / 10</span><h2>Slate + violeta profundo</h2></div>
+    <p class="note">Tema claro gris-azulado con un acento violeta sólido (sin degradé) — más sobrio que el corporativo índigo de la versión 02.</p>
+    <div class="stage theme-v8"><div class="stage-grid" id="g8-top"></div><div class="stage-divider">También podrías considerar</div><div class="stage-grid" id="g8-rest"></div></div>
+  </section>
+
+  <section class="version" id="v9">
+    <div class="version-head"><span class="version-tag">VERSIÓN 09 / 10</span><h2>Bosque oscuro + dorado</h2></div>
+    <p class="note">Superficies verde bosque muy oscuro con acento dorado — cálido y premium, distinto al gris/ámbar de la versión 03.</p>
+    <div class="stage theme-v9"><div class="stage-grid" id="g9-top"></div><div class="stage-divider">También podrías considerar</div><div class="stage-grid" id="g9-rest"></div></div>
+  </section>
+
+  <section class="version" id="v10">
+    <div class="version-head"><span class="version-tag">VERSIÓN 10 / 10</span><h2>Arena cálida + petróleo</h2></div>
+    <p class="note">Papel color arena con acento azul petróleo — cálido y confiable, el único de los diez que mezcla un fondo cálido con un acento frío.</p>
+    <div class="stage theme-v10"><div class="stage-grid" id="g10-top"></div><div class="stage-divider">También podrías considerar</div><div class="stage-grid" id="g10-rest"></div></div>
+  </section>
+</main>
+
+<footer class="colophon wrap">
+  <p><strong>Siguiente paso:</strong> elegís una versión (o pedís mezclar elementos de varias) y la
+  implemento en <code>components/ProductChatCard.tsx</code>, reemplazando marca/precios ficticios
+  por los datos reales del producto.</p>
+</footer>
+
+<script>
+  const PRODUCTS = [
+    { id:"p1", pick:1, brand:"Kaelon", title:"Notebook Kaelon 15.6 AMD R5 16GB SSD 512GB Sin Sistema",
+      cash:1110299, inst:92525, cuotas:12, store:"Tiendex", quality:"EXCELENTE",
+      tags:[{l:"Memoria",ok:true},{l:"Rapidez",ok:true},{l:"Almacenamiento",ok:true},{l:"Teclado numérico",ok:true}] },
+    { id:"p2", pick:2, brand:"Kaelon", title:"Notebook Kaelon 15.6 Core i5 16GB SSD 512GB Sin Sistema",
+      cash:1097499, inst:91458, cuotas:12, store:"Tiendex", quality:"EXCELENTE",
+      tags:[{l:"Memoria",ok:true},{l:"Rapidez",ok:true},{l:"Almacenamiento",ok:true},{l:"Teclado numérico",ok:true}] },
+    { id:"p3", pick:3, brand:"Vantik", title:"Notebook Vantik Air S3 i5 16GB 256GB",
+      cash:1746224, inst:194025, cuotas:9, store:"Compra Ya", quality:"MUY BUENO",
+      tags:[{l:"Memoria",ok:true},{l:"Rapidez",ok:true},{l:"Almacenamiento",ok:false},{l:"Teclado numérico",ok:true}] },
+    { id:"p4", pick:0, brand:"Norlex", title:"Notebook Norlex 15 R3 8GB RAM 512GB SSD",
+      cash:1299000, inst:108250, cuotas:12, store:"Mercado Sur", quality:"REGULAR",
+      tags:[{l:"Memoria",ok:false},{l:"Rapidez",ok:false},{l:"Almacenamiento",ok:true}] },
+    { id:"p5", pick:0, brand:"Norlex", title:"Notebook Norlex 15 ci3 N305 8GB 512SSD",
+      cash:1199000, inst:99917, cuotas:12, store:"Mercado Sur", quality:"BUENO",
+      tags:[{l:"Memoria",ok:false},{l:"Rapidez",ok:false},{l:"Almacenamiento",ok:true},{l:"Teclado numérico",ok:true}] },
+    { id:"p6", pick:0, brand:"Norlex", title:"Notebook Norlex 15 Core i3 8GB 512GB Windows",
+      cash:1699999, inst:94444, cuotas:18, store:"Punto Hogar", quality:"MUY BUENO",
+      tags:[{l:"Memoria",ok:false},{l:"Rapidez",ok:false},{l:"Almacenamiento",ok:true},{l:"Teclado numérico",ok:true}] },
+  ];
+  const fmt = n => "$" + Math.round(n).toLocaleString("es-AR");
+  const qClass = q => ({EXCELENTE:"excelente","MUY BUENO":"muybueno",BUENO:"bueno",REGULAR:"regular"}[q]);
+  const qLabel = q => q.charAt(0) + q.slice(1).toLowerCase();
+  const topPicks = PRODUCTS.filter(p=>p.pick>0).sort((a,b)=>a.pick-b.pick);
+  const rest = PRODUCTS.filter(p=>p.pick===0);
+
+  function card(p){
+    return `<article class="p-card">
+      <div class="p-top">
+        <div class="p-media">${p.brand.slice(0,2).toUpperCase()}</div>
+        <div class="p-head">
+          <div class="p-badges">
+            ${p.pick ? `<span class="p-badge-pick">★ ${p.pick===1?"Mejor opción":"Recomendado"}</span>` : ""}
+            <span class="p-badge-quality tier-${qClass(p.quality)}">${qLabel(p.quality)} calidad/precio</span>
+          </div>
+          <p class="p-brand">${p.brand}</p>
+          <h3 class="p-title">${p.title}</h3>
+          <div class="p-price-block">
+            <p class="p-price">${fmt(p.cash)} contado</p>
+            <p class="p-installment">${fmt(p.inst)}/mes en ${p.cuotas} cuotas</p>
+          </div>
+        </div>
+      </div>
+      <div class="p-tags">
+        ${p.tags.map(t=>`<span class="${t.ok?"ok":"warn"}">${t.ok?"✓":"⚠"} ${t.l}</span>`).join("")}
+      </div>
+      <div class="p-actions">
+        <button class="btn-outline" type="button">Ver más detalles</button>
+        <a class="btn-primary" href="#">Comprar en ${p.store}</a>
+        <button class="btn-compare" type="button">+ Comparar</button>
+      </div>
+    </article>`;
+  }
+  function mount(id, list){ document.getElementById(id).innerHTML = list.map(card).join(""); }
+  for (const n of [1,2,3,4,5,6,7,8,9,10]){ mount(`g${n}-top`, topPicks); mount(`g${n}-rest`, rest); }
+</script>

@@ -1,0 +1,135 @@
+import type { Config } from "tailwindcss";
+
+const config: Config = {
+  content: [
+    "./pages/**/*.{js,ts,jsx,tsx,mdx}",
+    "./components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./app/**/*.{js,ts,jsx,tsx,mdx}",
+  ],
+  theme: {
+    extend: {
+      fontFamily: {
+        brand: ["var(--font-josefin)", "sans-serif"],
+      },
+      colors: {
+        background: "var(--background)",
+        foreground: "var(--foreground)",
+        // Paleta Material-3-like usada en todo el flujo de búsqueda/resultados —
+        // prefijo "gathering-" por historia (nació acotada a la pantalla de
+        // preguntas guiadas), pero hoy es el tema del sitio entero. Versión
+        // "claro corporativo": fondo claro, acento índigo sólido (sin degradé).
+        "gathering-background": "#F4F5F7",
+        "gathering-on-background": "#14171F",
+        "gathering-surface": "#F4F5F7",
+        "gathering-surface-dim": "#E9EBEF",
+        "gathering-surface-bright": "#FFFFFF",
+        "gathering-surface-container-lowest": "#EAEDF1",
+        "gathering-surface-container-low": "#F1F2F5",
+        "gathering-surface-container": "#FFFFFF",
+        "gathering-surface-container-high": "#FFFFFF",
+        "gathering-surface-container-highest": "#E2E4E9",
+        "gathering-surface-variant": "#E2E4E9",
+        "gathering-on-surface": "#14171F",
+        "gathering-on-surface-variant": "#5B6270",
+        "gathering-inverse-surface": "#14171F",
+        "gathering-inverse-on-surface": "#F4F5F7",
+        "gathering-primary": "#3452E1",
+        "gathering-on-primary": "#FFFFFF",
+        "gathering-primary-container": "#3452E1",
+        "gathering-on-primary-container": "#1B2E8F",
+        "gathering-primary-fixed": "#2138A6",
+        "gathering-primary-fixed-dim": "#3452E1",
+        "gathering-on-primary-fixed": "#FFFFFF",
+        "gathering-on-primary-fixed-variant": "#1B2E8F",
+        "gathering-inverse-primary": "#7C90F0",
+        "gathering-surface-tint": "#3452E1",
+        "gathering-secondary": "#6D28D9",
+        "gathering-on-secondary": "#FFFFFF",
+        "gathering-secondary-container": "#6D28D9",
+        "gathering-on-secondary-container": "#EDE5FC",
+        "gathering-secondary-fixed": "#5B21B6",
+        "gathering-secondary-fixed-dim": "#6D28D9",
+        "gathering-on-secondary-fixed": "#FFFFFF",
+        "gathering-on-secondary-fixed-variant": "#EDE5FC",
+        "gathering-tertiary": "#2E5AAC",
+        "gathering-on-tertiary": "#FFFFFF",
+        "gathering-tertiary-container": "#DCE6FA",
+        "gathering-on-tertiary-container": "#1B3E80",
+        "gathering-tertiary-fixed": "#2E5AAC",
+        "gathering-tertiary-fixed-dim": "#3E6BC4",
+        "gathering-on-tertiary-fixed": "#FFFFFF",
+        "gathering-on-tertiary-fixed-variant": "#1B3E80",
+        "gathering-outline": "#9096A3",
+        "gathering-outline-variant": "#DDE1E6",
+        "gathering-error": "#D6373C",
+        "gathering-on-error": "#FFFFFF",
+        "gathering-error-container": "#FBE2E1",
+        "gathering-on-error-container": "#7A1315",
+      },
+      spacing: {
+        gutter: "24px",
+        "margin-mobile": "16px",
+        "margin-desktop": "40px",
+        "container-max": "1440px",
+        "stack-sm": "8px",
+        "stack-md": "16px",
+        "stack-lg": "32px",
+      },
+      keyframes: {
+        blink: {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0" },
+        },
+        "fade-up": {
+          "0%": { opacity: "0", transform: "translateY(8px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        "step-in": {
+          "0%": { opacity: "0", transform: "translateX(-6px)" },
+          "100%": { opacity: "1", transform: "translateX(0)" },
+        },
+        "slide-up": {
+          "0%": { opacity: "0", transform: "translateY(18px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        "dot-pulse": {
+          "0%, 100%": { opacity: "1", transform: "scale(1)" },
+          "50%": { opacity: "0.4", transform: "scale(0.7)" },
+        },
+        "card-glow": {
+          "0%, 100%": { boxShadow: "0 0 0 0 rgba(99,102,241,0)" },
+          "50%": { boxShadow: "0 0 18px 4px rgba(99,102,241,0.18)" },
+        },
+        blob: {
+          "0%":   { transform: "translate(0px, 0px) scale(1)" },
+          "33%":  { transform: "translate(28px, -45px) scale(1.08)" },
+          "66%":  { transform: "translate(-18px, 22px) scale(0.94)" },
+          "100%": { transform: "translate(0px, 0px) scale(1)" },
+        },
+        shimmer: {
+          "0%":   { backgroundPosition: "-200% center" },
+          "100%": { backgroundPosition: "200% center" },
+        },
+        "flow-line": {
+          "0%":   { transform: "translateY(-4px)", opacity: "0" },
+          "15%":  { opacity: "1" },
+          "85%":  { opacity: "1" },
+          "100%": { transform: "translateY(100%)", opacity: "0" },
+        },
+      },
+      animation: {
+        blink: "blink 1s step-end infinite",
+        "fade-up": "fade-up 0.4s ease-out forwards",
+        "step-in": "step-in 0.3s ease-out forwards",
+        "slide-up": "slide-up 0.55s cubic-bezier(0.22,1,0.36,1) both",
+        "dot-pulse": "dot-pulse 2.4s ease-in-out infinite",
+        "card-glow": "card-glow 3s ease-in-out infinite",
+        blob: "blob 9s ease-in-out infinite",
+        shimmer: "shimmer 3.5s linear infinite",
+        "flow-line": "flow-line 2.2s ease-in-out infinite",
+      },
+    },
+  },
+  plugins: [],
+};
+export default config;

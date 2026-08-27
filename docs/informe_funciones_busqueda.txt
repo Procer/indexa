@@ -1,0 +1,169 @@
+INFORME — Funciones y formas de búsqueda de indexa (TechSearch AR)
+Nivel básico, sin lenguaje técnico
+Fecha: 20/08/2026
+================================================================
+
+QUÉ ES
+----------------------------------------------------------------
+indexa es un buscador de tecnología (notebooks, PCs de escritorio,
+tablets, celulares y Smart TVs) que traduce lo que el usuario NECESITA
+hacer con el equipo a las características técnicas reales que hacen
+falta, y devuelve productos reales de distintas tiendas argentinas con
+precio, cuotas y un análisis de calidad/precio en criollo.
+
+================================================================
+1. FORMAS DE BUSCAR
+================================================================
+
+1.1 — Búsqueda guiada por chat (la forma principal)
+----------------------------------------------------------------
+Es la puerta de entrada del sitio: al llegar, ya hay un chat abierto
+haciendo la primera pregunta. El usuario responde tocando botones (no
+hace falta escribir) y el sistema hace como máximo 2 a 4 preguntas:
+
+  1. Categoría — qué tipo de equipo (si no quedó claro)
+  2. Uso principal — para qué lo va a usar (trabajo, estudio, diseño,
+     gaming, uso casual). Acá es donde el sistema traduce "para
+     trabajar y ver pelis" a RAM/procesador/almacenamiento necesarios,
+     sin mostrarle al usuario esos términos técnicos.
+  3. Presupuesto — al contado (monto máximo, y opcionalmente un
+     mínimo) o en cuotas (techo mensual aproximado)
+  4. Portabilidad — solo para notebooks, si la va a llevar seguido
+
+1.2 — Texto libre dentro del chat
+----------------------------------------------------------------
+En cualquier momento el usuario puede escribir cosas puntuales en vez
+de tocar botones: "que sea de una marca conocida", "con i7", "no
+quiero Samsung", "que tenga buena cámara". El sistema entiende esto
+como preferencias adicionales sin pedir de nuevo lo que ya se
+contestó (categoría, uso, presupuesto quedan guardados).
+
+1.3 — Refinamiento después de ver resultados
+----------------------------------------------------------------
+Una vez que aparecen productos, el usuario sigue hablando con el mismo
+chat para afinar la búsqueda sin empezar de cero: "más económica",
+"que dure más la batería", "de otra marca". No hay un panel de
+filtros técnicos (RAM, procesador, etc.) — todo el ajuste se hace
+conversando en lenguaje natural.
+
+1.4 — Vidriera del home (para el que no sabe qué buscar)
+----------------------------------------------------------------
+Antes incluso de contestar la primera pregunta, la página de inicio ya
+muestra productos reales agrupados por categoría (una sección para
+Notebooks, otra para Celulares, etc.), elegidos al azar del catálogo
+disponible. Sirve para el usuario indeciso que "no sabe bien qué
+buscar": ya ve opciones concretas mientras decide, y puede interactuar
+con esas tarjetas igual que con un resultado de búsqueda real (ver
+detalle, comparar).
+
+1.5 — Cómo busca el sistema puertas adentro (básico)
+----------------------------------------------------------------
+Cuando el usuario termina de responder, el sistema NO busca solo por
+palabras clave ni solo por "parecido de significado" — combina las dos
+cosas:
+  - Si el usuario mencionó algo textual (ej. el nombre de un modelo
+    puntual), eso pesa en el resultado.
+  - Si la búsqueda es más conversacional ("notebook rápida para
+    trabajar"), el sistema entiende el SIGNIFICADO de lo que pide, no
+    solo las palabras exactas.
+Sobre esos candidatos se aplican filtros duros (presupuesto, marca
+excluida, gama mínima de procesador aceptable) antes de mostrar nada.
+
+================================================================
+2. FUNCIONES DEL SITIO
+================================================================
+
+2.1 — Resultados con specs en lenguaje simple
+----------------------------------------------------------------
+Cada producto se muestra con tildes ✓ / advertencias ⚠ traduciendo la
+ficha técnica a algo entendible ("Memoria suficiente para varias
+pestañas y programas abiertos a la vez" en vez de "16GB RAM"), no la
+ficha técnica cruda.
+
+2.2 — Precio contado Y en cuotas, juntos
+----------------------------------------------------------------
+Cada tarjeta muestra las dos formas de pago a la vez, porque en
+Argentina el usuario suele pensar el presupuesto en cuotas mensuales
+tanto como en precio de lista.
+
+2.3 — Análisis de calidad/precio
+----------------------------------------------------------------
+Cada producto tiene una etiqueta (Excelente / Muy bueno / Bueno /
+Regular calidad-precio) con una explicación corta de por qué, generada
+para el catálogo completo (no en el momento de cada búsqueda), así es
+rápido y consistente.
+
+2.4 — Ver más detalles
+----------------------------------------------------------------
+Desde cualquier tarjeta se puede abrir la ficha completa del producto:
+specs completas, qué se puede mejorar más adelante (ej. "la memoria no
+se puede ampliar, pero el disco sí"), historial de precio, y alerta de
+precio.
+
+2.5 — Comparar productos (hasta 5 a la vez)
+----------------------------------------------------------------
+El usuario puede armar una tabla comparando hasta 5 productos lado a
+lado (specs, precio, calidad/precio), y además hay un asistente de IA
+dentro del comparador que responde preguntas puntuales tipo "¿cuál me
+conviene para viajar seguido?".
+
+2.6 — En otras tiendas (recién agregado)
+----------------------------------------------------------------
+Cuando el mismo producto está disponible en más de una tienda, un
+botón muestra todas las opciones ordenadas por precio, marcando cuál
+es la más barata y cuánto se ahorra eligiendo esa en vez de la que
+está viendo. Aparece tanto en las tarjetas del chat como en la ficha
+de detalle y en el comparador.
+
+2.7 — Alertas de precio
+----------------------------------------------------------------
+El usuario puede pedir que le avisen por email si un producto baja de
+cierto precio, sin necesidad de crear una cuenta.
+
+2.8 — Compartir búsqueda
+----------------------------------------------------------------
+Cada búsqueda tiene un link único (para pegar donde sea) y un botón
+directo de WhatsApp, pensado para el hábito de consultar la compra en
+pareja o familia antes de decidir.
+
+2.9 — Ver en otro dispositivo (sync por email)
+----------------------------------------------------------------
+Sin necesidad de contraseña ni cuenta, el usuario puede pedir que le
+manden por mail un link con TODAS sus búsquedas guardadas, para
+seguir viéndolas desde el celular, la compu del trabajo, etc.
+
+2.10 — Historial de precio
+----------------------------------------------------------------
+Cada producto muestra un mini-gráfico de cómo varió su precio en el
+tiempo, para saber si conviene comprar ahora o esperar.
+
+2.11 — Comprar en la tienda real
+----------------------------------------------------------------
+indexa no vende directo — el botón "Comprar en [tienda]" saca al
+usuario del sitio directo a la tienda real (Frávega, Coppel, Jumbo,
+Cetrogar, Disco, Vea, Changomas, Pardo Hogar, y otras) para completar
+la compra ahí. El sitio actúa como comparador/asesor previo.
+
+2.12 — Productos patrocinados
+----------------------------------------------------------------
+Existen espacios pagos para que una tienda destaque un producto, pero
+SOLO aparecen si ese producto ya es lo bastante relevante para la
+búsqueda del usuario — nunca se muestra un patrocinado que no tenga
+sentido con lo que se pidió.
+
+================================================================
+3. RESUMEN — QUÉ HACE DIFERENTE A INDEXA
+================================================================
+- No pide que el usuario sepa de tecnología: traduce intención de uso
+  a specs, no al revés.
+- Combina búsqueda por significado y por palabras exactas, no una sola.
+- Piensa el presupuesto como lo piensa el usuario argentino: en cuotas
+  tanto como en precio de lista.
+- Compara varias tiendas para el mismo producto, no solo distintos
+  productos entre sí.
+- Todo el ajuste de la búsqueda es conversacional, sin panel de
+  filtros técnicos.
+
+================================================================
+Fin del informe.
+================================================================

@@ -1,0 +1,177 @@
+INFORME DE USO — TechSearch AR (indexa)
+Cómo interactúa un usuario común con el sitio
+Fecha: 19/08/2026
+================================================================
+
+1. QUIÉN ES EL USUARIO TÍPICO
+----------------------------------------------------------------
+La gran mayoría de quienes llegan al sitio NO sabe qué notebook, PC,
+tablet o celular comprar, y no por desinterés sino porque el lenguaje
+técnico es una barrera real. Es gente que busca "notebook" en Google,
+entra a MercadoLibre o Frávega, y se encuentra con fichas técnicas que
+no puede interpretar: "Ryzen 5 5500U", "IPS 144Hz", "NVMe PCIe". El
+resultado habitual, sin esta herramienta, es comprar mal (pagar de más
+por algo que no necesita, o comprar algo insuficiente para lo que
+quiere hacer) o directamente no comprar por parálisis de decisión.
+
+Hay dos perfiles, pero el diseño del sitio está pensado para el primero:
+
+- Perfil mayoritario (no técnico): sabe QUÉ quiere hacer con el equipo
+  ("algo rápido para trabajar y ver películas", "para mi hijo que
+  estudia", "una notebook que no se me cuelgue"), pero no puede
+  traducir eso a RAM, procesador o almacenamiento.
+
+- Perfil minoritario (semi-técnico): reconoce algunos términos ("que
+  tenga SSD", "con buena placa de video") y puede pedir cosas más
+  puntuales, pero igual valora que el sitio le explique el resto en
+  criollo.
+
+En el contexto argentino específicamente, el usuario común además:
+- Piensa el presupuesto en CUOTAS mensuales tanto como en precio total
+  ("¿cuánto puedo pagar por mes?" es tan común como "¿cuánto cuesta?").
+- Compara varias tiendas a la vez (Frávega, Coppel, Naldo, Jumbo,
+  Carrefour, Cetrogar, Disco, Vea, Changomas, On City, Megatone, entre
+  otras) porque el precio y las cuotas varían bastante de una a otra.
+- Suele entrar desde el celular, no desde la computadora — el sitio
+  está armado mobile-first pensando en ese uso mayoritario.
+
+----------------------------------------------------------------
+2. PRIMER CONTACTO CON EL SITIO
+----------------------------------------------------------------
+Al entrar a la página principal, el usuario NO ve un buscador de texto
+libre tradicional ni un catálogo para filtrar a mano. Ve dos cosas al
+mismo tiempo, de entrada:
+
+a) Una "vidriera" con productos reales agrupados por categoría
+   (Notebooks, PCs, Tablets, Celulares, Smart TVs), como para dar una
+   primera sensación de "esto es una tienda real con stock real", no
+   una landing vacía.
+
+b) Un chat ya abierto, haciendo la primera pregunta ("¿Qué tipo de
+   equipo estás buscando?"). El usuario no tiene que buscar el chat ni
+   activarlo: arranca conversando.
+
+Esto imita la experiencia de entrar a un local y que un vendedor te
+salude enseguida, en vez de dejarte solo frente a una góndola.
+
+----------------------------------------------------------------
+3. EL FLUJO TÍPICO: CONVERSACIÓN GUIADA
+----------------------------------------------------------------
+El usuario común no escribe una consulta perfecta de una sola vez.
+Interactúa con el chat con respuestas cortas, muchas veces tocando
+botones/tags en vez de escribir texto libre. El sistema hace como
+máximo 2 a 4 preguntas antes de mostrar resultados:
+
+  Paso 1 — Categoría (si no quedó clara):
+    "¿Qué tipo de dispositivo buscás?"
+    → Notebook / PC de escritorio / Tablet / Celular / Smart TV
+
+  Paso 2 — Uso principal (casi siempre se pregunta):
+    "¿Para qué lo vas a usar principalmente?"
+    → Trabajo y oficina / Estudio / Diseño o edición / Gaming /
+      Uso casual y entretenimiento
+    El usuario elige en función de lo que HACE con el equipo, nunca
+    en función de specs — el sistema es el que traduce "gaming" o
+    "trabajo de oficina" a RAM/procesador/GPU necesarios puertas
+    adentro, sin mostrárselo al usuario en esos términos.
+
+  Paso 3 — Presupuesto:
+    El usuario elige entre pagar en cuotas mensuales o al contado.
+    Si elige cuotas, indica un techo mensual aproximado y, opcional,
+    a cuántas cuotas. Si elige contado, indica un monto máximo (y,
+    solo si lo pide expresamente, también un piso). Es habitual que
+    el usuario piense el presupuesto como "hasta tanto por mes" antes
+    que como un precio de lista — reflejo de cómo se compra tecnología
+    en cuotas en Argentina.
+
+  Paso 4 (a veces) — Portabilidad, solo si aplica a notebooks:
+    "¿La vas a llevar seguido o va a estar en un lugar fijo?"
+
+Durante este intercambio, el usuario puede además escribir libremente
+en el chat cosas puntuales ("quiero que sea de una marca conocida",
+"necesito que tenga cámara buena", "busco algo con procesador i7") y
+el sistema las toma como preferencias adicionales sin perder lo que ya
+se había contestado antes — el usuario no vuelve a tener que repetir
+categoría, uso o presupuesto ya dados.
+
+----------------------------------------------------------------
+4. LOS RESULTADOS Y CÓMO EL USUARIO LOS USA
+----------------------------------------------------------------
+Tras responder, aparecen tarjetas de producto reales (imagen, marca y
+modelo, specs traducidas con tildes ✓/⚠ en vez de ficha técnica cruda,
+precio contado Y en cuotas juntos). El usuario común:
+
+- Escanea rápido las 3-5 primeras tarjetas priorizando precio y si
+  "le sirve" según el resumen, no lee specs técnicas en detalle a
+  primera vista.
+- Toca "Ver más detalles" solo en las opciones que le interesaron,
+  para entrar a la ficha completa (specs, análisis calidad/precio en
+  lenguaje simple, qué se puede mejorar después del equipo).
+- Usa "+Comparar" cuando duda entre 2-3 opciones concretas — arma una
+  tabla comparando hasta 5 productos lado a lado, en el mismo lenguaje
+  mixto (funcional + técnico disponible si lo busca).
+- Sigue conversando en el chat DESPUÉS de ver resultados para afinar
+  ("más económica", "que dure más la batería", "de otra marca") en
+  vez de volver a armar una búsqueda de cero — el refinamiento es
+  conversacional, no un panel de filtros técnico.
+- Al decidirse, hace clic en "Comprar en [tienda]", que lo saca del
+  sitio directo a la tienda real (Frávega, Coppel, Jumbo, etc.) a
+  completar la compra — el sitio no vende directamente, actúa como
+  comparador/asesor previo a la compra.
+- Puede compartir la búsqueda (link directo o WhatsApp) para
+  consultarlo con otra persona antes de decidir — típico de compras
+  de este monto en Argentina, donde se consulta en pareja o familia.
+
+----------------------------------------------------------------
+5. ESCENARIOS DE USO MÁS COMUNES
+----------------------------------------------------------------
+- "Se me rompió/quedó vieja la notebook y necesito una nueva ya" —
+  usuario apurado, prioriza precio y disponibilidad inmediata, poca
+  paciencia para preguntas largas.
+- "Mi hijo/a empieza el colegio o la facultad" — presupuesto ajustado,
+  uso = estudio, suele preguntar por robustez/duración más que por
+  potencia.
+- "Quiero algo para laburar cómodo desde casa" — uso = oficina,
+  valora pantalla y que no se cuelgue con muchas pestañas/Excel.
+- "Busco algo para jugar sin gastar una fortuna" — uso = gaming
+  casual, más sensible al presupuesto que a la marca.
+- "Necesito cambiar el celular/tablet familiar" — categoría celular o
+  tablet, presupuesto en cuotas, a veces preguntando por cámara o
+  batería en vez de procesador.
+- Usuario indeciso sin intención clara ("no sé bien qué buscar") —
+  este es justamente el caso que la vidriera del home + el chat ya
+  abierto están pensados para resolver: aunque no sepa qué escribir,
+  ya ve productos reales y una pregunta simple esperándolo.
+
+----------------------------------------------------------------
+6. DISPOSITIVO Y CONTEXTO DE USO
+----------------------------------------------------------------
+- Mobile-first en la práctica: el sitio funciona desde 375px de ancho,
+  y buena parte del uso real ocurre en el celular, muchas veces en
+  momentos sueltos (viajando, en un recreo del trabajo) más que en una
+  sesión larga y dedicada en la computadora.
+- Sesiones cortas e interrumpibles: como la búsqueda queda guardada
+  (localStorage + URL única compartible), el usuario puede volver más
+  tarde al mismo resultado sin perder lo ya conversado.
+- Bajo umbral de paciencia técnica: si el sitio tarda en responder o
+  repite una pregunta ya contestada, el usuario común lo interpreta
+  como que "se rompió", no como una demora normal — de ahí la
+  importancia del camino optimista (mostrar la siguiente pregunta al
+  toque) y de nunca dejar el chat en silencio sin respuesta.
+
+----------------------------------------------------------------
+7. LO QUE EL USUARIO COMÚN *NO* HACE
+----------------------------------------------------------------
+- No arma una ficha técnica mental antes de entrar — llega sin saber
+  specs y espera que el sitio se las traduzca, no que se las pida.
+- No usa filtros técnicos avanzados por su cuenta — prefiere tags
+  funcionales ("más liviana para llevar", "que encienda más rápido")
+  antes que un panel de checkboxes de RAM/CPU/GPU.
+- No suele registrarse antes de ver un resultado útil — el registro
+  (email o Google) recién tiene sentido para el usuario después de
+  encontrar algo que le sirve, para guardarlo o recibir alertas de
+  precio, nunca como paso previo a buscar.
+
+================================================================
+Fin del informe.
+================================================================

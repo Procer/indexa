@@ -1,0 +1,67 @@
+CÓMO PROBAR: "Ver en otro dispositivo" (sync de búsquedas por email)
+Deployado en anka.ar/indexa
+================================================================
+
+QUÉ ES
+----------------------------------------------------------------
+Reemplaza al viejo cartel de "Registrate" que aparecía a los 3 segundos.
+Ahora, en la pantalla de resultados de una búsqueda, junto a "Compartir
+búsqueda" y "WhatsApp", hay un tercer botón: "Ver en otro dispositivo".
+Sirve para mandarte por mail un link con TODAS tus búsquedas guardadas,
+sin necesidad de contraseña ni cuenta.
+
+----------------------------------------------------------------
+PASO A PASO
+----------------------------------------------------------------
+
+1. Andá a anka.ar/indexa y hacé una búsqueda cualquiera (o varias — cada
+   búsqueda que hacés queda guardada sola en tu navegador, no hace falta
+   hacer nada especial para esto).
+
+2. En la pantalla de resultados, buscá la fila que dice "Compartir
+   búsqueda · WhatsApp · Ver en otro dispositivo" (arriba de los
+   resultados, cerca del contador "N resultados").
+
+3. Tocá "Ver en otro dispositivo".
+
+4. Se abre un cartel pidiendo tu email. Poné un email real al que tengas
+   acceso ahora mismo (para poder revisar que llegó el mail).
+
+5. Tocá "Mandarme el link". Debería aparecer un mensaje de confirmación
+   ("Revisá tu email").
+
+6. Andá a la casilla de ese email — debería llegar un mail de
+   "TechSearch AR" con el asunto "Tus búsquedas guardadas" y un botón
+   "Ver mis búsquedas →".
+
+7. Abrí ese link DESDE OTRO DISPOSITIVO (o desde una ventana de incógnito
+   en la misma compu, para simular que es "otro dispositivo" sin las
+   búsquedas guardadas localmente).
+
+8. Debería mostrarte la lista de búsquedas que hiciste en el paso 1, cada
+   una con el texto de la búsqueda y la cantidad de resultados. Al tocar
+   una, te lleva a los resultados reales de esa búsqueda.
+
+----------------------------------------------------------------
+QUÉ VERIFICAR ESPECÍFICAMENTE
+----------------------------------------------------------------
+- Que el cartel viejo de "Registrate gratis" (con botón de Google) YA NO
+  aparece en ningún lado, ni automáticamente ni en otro botón.
+- Que el mail llega en un tiempo razonable (segundos, no minutos).
+- Que el link del mail funciona sin pedir contraseña ni login en ningún
+  momento.
+- Que si volvés a hacer OTRA búsqueda nueva y volvés a tocar "Ver en otro
+  dispositivo" con el MISMO email, el link sigue siendo válido y ahora
+  muestra también esa búsqueda nueva sumada a las anteriores (no se
+  pisan, se acumulan).
+- Que abrir el link en el "otro dispositivo" dejó esas búsquedas guardadas
+  ahí también (si volvés a entrar a anka.ar/indexa desde ese mismo
+  dispositivo, deberían seguir apareciendo como guardadas).
+
+----------------------------------------------------------------
+SI ALGO FALLA
+----------------------------------------------------------------
+Avisame qué paso exacto falló y qué viste en pantalla (o si no llegó el
+mail, cuánto esperaste). No hace falta que revises consola de errores ni
+nada técnico — con la descripción alcanza para que lo investigue.
+================================================================
