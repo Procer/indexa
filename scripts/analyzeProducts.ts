@@ -10,25 +10,13 @@
  *   npm run analyze              → hasta 300 productos sin análisis o vencidos
  *   npm run analyze -- --all     → regenera todos (ignora ambos filtros)
  *
- * Diseñado para correr como tarea nocturna en Railway, después del sync.
+ * Corre como tarea nocturna en el VPS (cron), después del sync.
  * Evita que el análisis se genere durante el request del usuario.
  */
 
-import { createClient } from "@supabase/supabase-js";
-import ws from "ws";
-import type { WebSocketLikeConstructor } from "@supabase/realtime-js";
+import { sql } from "@/lib/db/sql";
 import { generateBatchAnalysis } from "@/lib/llm/batchAnalysis";
-
-// Node 20 no trae WebSocket nativo (recién en Node 22); supabase-js igual
-// instancia un RealtimeClient al crear el cliente aunque este script nunca
-// use realtime, así que sin esto tira "Node.js 20 detected without native
-// WebSocket support" apenas se llama a createClient (mismo fix que
-// scripts/syncFraveOnly.ts y scripts/generateEmbeddings.ts).
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { realtime: { transport: ws as unknown as WebSocketLikeConstructor } }
-);
+import type { ProductCategory, ProductSpecs } from "@/types";
 
 const BATCH_SIZE = 10;   // llamadas LLM en paralelo por batch
 const MAX_PER_RUN = 300; // máximo de productos por ejecución — a este ritmo
@@ -37,28 +25,37 @@ const MAX_PER_RUN = 300; // máximo de productos por ejecución — a este ritmo
 const ANALYSIS_FRESHNESS_MS = 21 * 24 * 60 * 60 * 1000; // igual a lib/llm/productAnalysis.ts
 const regenerateAll = process.argv.includes("--all");
 
+interface AnalyzableProduct {
+  id: string;
+  title: string;
+  brand: string | null;
+  category: ProductCategory;
+  price_cash: number | null;
+  price_installment: number | null;
+  specs: ProductSpecs;
+}
+
 async function main() {
   console.log(`=== Análisis LLM batch${regenerateAll ? " (regenerate-all)" : ""} ===\n`);
 
-  const baseQuery = supabase
-    .from("products")
-    .select("id, title, brand, category, price_cash, price_installment, specs")
-    .eq("available", true)
-    .limit(MAX_PER_RUN);
-
   const staleCutoff = new Date(Date.now() - ANALYSIS_FRESHNESS_MS).toISOString();
-  const { data: products, error } = await (
-    regenerateAll
-      ? baseQuery
-      : baseQuery.or(`quality_price_score.is.null,analysis_generated_at.lt.${staleCutoff}`)
-  );
 
-  if (error) {
-    console.error("Error al consultar productos:", error.message);
-    process.exit(1);
-  }
+  const products = regenerateAll
+    ? await sql<AnalyzableProduct[]>`
+        SELECT id, title, brand, category, price_cash, price_installment, specs
+        FROM products
+        WHERE available = true
+        LIMIT ${MAX_PER_RUN}
+      `
+    : await sql<AnalyzableProduct[]>`
+        SELECT id, title, brand, category, price_cash, price_installment, specs
+        FROM products
+        WHERE available = true
+          AND (quality_price_score IS NULL OR analysis_generated_at < ${staleCutoff})
+        LIMIT ${MAX_PER_RUN}
+      `;
 
-  if (!products || products.length === 0) {
+  if (products.length === 0) {
     console.log("No hay productos para analizar.");
     return;
   }
@@ -78,16 +75,13 @@ async function main() {
       batch.map(async (product) => {
         const analysis = await generateBatchAnalysis(product);
 
-        const { error: updateErr } = await supabase
-          .from("products")
-          .update({
-            quality_price_score: analysis.quality_price_score,
-            quality_price_analysis: analysis.quality_price_analysis,
-            analysis_generated_at: new Date().toISOString(),
-          })
-          .eq("id", product.id);
-
-        if (updateErr) throw new Error(updateErr.message);
+        await sql`
+          UPDATE products SET
+            quality_price_score    = ${analysis.quality_price_score},
+            quality_price_analysis = ${analysis.quality_price_analysis},
+            analysis_generated_at  = ${new Date().toISOString()}
+          WHERE id = ${product.id}
+        `;
         return product.id;
       })
     );
@@ -116,7 +110,9 @@ async function main() {
   console.log(`\nResumen: ${ok} analizados | ${failed} errores`);
 }
 
-main().catch((err) => {
-  console.error("Error en análisis batch:", err.message ?? err);
-  process.exit(1);
-});
+main()
+  .catch((err) => {
+    console.error("Error en análisis batch:", err.message ?? err);
+    process.exitCode = 1;
+  })
+  .finally(() => sql.end({ timeout: 5 }));

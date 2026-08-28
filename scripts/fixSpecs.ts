@@ -7,13 +7,8 @@
  * Este script hace un sync solo de Fravega sin tocar ML.
  */
 
-import { createClient } from "@supabase/supabase-js";
+import { sql } from "@/lib/db/sql";
 import { fetchFraveNotebooks, fetchFraveDesktops } from "@/lib/sources/fravega";
-
-const sb = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 async function main() {
   console.log("=== Fix Specs — Fravega ===\n");
@@ -31,16 +26,15 @@ async function main() {
   let updated = 0;
 
   for (const p of all) {
-    const { error } = await sb
-      .from("products")
-      .update({ specs: p.specs, updated_at: new Date().toISOString() })
-      .eq("external_id", p.external_id)
-      .eq("source", "fravega");
-
-    if (error) {
-      console.error(`Error actualizando ${p.external_id}:`, error.message);
-    } else {
+    try {
+      await sql`
+        UPDATE products
+        SET specs = ${sql.json(p.specs as never)}, updated_at = ${new Date().toISOString()}
+        WHERE external_id = ${p.external_id} AND source = 'fravega'
+      `;
       updated++;
+    } catch (error) {
+      console.error(`Error actualizando ${p.external_id}:`, (error as Error).message);
     }
   }
 
@@ -48,26 +42,25 @@ async function main() {
   console.log(`  Llamadas LLM: ${llmStats.calls}`);
 
   // Verificar distribución
-  const { data } = await sb
-    .from("products")
-    .select("specs")
-    .eq("available", true)
-    .eq("source", "fravega");
+  const data = await sql<{ specs: Record<string, unknown> }[]>`
+    SELECT specs FROM products
+    WHERE available = true AND source = 'fravega'
+  `;
 
-  if (data) {
-    type S = { storage_type?: string; gpu?: string };
-    const stDist: Record<string, number> = {};
-    const gpuDist: Record<string, number> = {};
-    data.forEach(p => {
-      const s = p.specs as S;
-      const st = s?.storage_type ?? "none";
-      const g = s?.gpu ?? "none";
-      stDist[st] = (stDist[st] || 0) + 1;
-      gpuDist[g] = (gpuDist[g] || 0) + 1;
-    });
-    console.log("\nStorage distribution:", stDist);
-    console.log("GPU distribution:", gpuDist);
-  }
+  type S = { storage_type?: string; gpu?: string };
+  const stDist: Record<string, number> = {};
+  const gpuDist: Record<string, number> = {};
+  data.forEach((p) => {
+    const s = p.specs as S;
+    const st = s?.storage_type ?? "none";
+    const g = s?.gpu ?? "none";
+    stDist[st] = (stDist[st] || 0) + 1;
+    gpuDist[g] = (gpuDist[g] || 0) + 1;
+  });
+  console.log("\nStorage distribution:", stDist);
+  console.log("GPU distribution:", gpuDist);
 }
 
-main().catch(console.error);
+main()
+  .catch(console.error)
+  .finally(() => sql.end({ timeout: 5 }));

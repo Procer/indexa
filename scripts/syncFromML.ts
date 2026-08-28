@@ -8,9 +8,7 @@
  * - Al final corre generateEmbeddings para los productos nuevos
  */
 
-import { createClient } from "@supabase/supabase-js";
-import ws from "ws";
-import type { WebSocketLikeConstructor } from "@supabase/realtime-js";
+import { sql } from "@/lib/db/sql";
 import { getMLToken } from "@/lib/sources/mlTokens";
 import {
   normalizeNotebookSpecs,
@@ -23,16 +21,6 @@ import { generateAffiliateUrl, getAffiliateConfigFromEnv } from "@/lib/domain/af
 import { isLikelyAccessory } from "@/lib/domain/accessoryFilter";
 import { notifyTelegram } from "@/lib/notify/telegram";
 import type { Upgradeable } from "@/types";
-
-// Node 20 no trae WebSocket nativo (recién en Node 22); supabase-js igual
-// instancia un RealtimeClient al crear el cliente aunque este script nunca
-// use realtime, así que sin esto tira "Node.js 20 detected without native
-// WebSocket support" apenas se llama a createClient.
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { realtime: { transport: ws as unknown as WebSocketLikeConstructor } }
-);
 
 const ML_BASE = "https://api.mercadolibre.com";
 
@@ -349,17 +337,15 @@ async function main() {
   console.log(`  ${validDetails.length} productos válidos`);
 
   // 3. Get existing products from DB to diff
-  const { data: existing } = await supabase
-    .from("products")
-    .select("id, external_id, price_cash, available")
-    .eq("source", "mercadolibre");
+  const existing = await sql<
+    { id: string; external_id: string; price_cash: number; available: boolean }[]
+  >`
+    SELECT id, external_id, price_cash, available
+    FROM products
+    WHERE source = 'mercadolibre'
+  `;
 
-  const existingMap = new Map(
-    (existing ?? []).map((p) => [
-      p.external_id as string,
-      p as { id: string; external_id: string; price_cash: number; available: boolean },
-    ])
-  );
+  const existingMap = new Map(existing.map((p) => [p.external_id, p]));
 
   const incomingExternalIds = new Set(validDetails.map((i) => i.id));
 
@@ -384,22 +370,20 @@ async function main() {
     try {
       if (existing) {
         // Update price and availability only (avoid expensive re-normalization)
-        const { error } = await supabase
-          .from("products")
-          .update({
-            price_cash: item.price,
-            price_installment: item.installments?.amount ?? null,
-            installment_count: item.installments?.quantity ?? null,
-            installment_info: installmentInfo(item),
-            image_url: bestImage(item),
-            affiliate_url: affiliateUrl,
-            available: item.available_quantity > 0,
-            stock: item.available_quantity,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", existing.id);
-
-        if (!error) updated++;
+        await sql`
+          UPDATE products SET
+            price_cash        = ${item.price},
+            price_installment = ${item.installments?.amount ?? null},
+            installment_count = ${item.installments?.quantity ?? null},
+            installment_info  = ${installmentInfo(item)},
+            image_url         = ${bestImage(item)},
+            affiliate_url     = ${affiliateUrl},
+            available         = ${item.available_quantity > 0},
+            stock             = ${item.available_quantity},
+            updated_at        = ${new Date().toISOString()}
+          WHERE id = ${existing.id}
+        `;
+        updated++;
       } else {
         // New product — full normalization
         const category = categoryById.get(item.id) ?? "notebook";
@@ -409,10 +393,23 @@ async function main() {
           : category === "phone" ? await buildPhone(item, llmStats)
           : await buildTablet(item, llmStats);
 
-        const { error } = await supabase
-          .from("products")
-          .insert({ ...product, affiliate_url: affiliateUrl });
-        if (!error) inserted++;
+        await sql`
+          INSERT INTO products (
+            external_id, source, url, category, brand, model, title,
+            specs, upgradeable, price_cash, price_installment,
+            installment_count, installment_info, currency,
+            image_url, images, available, stock, affiliate_url
+          ) VALUES (
+            ${product.external_id}, ${product.source}, ${product.url},
+            ${product.category}, ${product.brand}, ${product.model}, ${product.title},
+            ${sql.json(product.specs as never)}, ${sql.json(product.upgradeable as never)},
+            ${product.price_cash}, ${product.price_installment},
+            ${product.installment_count}, ${product.installment_info}, ${product.currency},
+            ${product.image_url}, ${product.images}::text[], ${product.available},
+            ${product.stock}, ${affiliateUrl}
+          )
+        `;
+        inserted++;
       }
     } catch (err) {
       console.error(`  Error en ${item.id}:`, err);
@@ -422,10 +419,7 @@ async function main() {
   // Mark products no longer on ML as unavailable
   for (const [extId, prod] of Array.from(existingMap.entries())) {
     if (!incomingExternalIds.has(extId) && prod.available) {
-      await supabase
-        .from("products")
-        .update({ available: false })
-        .eq("id", prod.id);
+      await sql`UPDATE products SET available = false WHERE id = ${prod.id}`;
       deactivated++;
     }
   }
@@ -443,8 +437,10 @@ async function main() {
   }
 }
 
-main().catch(async (err) => {
-  console.error("\nError en sync:", err.message);
-  await notifyTelegram(`🔴 Sync MercadoLibre (API oficial) falló: ${err.message ?? err}`);
-  process.exit(1);
-});
+main()
+  .catch(async (err) => {
+    console.error("\nError en sync:", err.message);
+    await notifyTelegram(`🔴 Sync MercadoLibre (API oficial) falló: ${err.message ?? err}`);
+    process.exitCode = 1;
+  })
+  .finally(() => sql.end({ timeout: 5 }));

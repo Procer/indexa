@@ -7,9 +7,7 @@
  * - Corre generateEmbeddings al final para los productos nuevos
  */
 
-import { createClient } from "@supabase/supabase-js";
-import ws from "ws";
-import type { WebSocketLikeConstructor } from "@supabase/realtime-js";
+import { sql } from "@/lib/db/sql";
 import {
   fetchFraveNotebooks,
   fetchFraveDesktops,
@@ -157,16 +155,6 @@ async function runStore(
   }
 }
 
-// Node 20 no trae WebSocket nativo (recién en Node 22); supabase-js igual
-// instancia un RealtimeClient al crear el cliente aunque este script nunca
-// use realtime, así que sin esto tira "Node.js 20 detected without native
-// WebSocket support" apenas se llama a createClient.
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { realtime: { transport: ws as unknown as WebSocketLikeConstructor } }
-);
-
 interface SyncProduct {
   external_id: string;
   source: ProductSource;
@@ -232,25 +220,24 @@ async function upsertProducts(products: SyncProduct[], source: string) {
   }
   products = dedupedProducts;
 
-  const { data: existing, error: fetchErr } = await supabase
-    .from("products")
-    .select("id, external_id, available, price_cash, price_installment")
-    .eq("source", source);
+  let existing: {
+    id: string;
+    external_id: string;
+    available: boolean;
+    price_cash: number | null;
+    price_installment: number | null;
+  }[];
+  try {
+    existing = await sql`
+      SELECT id, external_id, available, price_cash, price_installment
+      FROM products
+      WHERE source = ${source}
+    `;
+  } catch (err) {
+    throw new Error(`DB fetch error (${source}): ${(err as Error).message}`);
+  }
 
-  if (fetchErr) throw new Error(`DB fetch error (${source}): ${fetchErr.message}`);
-
-  const existingMap = new Map(
-    (existing ?? []).map((p) => [
-      p.external_id as string,
-      p as {
-        id: string;
-        external_id: string;
-        available: boolean;
-        price_cash: number | null;
-        price_installment: number | null;
-      },
-    ])
-  );
+  const existingMap = new Map(existing.map((p) => [p.external_id, p]));
 
   const incomingIds = new Set(products.map((p) => p.external_id));
   let inserted = 0;
@@ -262,65 +249,72 @@ async function upsertProducts(products: SyncProduct[], source: string) {
     const ex = existingMap.get(product.external_id);
 
     if (ex) {
-      const { error } = await supabase
-        .from("products")
-        .update({
-          price_cash: product.price_cash,
-          price_installment: product.price_installment,
-          installment_count: product.installment_count,
-          installment_info: product.installment_info,
-          image_url: product.image_url,
-          images: product.images,
-          url: product.url,
-          available: product.available,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", ex.id);
-
-      if (error) {
-        errors.push(`Update ${product.external_id}: ${error.message}`);
-      } else {
+      try {
+        await sql`
+          UPDATE products SET
+            price_cash        = ${product.price_cash},
+            price_installment = ${product.price_installment},
+            installment_count = ${product.installment_count},
+            installment_info  = ${product.installment_info},
+            image_url         = ${product.image_url},
+            images            = ${product.images}::text[],
+            url               = ${product.url},
+            available         = ${product.available},
+            updated_at        = ${new Date().toISOString()}
+          WHERE id = ${ex.id}
+        `;
         updated++;
         // Solo registrar en el historial si el precio realmente cambió.
         if (
           ex.price_cash !== product.price_cash ||
           ex.price_installment !== product.price_installment
         ) {
-          await supabase.from("price_history").insert({
-            product_id: ex.id,
-            price_cash: product.price_cash,
-            price_installment: product.price_installment,
-          });
+          await sql`
+            INSERT INTO price_history (product_id, price_cash, price_installment)
+            VALUES (${ex.id}, ${product.price_cash}, ${product.price_installment})
+          `;
         }
+      } catch (err) {
+        errors.push(`Update ${product.external_id}: ${(err as Error).message}`);
       }
     } else {
-      const { data: newProduct, error } = await supabase
-        .from("products")
-        .insert(product)
-        .select("id")
-        .single();
-
-      if (error) {
-        errors.push(`Insert ${product.external_id}: ${error.message}`);
-      } else {
+      try {
+        const [newProduct] = await sql<{ id: string }[]>`
+          INSERT INTO products (
+            external_id, source, url, category, brand, model, title,
+            specs, upgradeable, price_cash, price_installment,
+            installment_count, installment_info, currency,
+            image_url, images, available, stock
+          ) VALUES (
+            ${product.external_id}, ${product.source}, ${product.url},
+            ${product.category}, ${product.brand}, ${product.model}, ${product.title},
+            ${sql.json(product.specs as never)}, ${sql.json(product.upgradeable as never)},
+            ${product.price_cash}, ${product.price_installment},
+            ${product.installment_count}, ${product.installment_info}, ${product.currency},
+            ${product.image_url}, ${product.images}::text[], ${product.available}, ${product.stock}
+          )
+          RETURNING id
+        `;
         inserted++;
         if (newProduct) {
-          await supabase.from("price_history").insert({
-            product_id: newProduct.id,
-            price_cash: product.price_cash,
-            price_installment: product.price_installment,
-          });
+          await sql`
+            INSERT INTO price_history (product_id, price_cash, price_installment)
+            VALUES (${newProduct.id}, ${product.price_cash}, ${product.price_installment})
+          `;
         }
+      } catch (err) {
+        errors.push(`Insert ${product.external_id}: ${(err as Error).message}`);
       }
     }
   }
 
   for (const [extId, prod] of Array.from(existingMap.entries())) {
     if (!incomingIds.has(extId) && prod.available) {
-      await supabase
-        .from("products")
-        .update({ available: false, updated_at: new Date().toISOString() })
-        .eq("id", prod.id);
+      await sql`
+        UPDATE products
+        SET available = false, updated_at = ${new Date().toISOString()}
+        WHERE id = ${prod.id}
+      `;
       deactivated++;
     }
   }
@@ -334,13 +328,13 @@ async function upsertProducts(products: SyncProduct[], source: string) {
 }
 
 async function deleteMercadoLibre() {
-  const { error, count } = await supabase
-    .from("products")
-    .delete()
-    .eq("source", "mercadolibre");
-
-  if (error) console.warn(`  ⚠ No se pudo eliminar ML: ${error.message}`);
-  return count ?? 0;
+  try {
+    const res = await sql`DELETE FROM products WHERE source = 'mercadolibre'`;
+    return res.count ?? 0;
+  } catch (err) {
+    console.warn(`  ⚠ No se pudo eliminar ML: ${(err as Error).message}`);
+    return 0;
+  }
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -519,8 +513,10 @@ async function main() {
   console.log("\n✓ Sync completado.");
 }
 
-main().catch(async (err) => {
-  console.error("\nError en sync:", err.message ?? err);
-  await notifyTelegram(`🔴 Sync (Frávega+Cetrogar+Musimundo+Garbarino+Compumundo+Coppel+Naldo+Jumbo+Carrefour+OnCity+Disco+Vea+Changomas+Megatone) falló completo: ${err.message ?? err}`);
-  process.exit(1);
-});
+main()
+  .catch(async (err) => {
+    console.error("\nError en sync:", err.message ?? err);
+    await notifyTelegram(`🔴 Sync (Frávega+Cetrogar+Musimundo+Garbarino+Compumundo+Coppel+Naldo+Jumbo+Carrefour+OnCity+Disco+Vea+Changomas+Megatone) falló completo: ${err.message ?? err}`);
+    process.exitCode = 1;
+  })
+  .finally(() => sql.end({ timeout: 5 }));

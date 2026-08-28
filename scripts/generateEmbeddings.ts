@@ -1,7 +1,5 @@
-import { createClient } from "@supabase/supabase-js";
-import ws from "ws";
-import type { WebSocketLikeConstructor } from "@supabase/realtime-js";
 import OpenAI from "openai";
+import { sql, toVector } from "@/lib/db/sql";
 import type {
   Product,
   NotebookSpecs,
@@ -10,16 +8,6 @@ import type {
   TabletSpecs,
   TvSpecs,
 } from "@/types";
-
-// Node 20 no trae WebSocket nativo (recién en Node 22); supabase-js igual
-// instancia un RealtimeClient al crear el cliente aunque este script nunca
-// use realtime, así que sin esto tira "Node.js 20 detected without native
-// WebSocket support" apenas se llama a createClient.
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { realtime: { transport: ws as unknown as WebSocketLikeConstructor } }
-);
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -240,13 +228,14 @@ async function processBatch(products: Product[]): Promise<void> {
   }));
 
   for (const update of updates) {
-    const { error } = await supabase
-      .from("products")
-      .update({ embedding: update.embedding })
-      .eq("id", update.id);
-
-    if (error) {
-      console.error(`  Error en ${update.id}: ${error.message}`);
+    try {
+      await sql`
+        UPDATE products
+        SET embedding = ${toVector(update.embedding)}::vector(1536)
+        WHERE id = ${update.id}
+      `;
+    } catch (err) {
+      console.error(`  Error en ${update.id}: ${(err as Error).message}`);
     }
   }
 }
@@ -260,21 +249,15 @@ async function main() {
     console.log("Buscando productos sin embedding...");
   }
 
-  const baseQuery = supabase
-    .from("products")
-    .select("*")
-    .order("created_at", { ascending: true });
+  const products = forceRegenerate
+    ? await sql<Product[]>`
+        SELECT * FROM products ORDER BY created_at ASC
+      `
+    : await sql<Product[]>`
+        SELECT * FROM products WHERE embedding IS NULL ORDER BY created_at ASC
+      `;
 
-  const { data: products, error } = await (
-    forceRegenerate ? baseQuery : baseQuery.is("embedding", null)
-  );
-
-  if (error) {
-    console.error("Error al consultar:", error.message);
-    process.exit(1);
-  }
-
-  if (!products || products.length === 0) {
+  if (products.length === 0) {
     console.log("No hay productos para procesar.");
     return;
   }
@@ -299,4 +282,9 @@ async function main() {
   console.log(`\n✓ Embeddings generados para ${products.length} productos`);
 }
 
-main();
+main()
+  .catch((err) => {
+    console.error("Error al generar embeddings:", err?.message ?? err);
+    process.exitCode = 1;
+  })
+  .finally(() => sql.end({ timeout: 5 }));

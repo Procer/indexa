@@ -2,7 +2,7 @@
 # =============================================================================
 # Fase 5 — Backup diario de la base + envío fuera del VPS
 # =============================================================================
-# Instalar como cron de root:  0 3 * * *  /root/techsearch/db/vps/backup.sh
+# Instalar como cron de root:  0 3 * * *  /var/www/indexa/db/vps/backup.sh
 #
 # Hace:
 #   1) pg_dump comprimido (formato custom, restaurable con pg_restore)
@@ -13,8 +13,23 @@
 # =============================================================================
 set -euo pipefail
 
+# El cron corre como `sudo -u postgres` heredando CWD=/root, que el usuario
+# postgres no puede leer — `find` falla al restaurar el directorio. Nos
+# paramos en un lugar accesible antes de cualquier cosa.
+cd /
+
+# El VPS tiene postgresql-client 16 Y 17 instalados; `/usr/bin/pg_dump` es el
+# wrapper de Debian y elige el MÁS NUEVO (17) por default, que genera un
+# archivo que el pg_restore 16 no puede leer ("unsupported version"). El
+# servidor es 16 → forzamos los binarios 16 explícitamente.
+PG_BIN="${PG_BIN:-/usr/lib/postgresql/16/bin}"
+
 DB_NAME="${DB_NAME:-techsearch}"
 DB_USER="${DB_USER:-techsearch}"
+DB_HOST="${DB_HOST:-127.0.0.1}"
+# El Postgres del VPS escucha en 5433 (el 5432 lo ocupa un Postgres en Docker
+# de otra app del box). Ver db/vps/README.md.
+DB_PORT="${DB_PORT:-5433}"
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/techsearch}"
 RETENTION_DAYS="${RETENTION_DAYS:-7}"
 # Destino remoto opcional. Ej: "b2:techsearch-backups" (rclone) — vacío = no subir.
@@ -27,8 +42,8 @@ mkdir -p "$BACKUP_DIR"
 
 echo "[$(date -Is)] dump -> $OUT"
 # --no-owner / --no-privileges: portable a cualquier rol al restaurar.
-PGPASSWORD="${PGPASSWORD:-}" pg_dump \
-  --host=127.0.0.1 --username="$DB_USER" --dbname="$DB_NAME" \
+PGPASSWORD="${PGPASSWORD:-}" "$PG_BIN/pg_dump" \
+  --host="$DB_HOST" --port="$DB_PORT" --username="$DB_USER" --dbname="$DB_NAME" \
   --format=custom --compress=9 --no-owner --no-privileges \
   --file="$OUT"
 

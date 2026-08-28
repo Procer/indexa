@@ -9,17 +9,12 @@
  * - Al final corre generateEmbeddings para los nuevos
  */
 
-import { createClient } from "@supabase/supabase-js";
+import { sql } from "@/lib/db/sql";
 import { fetchFraveNotebooks, fetchFraveDesktops, fetchFravePhones, fetchFraveTablets, fetchFraveTVs } from "@/lib/sources/fravega";
 import { fetchMLNotebooks, fetchMLDesktops } from "@/lib/sources/mlScraper";
 import { generateAffiliateUrl, getAffiliateConfigFromEnv } from "@/lib/domain/affiliateLink";
 import { isLikelyAccessory } from "@/lib/domain/accessoryFilter";
 import type { Upgradeable, ProductSpecs, ProductSource, ProductCategory } from "@/types";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -54,23 +49,21 @@ interface SyncProduct {
 // ─── DB upsert ────────────────────────────────────────────────────────────────
 
 async function upsertProducts(products: SyncProduct[], source: string) {
-  const { data: existing } = await supabase
-    .from("products")
-    .select("id, external_id, price_cash, price_installment, available")
-    .eq("source", source);
+  const existing = await sql<
+    {
+      id: string;
+      external_id: string;
+      price_cash: number | null;
+      price_installment: number | null;
+      available: boolean;
+    }[]
+  >`
+    SELECT id, external_id, price_cash, price_installment, available
+    FROM products
+    WHERE source = ${source}
+  `;
 
-  const existingMap = new Map(
-    (existing ?? []).map((p) => [
-      p.external_id as string,
-      p as {
-        id: string;
-        external_id: string;
-        price_cash: number | null;
-        price_installment: number | null;
-        available: boolean;
-      },
-    ])
-  );
+  const existingMap = new Map(existing.map((p) => [p.external_id, p]));
 
   const incomingIds = new Set(products.map((p) => p.external_id));
 
@@ -90,49 +83,51 @@ async function upsertProducts(products: SyncProduct[], source: string) {
 
     try {
       if (ex) {
-        const { error } = await supabase
-          .from("products")
-          .update({
-            price_cash: product.price_cash,
-            price_installment: product.price_installment,
-            image_url: product.image_url,
-            images: product.images,
-            affiliate_url: affiliateUrl,
-            available: true,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", ex.id);
-
-        if (!error) {
-          updated++;
-          if (
-            ex.price_cash !== product.price_cash ||
-            ex.price_installment !== product.price_installment
-          ) {
-            await supabase.from("price_history").insert({
-              product_id: ex.id,
-              price_cash: product.price_cash,
-              price_installment: product.price_installment,
-            });
-          }
+        await sql`
+          UPDATE products SET
+            price_cash        = ${product.price_cash},
+            price_installment = ${product.price_installment},
+            image_url         = ${product.image_url},
+            images            = ${product.images}::text[],
+            affiliate_url     = ${affiliateUrl},
+            available         = true,
+            updated_at        = ${new Date().toISOString()}
+          WHERE id = ${ex.id}
+        `;
+        updated++;
+        if (
+          ex.price_cash !== product.price_cash ||
+          ex.price_installment !== product.price_installment
+        ) {
+          await sql`
+            INSERT INTO price_history (product_id, price_cash, price_installment)
+            VALUES (${ex.id}, ${product.price_cash}, ${product.price_installment})
+          `;
         }
       } else {
-        const { data: newProduct, error } = await supabase
-          .from("products")
-          .insert({ ...product, affiliate_url: affiliateUrl })
-          .select("id")
-          .single();
-        if (!error) {
-          inserted++;
-          if (newProduct) {
-            await supabase.from("price_history").insert({
-              product_id: newProduct.id,
-              price_cash: product.price_cash,
-              price_installment: product.price_installment,
-            });
-          }
-        } else {
-          console.error(`  Insert error (${product.external_id}):`, error.message);
+        const [newProduct] = await sql<{ id: string }[]>`
+          INSERT INTO products (
+            external_id, source, url, category, brand, model, title,
+            specs, upgradeable, price_cash, price_installment,
+            installment_count, installment_info, currency,
+            image_url, images, available, stock, affiliate_url
+          ) VALUES (
+            ${product.external_id}, ${product.source}, ${product.url},
+            ${product.category}, ${product.brand}, ${product.model}, ${product.title},
+            ${sql.json(product.specs as never)}, ${sql.json(product.upgradeable as never)},
+            ${product.price_cash}, ${product.price_installment},
+            ${product.installment_count}, ${product.installment_info}, ${product.currency},
+            ${product.image_url}, ${product.images}::text[], ${product.available},
+            ${product.stock}, ${affiliateUrl}
+          )
+          RETURNING id
+        `;
+        inserted++;
+        if (newProduct) {
+          await sql`
+            INSERT INTO price_history (product_id, price_cash, price_installment)
+            VALUES (${newProduct.id}, ${product.price_cash}, ${product.price_installment})
+          `;
         }
       }
     } catch (err) {
@@ -143,10 +138,7 @@ async function upsertProducts(products: SyncProduct[], source: string) {
   // Mark products no longer found as unavailable
   for (const [extId, prod] of Array.from(existingMap.entries())) {
     if (!incomingIds.has(extId) && prod.available) {
-      await supabase
-        .from("products")
-        .update({ available: false })
-        .eq("id", prod.id);
+      await sql`UPDATE products SET available = false WHERE id = ${prod.id}`;
       deactivated++;
     }
   }
@@ -230,7 +222,9 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error("\nError en sync:", err.message);
-  process.exit(1);
-});
+main()
+  .catch((err) => {
+    console.error("\nError en sync:", err.message);
+    process.exitCode = 1;
+  })
+  .finally(() => sql.end({ timeout: 5 }));

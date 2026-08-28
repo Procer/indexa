@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { sql } from "@/lib/db/sql";
 import { getMLToken, isMLAuthorized } from "@/lib/sources/mlTokens";
 import { isLikelyAccessory } from "@/lib/domain/accessoryFilter";
 import type {
@@ -10,11 +10,6 @@ import type {
   ScreenType,
   Upgradeable,
 } from "@/types";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 const ML_BASE = "https://api.mercadolibre.com";
 
@@ -425,29 +420,43 @@ async function main() {
     })
     .filter((p): p is NonNullable<typeof p> => p !== null);
 
-  console.log(`\n[4/4] Insertando ${products.length} productos en Supabase...`);
+  console.log(`\n[4/4] Insertando ${products.length} productos en la DB...`);
 
-  const { error: deleteError } = await supabase
-    .from("products")
-    .delete()
-    .not("id", "is", null);
-
-  if (deleteError) {
-    console.error("Error al borrar:", deleteError.message);
-    process.exit(1);
+  // ⚠️ Script de bootstrap obsoleto: BORRA TODO el catálogo y lo reemplaza
+  // solo con productos de MercadoLibre. Precede al catálogo multi-tienda.
+  // No usar salvo que sepas exactamente lo que hacés.
+  try {
+    await sql`DELETE FROM products`;
+  } catch (err) {
+    console.error("Error al borrar:", (err as Error).message);
+    process.exitCode = 1;
+    return;
   }
 
   let inserted = 0;
-  for (let i = 0; i < products.length; i += 20) {
-    const batch = products.slice(i, i + 20);
-    const { error } = await supabase.from("products").insert(batch);
-    if (error) {
-      console.error(`  Error en batch ${i}: ${error.message}`);
-      continue;
+  for (const p of products) {
+    try {
+      await sql`
+        INSERT INTO products (
+          external_id, source, url, category, brand, model, title,
+          specs, upgradeable, price_cash, price_installment,
+          installment_count, installment_info, currency,
+          image_url, images, available, stock
+        ) VALUES (
+          ${p.external_id}, ${p.source}, ${p.url}, ${p.category},
+          ${p.brand}, ${p.model}, ${p.title},
+          ${sql.json(p.specs as never)}, ${sql.json(p.upgradeable as never)},
+          ${p.price_cash}, ${p.price_installment},
+          ${p.installment_count}, ${p.installment_info}, ${p.currency},
+          ${p.image_url}, ${p.images}::text[], ${p.available}, ${p.stock}
+        )
+      `;
+      inserted++;
+    } catch (err) {
+      console.error(`  Error insertando ${p.external_id}: ${(err as Error).message}`);
     }
-    inserted += batch.length;
-    await sleep(100);
   }
+  await sleep(100);
 
   console.log(`\n✓ ${inserted} productos reales de MercadoLibre Argentina cargados`);
   const nb = products.filter((p) => p?.category === "notebook").length;
@@ -456,7 +465,9 @@ async function main() {
   console.log("\nPróximo paso: npm run embed");
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+main()
+  .catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  })
+  .finally(() => sql.end({ timeout: 5 }));

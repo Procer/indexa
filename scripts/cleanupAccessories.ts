@@ -8,39 +8,17 @@
  * producto deja de aparecer en una búsqueda.
  */
 
-import { createClient } from "@supabase/supabase-js";
+import { sql } from "@/lib/db/sql";
 import { isLikelyAccessory } from "@/lib/domain/accessoryFilter";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-async function fetchAllAvailable() {
-  const PAGE = 1000;
-  const all: { id: string; title: string; source: string; available: boolean }[] = [];
-  let from = 0;
-
-  while (true) {
-    const { data, error } = await supabase
-      .from("products")
-      .select("id, title, source, available")
-      .eq("available", true)
-      .range(from, from + PAGE - 1);
-
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-
-    all.push(...data);
-    if (data.length < PAGE) break;
-    from += PAGE;
-  }
-
-  return all;
-}
-
 async function main() {
-  const data = await fetchAllAvailable();
+  const data = await sql<
+    { id: string; title: string; source: string; available: boolean }[]
+  >`
+    SELECT id, title, source, available
+    FROM products
+    WHERE available = true
+  `;
 
   const matches = data.filter((p) => isLikelyAccessory(p.title));
 
@@ -57,17 +35,18 @@ async function main() {
   }
 
   const ids = matches.map((p) => p.id);
-  const { error: updErr } = await supabase
-    .from("products")
-    .update({ available: false, updated_at: new Date().toISOString() })
-    .in("id", ids);
-
-  if (updErr) throw updErr;
+  await sql`
+    UPDATE products
+    SET available = false, updated_at = ${new Date().toISOString()}
+    WHERE id = ANY(${ids}::uuid[])
+  `;
 
   console.log(`\n✓ ${matches.length} productos marcados available=false.`);
 }
 
-main().catch((err) => {
-  console.error("Error:", err.message ?? err);
-  process.exit(1);
-});
+main()
+  .catch((err) => {
+    console.error("Error:", err.message ?? err);
+    process.exitCode = 1;
+  })
+  .finally(() => sql.end({ timeout: 5 }));
