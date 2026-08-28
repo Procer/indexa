@@ -44,3 +44,7 @@ vps.txt
 
 # env sin sufijo .local (DATABASE_URL de Fase 3)
 .env
+
+# deploy tarballs
+indexa-*.tgz
+*.tgz
