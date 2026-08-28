@@ -1,27 +1,29 @@
-import { Redis } from "@upstash/redis";
-import { Ratelimit } from "@upstash/ratelimit";
+// Rate limiting en memoria del proceso — reemplaza a Upstash Redis, que se
+// sacó junto con Supabase (ver db/vps/README.md). La app corre en un solo
+// proceso PM2 (`indexa`, fork mode) en el VPS, así que un Map en memoria
+// alcanza: no necesitamos estado compartido entre instancias.
+//
+// Ventana fija por (prefix, identifier): se cuenta cuántas requests entraron
+// en la ventana actual; al vencer, el contador se reinicia. Simple y sin
+// dependencias. Si en el futuro la app escala a varias instancias, migrar a
+// un contador en Postgres o volver a un Redis.
 
-// Mismo guard que lib/search/cache.ts: si no hay credenciales de Upstash
-// configuradas (ej. entorno local sin .env.local completo), el rate
-// limiting se desactiva en vez de romper el endpoint.
-const redisAvailable = !!process.env.UPSTASH_REDIS_REST_URL && !!process.env.UPSTASH_REDIS_REST_TOKEN;
-const redis = redisAvailable ? Redis.fromEnv() : null;
+interface Bucket {
+  count: number;
+  resetAt: number; // epoch ms
+}
 
-const limiters = new Map<string, Ratelimit>();
+const buckets = new Map<string, Bucket>();
 
-function getLimiter(prefix: string, requests: number, windowSeconds: number): Ratelimit | null {
-  if (!redis) return null;
-  const cacheKey = `${prefix}:${requests}:${windowSeconds}`;
-  let limiter = limiters.get(cacheKey);
-  if (!limiter) {
-    limiter = new Ratelimit({
-      redis,
-      limiter: Ratelimit.slidingWindow(requests, `${windowSeconds} s`),
-      prefix: `ratelimit:${prefix}`,
-    });
-    limiters.set(cacheKey, limiter);
+// Limpieza perezosa: cada tanto barremos los buckets vencidos para que el
+// Map no crezca sin límite con IPs que no vuelven.
+let lastSweep = Date.now();
+function sweepIfNeeded(now: number): void {
+  if (now - lastSweep < 60_000) return;
+  lastSweep = now;
+  for (const [key, b] of Array.from(buckets.entries())) {
+    if (b.resetAt <= now) buckets.delete(key);
   }
-  return limiter;
 }
 
 export function getClientIp(request: Request): string {
@@ -30,16 +32,27 @@ export function getClientIp(request: Request): string {
   return request.headers.get("x-real-ip") ?? "unknown";
 }
 
-// Sin Upstash configurado, siempre permite (mismo criterio de degradación
-// que el resto del caché del proyecto).
 export async function checkRateLimit(
   prefix: string,
   identifier: string,
   requests: number,
   windowSeconds: number
 ): Promise<{ success: boolean }> {
-  const limiter = getLimiter(prefix, requests, windowSeconds);
-  if (!limiter) return { success: true };
-  const { success } = await limiter.limit(identifier);
-  return { success };
+  const now = Date.now();
+  sweepIfNeeded(now);
+
+  const key = `${prefix}:${identifier}`;
+  const bucket = buckets.get(key);
+
+  if (!bucket || bucket.resetAt <= now) {
+    buckets.set(key, { count: 1, resetAt: now + windowSeconds * 1000 });
+    return { success: true };
+  }
+
+  if (bucket.count >= requests) {
+    return { success: false };
+  }
+
+  bucket.count++;
+  return { success: true };
 }

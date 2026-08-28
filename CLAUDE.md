@@ -14,14 +14,14 @@ El diferencial no es solo búsqueda semántica: es traducir intención de uso ("
 |---|---|
 | Frontend | Next.js 14 (App Router) + Tailwind CSS |
 | Backend | Next.js API Routes |
-| Base de datos | Supabase (PostgreSQL + pgvector) |
-| Auth | Supabase Auth (magic link + Google OAuth) |
-| Caché | Tabla `cache_kv` en Supabase (ver `lib/search/cache.ts`). Upstash Redis sigue en uso solo para rate limiting (`lib/rateLimit.ts`), hoy sin credenciales configuradas — falla abierto (sin límite) mientras tanto. |
+| Base de datos | PostgreSQL 16 + pgvector **self-hosted en el VPS** (puerto 5433). Acceso vía `postgres` (postgres.js) en `lib/db/sql.ts` — `DATABASE_URL`. Migrado desde Supabase (ver `db/vps/README.md`). Backup diario `db/vps/backup.sh` (cron 03:00). |
+| Auth | Supabase Auth (magic link + Google OAuth) — **única pieza que todavía usa Supabase**; pendiente de migrar (ver `docs/AUTH_MIGRATION.md`). Por eso `@supabase/supabase-js` y las env `NEXT_PUBLIC_SUPABASE_*` / `SUPABASE_SERVICE_ROLE_KEY` siguen presentes. |
+| Caché | Tabla `cache_kv` en la misma base Postgres (ver `lib/search/cache.ts`). |
+| Rate limiting | En memoria del proceso (`lib/rateLimit.ts`) — Upstash Redis eliminado. |
 | LLM principal | OpenAI GPT-4o mini (slot-filling, expansión, análisis) |
 | Embeddings | OpenAI text-embedding-3-small |
 | Scraping/APIs | MercadoLibre API oficial (MVP) |
-| Deploy frontend | Vercel |
-| Deploy scraper | Railway |
+| Deploy | VPS Dattatec por SSH — tarball → `npm install && npm run build` → `pm2 restart indexa`. Scrapers como cron (`scripts/syncFraveOnly.ts` 06:00, `scripts/analyzeProducts.ts` 07:00). |
 
 ---
 
@@ -75,17 +75,16 @@ El diferencial no es solo búsqueda semántica: es traducir intención de uso ("
 ## Variables de entorno requeridas
 
 ```env
-# Supabase
+# Postgres (VPS self-hosted, puerto 5433)
+DATABASE_URL=postgres://techsearch:...@127.0.0.1:5433/techsearch
+
+# Supabase — SOLO para Auth (pendiente de migrar, ver docs/AUTH_MIGRATION.md)
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 
 # OpenAI
 OPENAI_API_KEY=
-
-# Upstash Redis
-UPSTASH_REDIS_REST_URL=
-UPSTASH_REDIS_REST_TOKEN=
 
 # MercadoLibre (Fase 2+)
 ML_APP_ID=
