@@ -35,6 +35,7 @@ import {
   normalizeTVSpecs,
 } from "@/lib/normalizer/specsExtractor";
 import { upgradeableFor } from "@/lib/sources/vtex";
+import { normalizeMonthlyInstallment } from "@/lib/domain/installment";
 import type { ProductCategory, ProductSource } from "@/types";
 import { Page } from "playwright";
 
@@ -288,7 +289,13 @@ async function fetchMegatoneCategory(
         specs: specResult.specs,
         upgradeable: upgradeableFor(category),
         price_cash: scraped.priceCash,
-        price_installment: scraped.priceInstallment,
+        // Normalizado a cuota mensual al ingerir (jugada #13) — el parser de
+        // texto de la página a veces toma el total financiado.
+        price_installment: normalizeMonthlyInstallment(
+          scraped.priceCash,
+          scraped.priceInstallment,
+          scraped.installmentCount
+        ),
         installment_count: scraped.installmentCount,
         installment_info: scraped.installmentInfo,
         currency: "ARS",

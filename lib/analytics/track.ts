@@ -4,6 +4,8 @@ export type SiteEventType =
   | "session_start"
   | "product_view_details"
   | "product_compare_add"
+  | "product_ask_about"
+  | "product_buy_click"
   | "time_on_page";
 
 interface TrackEventPayload {

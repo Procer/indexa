@@ -213,6 +213,10 @@ export interface EnrichedProduct extends Product {
   spec_highlights_simple: string[];
   upgrade_note: string | null;
   analysis_from_cache: boolean;
+  // Jugada #15: veredicto de precio de una línea vs. la mediana de la misma
+  // configuración (marca + RAM + almacenamiento) en el pool. Determinístico,
+  // sin LLM. null cuando no hay muestra suficiente para comparar.
+  price_verdict?: string | null;
   // Solo se setea cuando el producto matchea una marca pedida
   // (preferences.brands_preferred) pero su precio queda fuera del rango
   // declarado — se muestra igual (transparencia) en vez de ocultarlo o dejar
@@ -309,6 +313,13 @@ export interface SearchAnalytics {
   fewResultRate: number;
   conversionRate: number;
   totalClicks: number;
+  // Jugada #17: clicks en "Comprar" cruzados con si el equipo fue recomendado
+  // (topPick del chat). Mide la conversión real "recomendado → comprado", no
+  // solo el conteo de clicks. buyClicks = eventos product_buy_click en la
+  // ventana; recommendedBuyShare = fracción de esos que eran de un recomendado.
+  buyClicks: number;
+  recommendedBuyClicks: number;
+  recommendedBuyShare: number;
   byDay: SearchAnalyticsDay[];
   byCategory: SearchAnalyticsCategory[];
   topProducts: SearchAnalyticsProduct[];
@@ -487,4 +498,6 @@ export interface AlternativeProduct {
   // Mismo producto detectado en otras tiendas — ver Product.also_at. Solo lo
   // llenan los conversores que parten de un EnrichedProduct ya dedupeado.
   also_at?: ProductStoreVariant[];
+  // Jugada #15: veredicto de precio vs. mediana de la config (ver EnrichedProduct).
+  price_verdict?: string | null;
 }

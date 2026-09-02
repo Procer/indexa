@@ -229,3 +229,34 @@ export async function updateProductAnalysis(
     WHERE id = ${productId}
   `;
 }
+
+// Jugada #15: mediana de precio de contado por configuración
+// (categoría + marca + RAM + almacenamiento) sobre TODO el catálogo disponible,
+// solo para configs con al menos 3 unidades. Una consulta agregada barata,
+// pensada para cachearse (ver getConfigPriceMedians en lib/search/cache.ts).
+// La key coincide con priceConfigKey() de lib/domain/priceVerdict.ts.
+export async function getConfigPriceMedians(): Promise<Record<string, number>> {
+  const rows = await sql<
+    { category: string; brand: string; ram_gb: number; storage_gb: number; median_price: number }[]
+  >`
+    SELECT
+      category,
+      lower(btrim(brand))                                        AS brand,
+      (specs->>'ram_gb')::int                                    AS ram_gb,
+      (specs->>'storage_gb')::int                                AS storage_gb,
+      percentile_cont(0.5) WITHIN GROUP (ORDER BY price_cash)    AS median_price
+    FROM products
+    WHERE available = true
+      AND price_cash IS NOT NULL AND price_cash > 0
+      AND brand IS NOT NULL AND btrim(brand) <> ''
+      AND (specs->>'ram_gb') ~ '^[0-9]+$'
+      AND (specs->>'storage_gb') ~ '^[0-9]+$'
+    GROUP BY 1, 2, 3, 4
+    HAVING count(*) >= 3
+  `;
+  const out: Record<string, number> = {};
+  for (const r of rows) {
+    out[`${r.category}|${r.brand}|${r.ram_gb}|${r.storage_gb}`] = Number(r.median_price);
+  }
+  return out;
+}

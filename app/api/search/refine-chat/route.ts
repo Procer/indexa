@@ -4,7 +4,7 @@ import { buildSearchRefineChatPrompt, SEARCH_REFINE_CHAT_TOOLS } from "@/lib/llm
 import { summarizePool } from "@/lib/domain/poolSummary";
 import { getProductsByIds, getSearchByShareToken } from "@/lib/db/queries";
 import { enrichWithAnalysis } from "@/lib/llm/productAnalysis";
-import { getChatGreetingCache, setChatGreetingCache, type ChatGreetingPayload } from "@/lib/search/cache";
+import { getCachedConfigPriceMedians, getChatGreetingCache, setChatGreetingCache, type ChatGreetingPayload } from "@/lib/search/cache";
 import { getOrBuildPoolIds } from "@/lib/search/pipeline";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { detectCategoryLocally } from "@/lib/domain/detectCategory";
@@ -12,6 +12,7 @@ import { detectBrandMentions } from "@/lib/domain/detectBrand";
 import { detectProcessorMention } from "@/lib/domain/detectProcessor";
 import { classifyBudgetFit } from "@/lib/domain/budgetFit";
 import { getUpgradeNote } from "@/lib/domain/upgradeability";
+import { buildPriceVerdicts } from "@/lib/domain/priceVerdict";
 import { describeBudgetForChat } from "@/lib/domain/budgetTiers";
 import type { AlternativeProduct, EnrichedProduct, ProductCategory, UseCase } from "@/types";
 
@@ -358,6 +359,24 @@ function detectDeterministicRedirect(
 const FALLBACK_REPLY_GREETING = "Hola! Soy tu asesor técnico — puedo recomendarte qué elegir de estos resultados o buscar de nuevo si nada te convence. ¿Qué necesitás?";
 const FALLBACK_REPLY_ERROR = "No pude procesar tu pregunta. Intentá de nuevo.";
 
+// Jugada #12: respuesta determinística para el turno de recomendación cuando
+// gpt-4o-mini emite la tool call con `content` vacío. Antes eso disparaba una
+// 2da llamada al LLM (empty_reply_retry, +2-4s y a veces encadenada); acá se
+// arma el texto con los picks que el modelo YA eligió + su lectura de specs en
+// lenguaje llano, sin round-trip extra.
+function buildDeterministicPickReply(picks: EnrichedProduct[]): string {
+  if (picks.length === 0) return FALLBACK_REPLY_ERROR;
+  if (picks.length === 1) {
+    const p = picks[0];
+    const why = (p.spec_highlights_simple ?? [])[0] ?? p.selection_reason ?? "";
+    return `Te dejo la **${p.title}**${why ? `: ${why.replace(/\.$/, "")}.` : "."} La tenés abajo con el detalle.`;
+  }
+  const names = picks.slice(0, 3).map((p) => `**${p.title}**`);
+  const list =
+    names.length === 2 ? names.join(" y ") : `${names.slice(0, -1).join(", ")} y ${names[names.length - 1]}`;
+  return `Para lo que buscás te marco ${list}. Están abajo con la lectura de specs en lenguaje simple para comparar.`;
+}
+
 function toRecommendedProduct(p: EnrichedProduct): AlternativeProduct {
   return {
     id: p.id,
@@ -379,6 +398,7 @@ function toRecommendedProduct(p: EnrichedProduct): AlternativeProduct {
     upgrade_note: getUpgradeNote(p.category, p.specs, p.upgradeable),
     out_of_budget: p.out_of_budget,
     also_at: p.also_at,
+    price_verdict: p.price_verdict ?? null,
   };
 }
 
@@ -497,6 +517,12 @@ export async function POST(request: NextRequest) {
         p.out_of_budget = classifyBudgetFit(p, search.slots);
       }
     }
+
+    // Veredicto de precio vs. mediana de la config (jugada #15) — mediana del
+    // catálogo (cacheada 6h), con el pool como fallback.
+    const chatConfigMedians = await getCachedConfigPriceMedians().catch(() => ({}));
+    const chatPriceVerdicts = buildPriceVerdicts(poolProducts, chatConfigMedians);
+    for (const p of loadedProducts) p.price_verdict = chatPriceVerdicts.get(p.id) ?? null;
 
     // Picks deterministas del saludo: el pool ya viene rankeado, así que los
     // primeros N son los picks. No se delega al modelo (ver buildGreetingPrompt).
@@ -632,21 +658,15 @@ export async function POST(request: NextRequest) {
           // recomendó, solo para no dejar la tarjeta sin explicación. No aplica
           // al saludo (ahí no se pasan tools, el texto vacío cae al fallback).
           if (!greeting && !replyText.trim() && toolCallAccumulators.size > 0) {
-            console.log(`[CHAT] empty_reply_retry shareToken=${shareToken}`);
-            const { topPickTitles } = resolveToolCalls(toolCallAccumulators, loadedProducts);
-            const summary = topPickTitles?.join(", ");
-            await streamCompletion(
-              [
-                ...baseMessages,
-                {
-                  role: "user",
-                  content: summary
-                    ? `(Ya marcaste como recomendados: ${summary}. Ahora escribí en 2-3 oraciones, tono ameno, por qué convienen para lo que necesito — sin llamar funciones ni repetir la lista.)`
-                    : "(Escribí tu respuesta en texto para el usuario, sin llamar funciones.)",
-                },
-              ],
-              false
+            const { topPickIds: emptyReplyPickIds } = resolveToolCalls(toolCallAccumulators, loadedProducts);
+            const picks = (emptyReplyPickIds ?? [])
+              .map((id) => loadedProducts.find((p) => p.id === id))
+              .filter((p): p is EnrichedProduct => !!p);
+            console.log(
+              `[CHAT] empty_reply_deterministic shareToken=${shareToken} picks=${picks.length}`
             );
+            replyText = buildDeterministicPickReply(picks);
+            send({ type: "text", value: replyText });
           }
         } catch (error) {
           console.error("[POST /api/search/refine-chat] stream error", error);

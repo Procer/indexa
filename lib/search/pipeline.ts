@@ -5,6 +5,7 @@ import { scoreResults, qualityPriceBoost } from "@/lib/search/scorer";
 import { getRequiredSpecs, TIER_RANK } from "@/lib/domain/usageToSpecs";
 import { buildDedupeKey } from "@/lib/domain/dedupe";
 import { estimatedMonthly } from "@/lib/domain/budgetFit";
+import { specSanityPenalty } from "@/lib/domain/specSanity";
 import type { NotebookSpecs, Product, Slots, SponsoredPlacement } from "@/types";
 
 export const ACCESSORY_KEYWORDS = /\b(mochila|funda|bolso|bolsa|mouse|teclado|auricular|parlante|cable|adaptador|hub|soporte|pad|mousepad|cargador|fuente|cuaderno|bater[ií]a externa|power\s*bank|cooler|ventilador|limpiador|kit de limpieza|escritorio|silla|mueble|biblioteca|estante|rack de|mesa|armario|cajonera|archivero|repisa|librer[ií]a|organizador|base para|kit de|reloj|smart\s*watch|smart\s*band|pulsera inteligente|vidrio templado|templado|protector de pantalla|mica|carcasa|estuche|case|manos libres|micro\s?sd|tarjeta de memoria|tr[ií]pode|gimbal|estabilizador|palo selfie|selfie stick|a(?:ro|nillo) de luz|l[aá]mpara|difusor)\b/i;
@@ -393,6 +394,22 @@ export async function buildRankedPool(params: {
       return penalty;
     };
     merged.sort((a, b) => b.final_score - tabletJunkPenalty(b) - (a.final_score - tabletJunkPenalty(a)));
+  }
+
+  // Cordura de specs general (jugada #9): hunde —sin excluir— unidades con
+  // specs físicamente inverosímiles en CUALQUIER categoría (RAM inflada por la
+  // tienda, disco = RAM, pantalla fuera de rango). Generaliza el filtro
+  // anti-RAM-trucha que arriba solo cubría tablet. Se precalcula por id para no
+  // recomputar en cada comparación del sort.
+  const sanityPenaltyById = new Map(
+    merged.map((p) => [p.id, specSanityPenalty(p.category, p.specs, p.brand, p.price_cash).penalty])
+  );
+  if (Array.from(sanityPenaltyById.values()).some((v) => v > 0)) {
+    merged.sort(
+      (a, b) =>
+        b.final_score - (sanityPenaltyById.get(b.id) ?? 0) -
+        (a.final_score - (sanityPenaltyById.get(a.id) ?? 0))
+    );
   }
 
   return merged;

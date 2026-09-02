@@ -2,11 +2,22 @@
 
 import { useState } from "react";
 import { OtherStoresButton } from "./OtherStoresButton";
-import { classifyHighlightLevel, extraCardFacts, shortSpecValues, type CardFact } from "@/lib/domain/specExplainer";
+import { SpecTermPopover } from "./SpecTermPopover";
+import { PriceAlertControl } from "./PriceAlertControl";
+import {
+  classifyHighlightLevel,
+  extraCardFacts,
+  shortSpecValues,
+  translationStrip,
+  type CardFact,
+  type TranslationChip,
+} from "@/lib/domain/specExplainer";
+import type { ProductCategory } from "@/types";
 import { buildSelectionShareText } from "@/lib/domain/shareSelection";
 import { LEVEL_DOT } from "./SpecHighlights";
 import { withBasePath } from "@/lib/basePath";
 import { getOrCreateVisitId } from "@/lib/analytics/visit";
+import { trackEvent } from "@/lib/analytics/track";
 import { formatPrice, storeLogoUrl, storeName } from "@/lib/domain/productDisplay";
 import type { AlternativeProduct } from "@/types";
 
@@ -90,6 +101,9 @@ interface ProductChatCardProps {
   // comparador. `ids` ya incluye el id de este producto.
   onCompareAdd?: (ids: string[], open?: boolean) => void;
   comparedIds?: string[];
+  // Jugada #11: "Consultar sobre este equipo" — abre el chat con una pregunta
+  // ya redactada sobre este producto, sin que el usuario tenga que describirlo.
+  onAskAbout?: (product: AlternativeProduct) => void;
   // Cómo eligió pagar el usuario en la búsqueda — decide si el número grande
   // del precio es el contado o la cuota mensual. Default "cash".
   paymentMode?: "cash" | "installments";
@@ -130,9 +144,11 @@ function StoreLogo({ source }: { source: string }) {
 function SpecHighlightsSimple({
   highlights,
   values,
+  category,
 }: {
   highlights: string[];
   values: Record<string, string>;
+  category: ProductCategory;
 }) {
   if (highlights.length === 0) return null;
 
@@ -157,9 +173,11 @@ function SpecHighlightsSimple({
               aria-hidden
             />
             <span className="min-w-0">
-              <span className="font-bold uppercase tracking-wide text-gathering-on-surface">
-                {label}
-              </span>
+              <SpecTermPopover
+                category={category}
+                label={label}
+                className="font-bold uppercase tracking-wide text-gathering-on-surface"
+              />
               {value && (
                 <span className="mx-1 rounded bg-gathering-surface-container-highest px-1.5 py-px text-[10px] font-bold text-gathering-on-surface">
                   {value}
@@ -174,10 +192,31 @@ function SpecHighlightsSimple({
   );
 }
 
+// Tira de traducción (jugada #8): resumen de 1-2 palabras por spec clave, para
+// leer el estado del equipo de un vistazo antes de bajar a las frases completas.
+function TranslationStrip({ chips }: { chips: TranslationChip[] }) {
+  if (chips.length === 0) return null;
+  return (
+    <div className="mb-3 flex flex-wrap gap-x-3 gap-y-1">
+      {chips.map((c) => (
+        <span
+          key={c.label}
+          className="inline-flex items-center gap-1 font-brand text-[11px] leading-none text-gathering-on-surface-variant"
+        >
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${LEVEL_DOT[c.level]}`} aria-hidden />
+          <span aria-hidden>{c.icon}</span>
+          <span className="font-bold uppercase tracking-wide text-gathering-on-surface">{c.label}</span>
+          <span>· {c.word}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 // Datos físicos en lenguaje llano (pantalla, peso, tamaño) con comparaciones
 // concretas — "como una hoja A4", "como una botella de agua de 1½ litro". Punto
 // neutro (no semáforo): son descriptivos, no un juicio de "alcanza / no alcanza".
-function ExtraFacts({ facts }: { facts: CardFact[] }) {
+function ExtraFacts({ facts, category }: { facts: CardFact[]; category: ProductCategory }) {
   if (facts.length === 0) return null;
 
   return (
@@ -192,9 +231,11 @@ function ExtraFacts({ facts }: { facts: CardFact[] }) {
             aria-hidden
           />
           <span className="min-w-0">
-            <span className="font-bold uppercase tracking-wide text-gathering-on-surface">
-              {f.label}
-            </span>
+            <SpecTermPopover
+              category={category}
+              label={f.label}
+              className="font-bold uppercase tracking-wide text-gathering-on-surface"
+            />
             {f.value && (
               <span className="mx-1 rounded bg-gathering-surface-container-highest px-1.5 py-px text-[10px] font-bold text-gathering-on-surface">
                 {f.value}
@@ -220,6 +261,7 @@ export function ProductChatCard({
   onCompareToggle,
   onCompareAdd,
   comparedIds,
+  onAskAbout,
   paymentMode = "cash",
   isCompared,
   compareDisabled,
@@ -230,6 +272,9 @@ export function ProductChatCard({
     ? shortSpecValues(product.category, product.specs, product.title)
     : {};
   const facts = product.specs ? extraCardFacts(product.category, product.specs, product.title) : [];
+  const stripChips = product.specs
+    ? translationStrip(product.category, product.specs, [], product.title)
+    : [];
   const [shared, setShared] = useState(false);
 
   // Selector de variante (casi-duplicados colapsados: color / SO / 256↔512GB).
@@ -249,6 +294,19 @@ export function ProductChatCard({
   };
   const store = storeName(eff.source);
   const pb = priceBlock(eff, paymentMode);
+
+  // "Más barato en X" inline (jugada #10): cuando el mismo equipo aparece en
+  // otra tienda por menos, se muestra acá — no solo detrás del botón "En otras
+  // tiendas". `also_at` viene ordenado por precio ascendente desde el pipeline.
+  const cheaperElsewhere = (() => {
+    const base = eff.price_cash;
+    if (!base || !product.also_at?.length) return null;
+    const hit = product.also_at.find(
+      (v) => v.price_cash != null && v.price_cash < base && v.source !== eff.source
+    );
+    if (!hit || hit.price_cash == null) return null;
+    return { store: storeName(hit.source), price: hit.price_cash, delta: base - hit.price_cash };
+  })();
 
   // Compartir ESTA opción (con la variante elegida) desde los resultados: specs
   // en lenguaje corto + precio + link de compra. Menú nativo en mobile,
@@ -383,11 +441,40 @@ export function ProductChatCard({
         {pb?.sub && <p className="font-brand text-xs font-medium text-gathering-primary">{pb.sub}</p>}
       </div>
 
+      {cheaperElsewhere && (
+        <p className="mb-3 flex items-center gap-1 font-brand text-[11px] font-semibold text-emerald-700">
+          <span className="material-symbols-outlined text-[13px]" aria-hidden>
+            sell
+          </span>
+          También en {cheaperElsewhere.store}: {formatPrice(cheaperElsewhere.price)}
+          <span className="font-medium opacity-80">(−{formatPrice(cheaperElsewhere.delta)})</span>
+        </p>
+      )}
+
+      {product.price_verdict && (
+        <p
+          className={`mb-3 flex items-center gap-1 font-brand text-[11px] font-medium ${
+            product.price_verdict.startsWith("Buen precio")
+              ? "text-emerald-700"
+              : product.price_verdict.startsWith("Precio alto")
+                ? "text-amber-700"
+                : "text-gathering-on-surface-variant"
+          }`}
+        >
+          <span className="material-symbols-outlined text-[13px]" aria-hidden>
+            monitoring
+          </span>
+          {product.price_verdict}
+        </p>
+      )}
+
       <hr className="mb-3 border-t border-gathering-outline-variant" />
 
-      <SpecHighlightsSimple highlights={specs} values={specValues} />
+      <TranslationStrip chips={stripChips} />
 
-      <ExtraFacts facts={facts} />
+      <SpecHighlightsSimple highlights={specs} values={specValues} category={product.category} />
+
+      <ExtraFacts facts={facts} category={product.category} />
 
       {/* "A futuro": qué se puede cambiar después y qué viene fijo — convierte
           las specs en estrategia de compra. Determinístico (getUpgradeNote),
@@ -417,6 +504,18 @@ export function ProductChatCard({
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ searchShareToken, sessionId, visitId: getOrCreateVisitId().id }),
             }).catch(() => {});
+            // Jugada #17: registrar el click de compra contra si el equipo fue
+            // recomendado (topPick) y en qué puesto — para medir de verdad la
+            // conversión "recomendado → comprado", no solo el conteo de clicks.
+            trackEvent("product_buy_click", getOrCreateVisitId().id, {
+              productId: eff.id,
+              metadata: {
+                recommended: !!isTopPick,
+                rank: pickRank ?? null,
+                shareToken: searchShareToken ?? null,
+                variantOfId: activeVariant ? product.id : null,
+              },
+            });
           }}
           className="gathering-btn-primary-gradient flex items-center justify-center gap-2 rounded-full py-2.5 text-center font-brand text-xs font-semibold text-white active:scale-[0.97]"
         >
@@ -471,6 +570,17 @@ export function ProductChatCard({
           <span className="material-symbols-outlined text-[16px]">{shared ? "check" : "share"}</span>
           {shared ? "¡Copiado!" : "Compartir opción"}
         </button>
+        {onAskAbout && (
+          <button
+            type="button"
+            onClick={() => onAskAbout(product)}
+            className="flex w-full items-center justify-center gap-1 rounded-full border border-gathering-outline-variant py-1.5 font-brand text-xs font-semibold text-gathering-on-surface-variant transition-colors hover:bg-black/5 active:scale-[0.97]"
+          >
+            <span className="material-symbols-outlined text-[16px]">chat</span>
+            Consultar sobre este equipo
+          </button>
+        )}
+        <PriceAlertControl productId={eff.id} currentPrice={eff.price_cash} />
       </div>
     </article>
   );

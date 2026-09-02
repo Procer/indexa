@@ -38,6 +38,7 @@ function toAlternativeProduct(p: EnrichedProduct): AlternativeProduct {
     specs: p.specs,
     upgrade_note: getUpgradeNote(p.category, p.specs, p.upgradeable),
     also_at: p.also_at,
+    price_verdict: p.price_verdict ?? null,
   };
 }
 

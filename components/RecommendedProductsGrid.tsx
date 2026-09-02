@@ -16,6 +16,7 @@ interface RecommendedProductsGridProps {
   onViewDetails: (product: AlternativeProduct) => void;
   onCompareToggle: (product: AlternativeProduct) => void;
   onCompareAdd?: (ids: string[], open?: boolean) => void;
+  onAskAbout?: (product: AlternativeProduct) => void;
   isCompared: (productId: string) => boolean;
   comparedIds?: string[];
   compareDisabled: boolean;
@@ -30,6 +31,7 @@ export function RecommendedProductsGrid({
   onViewDetails,
   onCompareToggle,
   onCompareAdd,
+  onAskAbout,
   isCompared,
   comparedIds,
   compareDisabled,
@@ -67,6 +69,7 @@ export function RecommendedProductsGrid({
               onViewDetails={onViewDetails}
               onCompareToggle={onCompareToggle}
               onCompareAdd={onCompareAdd}
+              onAskAbout={onAskAbout}
               isCompared={isCompared(p.id)}
               comparedIds={comparedIds}
               compareDisabled={compareDisabled}
@@ -98,6 +101,7 @@ export function RecommendedProductsGrid({
                 onViewDetails={onViewDetails}
                 onCompareToggle={onCompareToggle}
                 onCompareAdd={onCompareAdd}
+                onAskAbout={onAskAbout}
                 isCompared={isCompared(p.id)}
                 comparedIds={comparedIds}
                 compareDisabled={compareDisabled}

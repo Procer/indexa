@@ -10,11 +10,13 @@ import { expandQuery, generateQueryEmbedding } from "@/lib/llm/queryExpansion";
 import { enrichWithAnalysis } from "@/lib/llm/productAnalysis";
 import { hybridSearch } from "@/lib/search/hybridSearch";
 import { buildRankedPool } from "@/lib/search/pipeline";
+import { buildPriceVerdicts } from "@/lib/domain/priceVerdict";
 import {
   deleteBackgroundCache,
   deletePrelimCache,
   getAlsoAtCache,
   getBackgroundCache,
+  getCachedConfigPriceMedians,
   getPrelimCache,
   getStructuredCache,
   getStructuredPoolCache,
@@ -261,6 +263,8 @@ export async function POST(request: NextRequest) {
       // El caché estructurado solo guarda IDs, no also_at (se calculó en la búsqueda
       // en vivo que lo generó) — se recupera acá desde el caché por producto.
       const alsoAtByProduct = await Promise.all(cachedProducts.map((p) => getAlsoAtCache(p.id)));
+      const cachedConfigMedians = await getCachedConfigPriceMedians().catch(() => ({}));
+      const cachedPriceVerdicts = buildPriceVerdicts(cachedProducts, cachedConfigMedians);
       const enrichedCached: EnrichedProduct[] = cachedProducts.map((p, i) => ({
         ...p,
         similarity: 0,
@@ -271,6 +275,7 @@ export async function POST(request: NextRequest) {
         upgrade_note: null,
         analysis_from_cache: true,
         also_at: alsoAtByProduct[i] ?? undefined,
+        price_verdict: cachedPriceVerdicts.get(p.id) ?? null,
       }));
       saveSearch({
         rawInput: input,
@@ -341,6 +346,13 @@ export async function POST(request: NextRequest) {
 
     // 9. Enrich with LLM analysis
     const enrichedResults = await enrichWithAnalysis(mergedProducts, slots);
+
+    // Veredicto de precio vs. mediana de la config (jugada #15) — mediana del
+    // catálogo completo (cacheada 6h); cae al pool `merged` si esa config no
+    // tiene ≥3 unidades en el catálogo.
+    const configMedians = await getCachedConfigPriceMedians().catch(() => ({}));
+    const priceVerdicts = buildPriceVerdicts(merged, configMedians);
+    for (const p of enrichedResults) p.price_verdict = priceVerdicts.get(p.id) ?? null;
 
     // Persistir also_at por producto (non-blocking) — así sobrevive a un reload
     // de /search/[token] o a un futuro hit del caché estructurado, que traen los

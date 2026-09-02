@@ -11,6 +11,7 @@ import {
   normalizeTVSpecs,
 } from "@/lib/normalizer/specsExtractor";
 import type { ProductCategory, ProductSpecs, Upgradeable } from "@/types";
+import { normalizeMonthlyInstallment } from "@/lib/domain/installment";
 
 // ─── VTEX API types ───────────────────────────────────────────────────────────
 
@@ -188,7 +189,13 @@ export async function buildVtexProduct(
     specs: specResult.specs,
     upgradeable: upgradeableFor(category),
     price_cash: price,
-    price_installment: inst ? inst.Value : null,
+    // Normalizado a cuota mensual al ingerir (jugada #13) — algunas ofertas
+    // VTEX traen Value como total financiado.
+    price_installment: normalizeMonthlyInstallment(
+      price,
+      inst ? inst.Value : null,
+      inst ? inst.NumberOfInstallments : null
+    ),
     installment_count: inst ? inst.NumberOfInstallments : null,
     installment_info: formatInstallmentInfo(inst),
     currency: "ARS",

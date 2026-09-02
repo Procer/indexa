@@ -133,6 +133,11 @@ export default function AnalyticsPage() {
               <StatTile label="Pocos resultados" value={formatPct(data.fewResultRate)} />
               <StatTile label="Clicks a tienda" value={String(data.totalClicks)} />
               <StatTile label="Conversión" value={formatPct(data.conversionRate)} />
+              <StatTile label="Clicks de compra" value={String(data.buyClicks)} />
+              <StatTile
+                label="Compras de un recomendado"
+                value={`${formatPct(data.recommendedBuyShare)} · ${data.recommendedBuyClicks}/${data.buyClicks}`}
+              />
             </div>
 
             <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">

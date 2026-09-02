@@ -73,6 +73,7 @@ function toAlternativeProduct(p: EnrichedProduct): AlternativeProduct {
     upgrade_note: getUpgradeNote(p.category, p.specs, p.upgradeable),
     out_of_budget: p.out_of_budget,
     also_at: p.also_at,
+    price_verdict: p.price_verdict ?? null,
   };
 }
 
@@ -258,6 +259,10 @@ export default function SearchResultsPage() {
   const [chatRecommendations, setChatRecommendations] = useState<{ products: AlternativeProduct[]; topPickIds?: string[] } | null>(null);
   const [sortOrder, setSortOrder] = useState<"relevance" | "price_asc" | "price_desc">("relevance");
   const [chatOpen, setChatOpen] = useState(true);
+  // Jugada #11: pregunta ya redactada sobre un producto puntual, inyectada al
+  // chat desde el botón "Consultar sobre este equipo" de la tarjeta. `key`
+  // fuerza el efecto en GuidedSearchChat aunque el texto se repita.
+  const [askAboutMsg, setAskAboutMsg] = useState<{ text: string; key: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [questions, setQuestions] = useState<GuidingQuestion[]>([]);
@@ -704,6 +709,19 @@ export default function SearchResultsPage() {
     []
   );
 
+  // Jugada #11: abre el chat con una consulta ya redactada sobre este equipo,
+  // así el usuario no tiene que volver al chat y describirlo. El producto ya
+  // viaja en `products` al backend del chat, que arma su bloque de specs.
+  const handleAskAbout = (product: AlternativeProduct) => {
+    const name = [product.brand, product.title].filter(Boolean).join(" ");
+    setAskAboutMsg({
+      text: `Contame más sobre la ${name}. ¿Me conviene para lo que busco?`,
+      key: Date.now(),
+    });
+    setChatOpen(true);
+    trackEvent("product_ask_about", getOrCreateVisitId().id, { productId: product.id });
+  };
+
   const handleShare = () => {
     copyToClipboard(window.location.href);
     setCopied(true);
@@ -1031,6 +1049,7 @@ export default function SearchResultsPage() {
                   onViewDetails={handleViewDetails}
                   onCompareToggle={handleCompareToggleAlt}
                   onCompareAdd={addSimilarToCompare}
+                  onAskAbout={handleAskAbout}
                   isCompared={(id) => compareList.some((p) => p.id === id)}
                   comparedIds={compareList.map((p) => p.id)}
                   compareDisabled={compareList.length >= 5}
@@ -1067,6 +1086,7 @@ export default function SearchResultsPage() {
               shareToken={resolvedTokenRef.current}
               appliedRefinements={appliedRefinements}
               onRefine={handleChatRefine}
+              externalMessage={askAboutMsg}
             />
           </div>
         )}

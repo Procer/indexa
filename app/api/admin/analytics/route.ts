@@ -30,8 +30,9 @@ export async function GET(request: NextRequest) {
 
   let searchRows: AnalyticsSearchRow[];
   let clickRows: AnalyticsClickRow[];
+  let buyEventRows: { recommended: boolean }[];
   try {
-    [searchRows, clickRows] = await Promise.all([
+    [searchRows, clickRows, buyEventRows] = await Promise.all([
       sql<AnalyticsSearchRow[]>`
         SELECT share_token, slots, result_count, created_at
         FROM searches WHERE created_at >= ${cutoff}
@@ -39,6 +40,13 @@ export async function GET(request: NextRequest) {
       sql<AnalyticsClickRow[]>`
         SELECT product_id, search_share_token, created_at
         FROM product_clicks WHERE created_at >= ${cutoff}
+      `,
+      // Jugada #17: clicks de compra con la marca de si el equipo era un
+      // recomendado del chat (metadata.recommended, ver ProductChatCard).
+      sql<{ recommended: boolean }[]>`
+        SELECT COALESCE((metadata->>'recommended')::boolean, false) AS recommended
+        FROM site_events
+        WHERE event_type = 'product_buy_click' AND created_at >= ${cutoff}
       `,
     ]);
   } catch (error) {
@@ -104,6 +112,9 @@ export async function GET(request: NextRequest) {
   );
   const searchesWithClick = searchRows.filter((s) => searchTokensWithClick.has(s.share_token)).length;
 
+  const buyClicks = buyEventRows.length;
+  const recommendedBuyClicks = buyEventRows.filter((e) => e.recommended).length;
+
   const analytics: SearchAnalytics = {
     days,
     totalSearches,
@@ -111,6 +122,9 @@ export async function GET(request: NextRequest) {
     fewResultRate: totalSearches > 0 ? fewResultCount / totalSearches : 0,
     conversionRate: totalSearches > 0 ? searchesWithClick / totalSearches : 0,
     totalClicks: clickRows.length,
+    buyClicks,
+    recommendedBuyClicks,
+    recommendedBuyShare: buyClicks > 0 ? recommendedBuyClicks / buyClicks : 0,
     byDay,
     byCategory,
     topProducts,

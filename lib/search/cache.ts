@@ -244,6 +244,22 @@ export async function setChatGreetingCache(shareToken: string, payload: ChatGree
   await setToRedis(`chat_greeting:${shareToken}`, payload, REDIS_TTL_SECONDS);
 }
 
+// ─── Medianas de precio por config (jugada #15) ──────────────────────────────
+// La consulta agregada (getConfigPriceMedians) barre todo el catálogo — barata
+// pero no gratis. Se cachea 6h: el catálogo y sus precios se mueven en escala
+// de horas (sync 06:00), no de minutos.
+const CONFIG_MEDIANS_TTL_SECONDS = 6 * 60 * 60;
+const CONFIG_MEDIANS_KEY = "config_price_medians:v1";
+
+export async function getCachedConfigPriceMedians(): Promise<Record<string, number>> {
+  const cached = await getCache<Record<string, number>>(CONFIG_MEDIANS_KEY);
+  if (cached) return cached;
+  const { getConfigPriceMedians } = await import("@/lib/db/queries");
+  const fresh = await getConfigPriceMedians();
+  await setCache(CONFIG_MEDIANS_KEY, fresh, CONFIG_MEDIANS_TTL_SECONDS);
+  return fresh;
+}
+
 // Helpers genéricos para otras partes del sistema (alertas de precio, etc.)
 // El nombre "Redis" queda por compatibilidad con el resto del código que ya
 // los importa así — la implementación real es la tabla cache_kv de arriba.

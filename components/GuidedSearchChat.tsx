@@ -48,6 +48,9 @@ interface GuidedSearchChatProps {
   compact?: boolean;
   onMinimize?: () => void;
   onRecommendations?: (payload: { products: AlternativeProduct[]; topPickIds?: string[] }) => void;
+  // Jugada #11: mensaje inyectado desde afuera (botón "Consultar sobre este
+  // equipo" de una tarjeta). Cada cambio de `key` lo envía como turno del chat.
+  externalMessage?: { text: string; key: number } | null;
 }
 
 type ChatMessage = {
@@ -212,6 +215,7 @@ export function GuidedSearchChat({
   compact,
   onMinimize,
   onRecommendations,
+  externalMessage,
 }: GuidedSearchChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -480,6 +484,18 @@ export function GuidedSearchChat({
     setInput("");
     sendMessage(text);
   }
+
+  // Jugada #11: consulta inyectada desde una tarjeta ("Consultar sobre este
+  // equipo"). Se manda como turno normal del chat cuando ya estamos en fase de
+  // resultados; si todavía se está en preguntas, se ignora (no aplica).
+  const externalKeyRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!externalMessage || externalMessage.key === externalKeyRef.current) return;
+    externalKeyRef.current = externalMessage.key;
+    if (phaseRef.current !== "results" || waitingReply || searching) return;
+    sendMessage(externalMessage.text);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [externalMessage?.key]);
 
   const isGathering = phaseRef.current === "gathering" && products.length === 0;
   const busy = waitingReply || (isGathering && searching);

@@ -373,18 +373,24 @@ export function explainProductSpecs(
 // significa "SSD NVMe" o "i5-1135G7". La versión técnica queda disponible
 // aparte (spec_highlights) para quien la quiera desplegar.
 
-function ramBulletSimple(ramGb: number, requiredGb: number): string {
-  if (ramGb >= requiredGb * 2) return "Memoria: de sobra, multitarea sin trabas.";
-  if (ramGb > requiredGb) return "Memoria: más que suficiente para tu uso.";
-  if (ramGb === requiredGb) return "Memoria: justa pero cómoda para tu uso.";
-  return "Memoria: algo justa, puede tildarse con varias apps.";
+// `useLabel` viene de formatUseCasesLabel(useCases) — nombra el uso declarado
+// ("trabajo de oficina y ver películas") en vez de un genérico "tu uso", para
+// que el veredicto quede atado a lo que el usuario dijo que va a hacer. Si no
+// hay uso, formatUseCasesLabel devuelve "tu uso" y el texto queda como antes.
+// Las frases-marcador ("de sobra", "más que suficiente", "algo justa") se
+// conservan intactas: classifyHighlightLevel las usa para el color del punto.
+function ramBulletSimple(ramGb: number, requiredGb: number, useLabel: string): string {
+  if (ramGb >= requiredGb * 2) return `Memoria: de sobra para ${useLabel}, multitarea sin trabas.`;
+  if (ramGb > requiredGb) return `Memoria: más que suficiente para ${useLabel}.`;
+  if (ramGb === requiredGb) return `Memoria: justa pero cómoda para ${useLabel}.`;
+  return `Memoria: algo justa para ${useLabel}, puede tildarse con varias apps.`;
 }
 
-function processorBulletSimple(tier: ProcessorTier, requiredTier: ProcessorTier): string {
+function processorBulletSimple(tier: ProcessorTier, requiredTier: ProcessorTier, useLabel: string): string {
   const label = TIER_LABEL[tier];
-  if (TIER_RANK[tier] < TIER_RANK[requiredTier]) return `Rapidez: potencia ${label}, algo justa para lo que buscás.`;
-  if (TIER_RANK[tier] > TIER_RANK[requiredTier] + 1) return `Rapidez: potencia ${label}, de sobra para tu uso.`;
-  return `Rapidez: potencia ${label}, cómoda para tu uso.`;
+  if (TIER_RANK[tier] < TIER_RANK[requiredTier]) return `Rapidez: potencia ${label}, algo justa para ${useLabel}.`;
+  if (TIER_RANK[tier] > TIER_RANK[requiredTier] + 1) return `Rapidez: potencia ${label}, de sobra para ${useLabel}.`;
+  return `Rapidez: potencia ${label}, cómoda para ${useLabel}.`;
 }
 
 function storageBulletSimple(storageGb: number, storageType: StorageType): string {
@@ -691,13 +697,14 @@ export function explainProductSpecsSimple(
   title?: string
 ): string[] {
   specs = sanitizeSpecs(category, specs, title);
+  const useLabel = formatUseCasesLabel(useCases);
   if (category === "notebook" || category === "desktop") {
     const s = specs as Partial<NotebookSpecs>;
     if (s.ram_gb == null || s.processor_tier == null) return [];
     const required = getRequiredSpecs(useCases);
     const bullets = [
-      ramBulletSimple(s.ram_gb, required.ram_gb),
-      processorBulletSimple(s.processor_tier, required.processor_tier),
+      ramBulletSimple(s.ram_gb, required.ram_gb, useLabel),
+      processorBulletSimple(s.processor_tier, required.processor_tier, useLabel),
     ];
     if (required.gpu === "dedicated" && s.gpu) {
       bullets.push(gpuBulletSimple(s.gpu));
@@ -720,7 +727,7 @@ export function explainProductSpecsSimple(
     const wantsBattery = requiredList.some((r) => r.prefer_large_battery);
 
     const bullets: string[] = [];
-    if (s.ram_gb) bullets.push(ramBulletSimple(s.ram_gb, minRam));
+    if (s.ram_gb) bullets.push(ramBulletSimple(s.ram_gb, minRam, useLabel));
     if (s.storage_gb) bullets.push(`Almacenamiento: ${s.storage_gb}GB.`);
     if (wantsCamera && s.main_camera_mp) {
       bullets.push("Cámara: buena calidad de foto.");
@@ -779,6 +786,91 @@ export function classifyHighlightLevel(text: string): HighlightLevel {
   if (WARN_MARKERS.some((m) => lower.includes(m))) return "warn";
   if (GREAT_MARKERS.some((m) => lower.includes(m))) return "great";
   return "ok";
+}
+
+// ─── Tira de traducción de 3 iconos (jugada #8) ──────────────────────────────
+// Resumen escaneable de 1-2 palabras por spec clave, para captar el estado del
+// equipo de un vistazo. Las frases completas (el "por qué") viven en
+// explainProductSpecsSimple, en las líneas de abajo de la tarjeta. Reusa los
+// mismos umbrales que las versiones cortas (explainRamMeaning, etc.).
+export interface TranslationChip {
+  icon: string;
+  label: string;
+  word: string;
+  level: HighlightLevel;
+}
+
+export function translationStrip(
+  category: ProductCategory,
+  specs: ProductSpecs,
+  useCases: UseCase[],
+  title?: string
+): TranslationChip[] {
+  const s = sanitizeSpecs(category, specs, title) as Partial<NotebookSpecs & PhoneSpecs & TabletSpecs>;
+  const chips: TranslationChip[] = [];
+
+  if (category === "notebook" || category === "desktop") {
+    const req = getRequiredSpecs(useCases);
+    if (s.processor_tier) {
+      const rank = TIER_RANK[s.processor_tier] - TIER_RANK[req.processor_tier];
+      chips.push({
+        icon: "⚙️",
+        label: "Rapidez",
+        word: rank < 0 ? "justa" : rank > 1 ? "de sobra" : "cómoda",
+        level: rank < 0 ? "warn" : rank > 1 ? "great" : "ok",
+      });
+    }
+    if (s.ram_gb) {
+      const great = s.ram_gb >= req.ram_gb * 2;
+      const ok = s.ram_gb >= req.ram_gb;
+      chips.push({
+        icon: "🍳",
+        label: "Memoria",
+        word: great ? "de sobra" : ok ? "suficiente" : "justa",
+        level: great ? "great" : ok ? "ok" : "warn",
+      });
+    }
+    if (s.storage_gb) {
+      chips.push({
+        icon: "🗄️",
+        label: "Espacio",
+        word: s.storage_gb >= 512 ? "amplio" : s.storage_gb >= 256 ? "cómodo" : "justo",
+        level: s.storage_gb >= 256 ? "ok" : "warn",
+      });
+    }
+    return chips.slice(0, 3);
+  }
+
+  if (category === "phone" || category === "tablet") {
+    if (s.ram_gb) {
+      chips.push({
+        icon: "🍳",
+        label: "Memoria",
+        word: s.ram_gb >= 8 ? "fluida" : "básica",
+        level: s.ram_gb >= 8 ? "ok" : "warn",
+      });
+    }
+    if (s.storage_gb) {
+      chips.push({
+        icon: "🗄️",
+        label: "Espacio",
+        word: s.storage_gb >= 256 ? "amplio" : s.storage_gb >= 128 ? "cómodo" : "justo",
+        level: s.storage_gb >= 128 ? "ok" : "warn",
+      });
+    }
+    const batt = (s as Partial<PhoneSpecs>).battery_mah;
+    if (category === "phone" && batt) {
+      chips.push({
+        icon: "🔋",
+        label: "Batería",
+        word: batt >= 5000 ? "grande" : "normal",
+        level: batt >= 5000 ? "great" : "ok",
+      });
+    }
+    return chips.slice(0, 3);
+  }
+
+  return chips;
 }
 
 /** Frase corta ("es ideal para X gracias a Y") para usos como el veredicto del comparador. */
