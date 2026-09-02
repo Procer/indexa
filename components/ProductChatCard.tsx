@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { OtherStoresButton } from "./OtherStoresButton";
-import { classifyHighlightLevel } from "@/lib/domain/specExplainer";
-import { LEVEL_DOT, LEVEL_POSITION } from "./SpecHighlights";
+import { classifyHighlightLevel, extraCardFacts, shortSpecValues, type CardFact } from "@/lib/domain/specExplainer";
+import { buildSelectionShareText } from "@/lib/domain/shareSelection";
+import { LEVEL_DOT } from "./SpecHighlights";
 import { withBasePath } from "@/lib/basePath";
 import { getOrCreateVisitId } from "@/lib/analytics/visit";
 import { formatPrice, storeLogoUrl, storeName } from "@/lib/domain/productDisplay";
@@ -20,18 +21,47 @@ function specLabel(highlight: string): string {
   return idx === -1 ? highlight : highlight.slice(0, idx).trim();
 }
 
-// Dos líneas separadas en vez de una sola unida con " · " — juntas en una
-// tira nowrap se pasaban del ancho de la tarjeta y la última palabra
-// quedaba cortada por el overflow-hidden de la tarjeta (ej. "18 cuotas" se
-// veía como "18 cuota").
-function priceLines(product: AlternativeProduct): string[] {
-  const lines: string[] = [];
-  if (product.price_cash) lines.push(`${formatPrice(product.price_cash)} contado`);
-  if (product.price_installment && product.installment_count) {
-    const cuota = product.installment_count === 1 ? "cuota" : "cuotas";
-    lines.push(`${formatPrice(product.price_installment)}/mes en ${product.installment_count} ${cuota}`);
+function specDesc(highlight: string): string {
+  const idx = highlight.indexOf(":");
+  const desc = idx === -1 ? highlight : highlight.slice(idx + 1).trim();
+  // Sin el punto final: en una lista de líneas cortas se lee más limpio.
+  return desc.replace(/\.$/, "");
+}
+
+// Bloque de precio: número grande + unidad, y una línea chica debajo. El orden
+// depende de cómo eligió pagar el usuario — si buscó "por mes / en cuotas", el
+// número grande es la cuota mensual, no "$X contado" (bug reportado: la tarjeta
+// decía "contado" cuando la búsqueda era en cuotas).
+interface PriceBlock {
+  leadAmount: string;
+  leadUnit: string;
+  sub: string | null;
+}
+
+function priceBlock(
+  p: { price_cash: number | null; price_installment: number | null; installment_count?: number | null },
+  mode: "cash" | "installments"
+): PriceBlock | null {
+  const cash = p.price_cash ? formatPrice(p.price_cash) : null;
+  const inst =
+    p.price_installment && p.installment_count
+      ? { amount: formatPrice(p.price_installment), count: p.installment_count }
+      : null;
+  const instUnit = inst ? `/mes · ${inst.count} ${inst.count === 1 ? "cuota" : "cuotas"}` : "";
+  const instLong = inst
+    ? `${inst.amount}/mes en ${inst.count} ${inst.count === 1 ? "cuota" : "cuotas"}`
+    : null;
+
+  if (mode === "installments" && inst) {
+    return { leadAmount: inst.amount, leadUnit: instUnit, sub: cash ? `${cash} contado` : null };
   }
-  return lines;
+  if (cash) {
+    return { leadAmount: cash, leadUnit: "contado", sub: instLong };
+  }
+  if (inst) {
+    return { leadAmount: inst.amount, leadUnit: instUnit, sub: null };
+  }
+  return null;
 }
 
 const QUALITY_SCORE_STYLE: Record<string, string> = {
@@ -56,8 +86,21 @@ interface ProductChatCardProps {
   // de resultados maneja la comparación desde su propio botón de header
   // (ver GuidedSearchChat), no por tarjeta.
   onCompareToggle?: (product: AlternativeProduct) => void;
+  // Jugada #5: agregar modelos parecidos (del modal "En otras tiendas") al
+  // comparador. `ids` ya incluye el id de este producto.
+  onCompareAdd?: (ids: string[], open?: boolean) => void;
+  comparedIds?: string[];
+  // Cómo eligió pagar el usuario en la búsqueda — decide si el número grande
+  // del precio es el contado o la cuota mensual. Default "cash".
+  paymentMode?: "cash" | "installments";
   isCompared?: boolean;
   compareDisabled?: boolean;
+  // Cuando el set de resultados mezcla opciones dentro y fuera del presupuesto
+  // pedido (pasa cuando el usuario pidió una marca/procesador puntual y algunas
+  // se van de precio): las que SÍ entran llevan un chip verde de contraste. Las
+  // que no entran ya llevan el badge "Fuera de presupuesto". Si entra todo, no
+  // se ensucia ninguna tarjeta con chips.
+  showBudgetFit?: boolean;
 }
 
 // Logo de la tienda (favicon por dominio, ver lib/domain/productDisplay.ts)
@@ -78,47 +121,90 @@ function StoreLogo({ source }: { source: string }) {
   );
 }
 
-// Specs escondidas detrás de un acordeón (cerrado por defecto) — a pedido
-// explícito del usuario, para no ocupar espacio de la tarjeta con la barra
-// semáforo de entrada. Cada spec como barra semáforo (mismo criterio que el
-// modo "Barra" de SpecHighlights: posición del punto en rojo/ámbar/verde).
-function SpecsAccordion({ specs }: { specs: string[] }) {
-  const [open, setOpen] = useState(false);
-  if (specs.length === 0) return null;
+// Lectura en lenguaje llano — SIEMPRE visible (antes vivía detrás del acordeón
+// "Ver specs", cerrado por defecto, así que el usuario no técnico nunca la
+// veía). Cada línea: punto de color semáforo (great/ok/warn) + etiqueta
+// funcional (Rapidez / Memoria / Almacenamiento…) + veredicto de una frase.
+// La ficha técnica cruda (nombre de procesador, tipo de SSD, GB) queda abajo
+// en el acordeón para quien la pida.
+function SpecHighlightsSimple({
+  highlights,
+  values,
+}: {
+  highlights: string[];
+  values: Record<string, string>;
+}) {
+  if (highlights.length === 0) return null;
 
   return (
-    <div className="mb-4">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between font-brand text-xs font-semibold text-gathering-on-surface-variant hover:text-gathering-on-surface"
-      >
-        Ver specs
-        <span
-          className={`material-symbols-outlined text-[18px] transition-transform duration-150 ${open ? "rotate-180" : ""}`}
-        >
-          expand_more
-        </span>
-      </button>
-      {open && (
-        <ul className="mt-2 flex flex-col gap-2">
-          {specs.map((h) => {
-            const level = classifyHighlightLevel(h);
-            return (
-              <li key={h} className="flex items-center gap-2 font-brand text-xs text-gathering-on-surface-variant">
-                <span className="min-w-0 flex-1 truncate">{specLabel(h)}</span>
-                <span className="relative h-1.5 w-14 shrink-0 rounded-full bg-gradient-to-r from-red-400/30 via-amber-400/30 to-emerald-400/30">
-                  <span
-                    className={`absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 -translate-x-1/2 rounded-full border-2 border-gathering-surface-container-low shadow ${LEVEL_DOT[level]}`}
-                    style={{ left: `${LEVEL_POSITION[level]}%` }}
-                  />
+    <ul className="mb-3 flex flex-col gap-1.5">
+      {highlights.map((h) => {
+        const level = classifyHighlightLevel(h);
+        const label = specLabel(h);
+        const value = values[label.toLowerCase()];
+        // Se saca SIEMPRE el número que a veces abre el veredicto ("512GB, abre
+        // todo casi al instante"): si hay chip, para no repetirlo; si no hay
+        // chip (dato inverosímil que no se pudo recuperar), para no mostrar un
+        // número posiblemente falso. El chip es la única fuente del valor.
+        const desc = specDesc(h).replace(/^\d[\d.,]*\s*(gb|tb)\b[,:]?\s*/i, "");
+        return (
+          <li
+            key={h}
+            className="flex gap-2 font-brand text-xs leading-snug text-gathering-on-surface-variant"
+          >
+            <span
+              className={`mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full ${LEVEL_DOT[level]}`}
+              aria-hidden
+            />
+            <span className="min-w-0">
+              <span className="font-bold uppercase tracking-wide text-gathering-on-surface">
+                {label}
+              </span>
+              {value && (
+                <span className="mx-1 rounded bg-gathering-surface-container-highest px-1.5 py-px text-[10px] font-bold text-gathering-on-surface">
+                  {value}
                 </span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
+              )}{" "}
+              {desc}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+// Datos físicos en lenguaje llano (pantalla, peso, tamaño) con comparaciones
+// concretas — "como una hoja A4", "como una botella de agua de 1½ litro". Punto
+// neutro (no semáforo): son descriptivos, no un juicio de "alcanza / no alcanza".
+function ExtraFacts({ facts }: { facts: CardFact[] }) {
+  if (facts.length === 0) return null;
+
+  return (
+    <ul className="mb-3 flex flex-col gap-1.5">
+      {facts.map((f) => (
+        <li
+          key={f.label}
+          className="flex gap-2 font-brand text-xs leading-snug text-gathering-on-surface-variant"
+        >
+          <span
+            className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-gathering-outline-variant"
+            aria-hidden
+          />
+          <span className="min-w-0">
+            <span className="font-bold uppercase tracking-wide text-gathering-on-surface">
+              {f.label}
+            </span>
+            {f.value && (
+              <span className="mx-1 rounded bg-gathering-surface-container-highest px-1.5 py-px text-[10px] font-bold text-gathering-on-surface">
+                {f.value}
+              </span>
+            )}{" "}
+            {f.text}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -132,13 +218,61 @@ export function ProductChatCard({
   searchShareToken,
   sessionId,
   onCompareToggle,
+  onCompareAdd,
+  comparedIds,
+  paymentMode = "cash",
   isCompared,
   compareDisabled,
+  showBudgetFit,
 }: ProductChatCardProps) {
-  const store = storeName(product.source);
   const specs = product.spec_highlights_simple ?? [];
-  const price = priceLines(product);
-  const hasBadge = isTopPick || !!product.quality_price_score || !!product.out_of_budget;
+  const specValues = product.specs
+    ? shortSpecValues(product.category, product.specs, product.title)
+    : {};
+  const facts = product.specs ? extraCardFacts(product.category, product.specs, product.title) : [];
+  const [shared, setShared] = useState(false);
+
+  // Selector de variante (casi-duplicados colapsados: color / SO / 256↔512GB).
+  // Al elegir una cambian PRECIO y LINK DE COMPRA; las specs siguen siendo las
+  // del primario (ver AlternativeProduct.variants / groupVariants).
+  const variants = product.variants ?? [];
+  const [activeVariantId, setActiveVariantId] = useState(product.id);
+  const activeVariant = variants.find((v) => v.id === activeVariantId) ?? null;
+  const eff = {
+    id: activeVariant?.id ?? product.id,
+    source: activeVariant?.source ?? product.source,
+    price_cash: activeVariant ? activeVariant.price_cash : product.price_cash,
+    price_installment: activeVariant ? activeVariant.price_installment : product.price_installment,
+    installment_count: activeVariant ? activeVariant.installment_count : product.installment_count ?? null,
+    url: activeVariant?.url ?? product.url,
+    affiliate_url: activeVariant ? activeVariant.affiliate_url : product.affiliate_url,
+  };
+  const store = storeName(eff.source);
+  const pb = priceBlock(eff, paymentMode);
+
+  // Compartir ESTA opción (con la variante elegida) desde los resultados: specs
+  // en lenguaje corto + precio + link de compra. Menú nativo en mobile,
+  // portapapeles como fallback en desktop.
+  async function handleShare() {
+    const text = buildSelectionShareText([{ ...product, ...eff }]);
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title: product.title, text });
+        return;
+      } catch {
+        // usuario canceló o el navegador rechazó → cae al portapapeles
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // sin portapapeles (contexto inseguro) → no hay más fallback silencioso
+    }
+    setShared(true);
+    setTimeout(() => setShared(false), 2000);
+  }
+  const inBudgetChip = showBudgetFit && !product.out_of_budget;
+  const hasBadge = isTopPick || !!product.quality_price_score || !!product.out_of_budget || inBudgetChip;
 
   return (
     <article
@@ -168,6 +302,11 @@ export function ProductChatCard({
           {product.out_of_budget && (
             <span className="flex items-center gap-1 rounded-full bg-orange-600 px-2.5 py-1 font-brand text-[10px] font-bold uppercase tracking-wider text-white shadow-sm">
               <span aria-hidden>⚠</span> Fuera de presupuesto
+            </span>
+          )}
+          {inBudgetChip && (
+            <span className="flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 font-brand text-[10px] font-bold uppercase tracking-wider text-white shadow-sm">
+              <span aria-hidden>✓</span> En tu presupuesto
             </span>
           )}
         </div>
@@ -200,32 +339,80 @@ export function ProductChatCard({
         <h4 className="line-clamp-2 font-brand text-sm font-bold leading-snug text-gathering-on-surface">{product.title}</h4>
       </div>
 
+      {/* Selector de variante — casi-duplicados (color / SO / disco) colapsados.
+          Cambia precio y link de compra; las specs quedan las del primario. */}
+      {variants.length > 1 && (
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          {variants.map((v) => {
+            const activeThis = v.id === activeVariantId;
+            return (
+              <button
+                key={v.id}
+                type="button"
+                onClick={() => setActiveVariantId(v.id)}
+                aria-pressed={activeThis}
+                className={`rounded-full border px-2 py-0.5 font-brand text-[11px] font-semibold transition-colors ${
+                  activeThis
+                    ? "border-gathering-primary-fixed-dim bg-gathering-primary/10 text-gathering-primary-fixed-dim"
+                    : "border-gathering-outline-variant text-gathering-on-surface-variant hover:bg-black/5"
+                }`}
+              >
+                {v.label}
+                {v.price_cash ? (
+                  <span className="ml-1 font-normal opacity-70">{formatPrice(v.price_cash)}</span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Precio — altura fija y alineado abajo, así todas las tarjetas de una
           fila arrancan el precio a la misma altura sin importar si el título
-          de al lado ocupó una o dos líneas. */}
+          de al lado ocupó una o dos líneas. El número grande es la cuota
+          mensual si el usuario buscó "en cuotas", si no el contado. */}
       <div className="mb-3 flex min-h-[3rem] flex-col justify-end">
-        {price[0] && (
+        {pb && (
           <p className="font-brand text-base font-bold text-gathering-primary-fixed-dim">
-            {price[0].replace(" contado", "")}
-            <span className="ml-1 font-brand text-xs font-normal text-gathering-on-surface-variant">contado</span>
+            {pb.leadAmount}
+            <span className="ml-1 font-brand text-xs font-normal text-gathering-on-surface-variant">
+              {pb.leadUnit}
+            </span>
           </p>
         )}
-        {price[1] && <p className="font-brand text-xs font-medium text-gathering-primary">{price[1]}</p>}
+        {pb?.sub && <p className="font-brand text-xs font-medium text-gathering-primary">{pb.sub}</p>}
       </div>
 
       <hr className="mb-3 border-t border-gathering-outline-variant" />
 
-      <SpecsAccordion specs={specs} />
+      <SpecHighlightsSimple highlights={specs} values={specValues} />
+
+      <ExtraFacts facts={facts} />
+
+      {/* "A futuro": qué se puede cambiar después y qué viene fijo — convierte
+          las specs en estrategia de compra. Determinístico (getUpgradeNote),
+          calculado en el conversor a AlternativeProduct. */}
+      {product.upgrade_note && (
+        <div className="mb-3 flex gap-1.5 rounded-md bg-gathering-surface-container-highest/40 px-2.5 py-2 font-brand text-[11px] leading-snug text-gathering-on-surface-variant">
+          <span
+            className="material-symbols-outlined mt-px shrink-0 text-[14px] text-gathering-primary-fixed-dim"
+            aria-hidden
+          >
+            upgrade
+          </span>
+          <span className="min-w-0">{product.upgrade_note}</span>
+        </div>
+      )}
 
       {/* Acciones — siempre pegadas abajo del todo (mt-auto), aunque la
           tarjeta de al lado tenga más contenido arriba. */}
       <div className="mt-auto flex flex-col gap-2">
         <a
-          href={product.affiliate_url ?? product.url}
+          href={eff.affiliate_url ?? eff.url}
           target="_blank"
           rel="noopener noreferrer"
           onClick={() => {
-            fetch(withBasePath(`/api/products/${product.id}/click`), {
+            fetch(withBasePath(`/api/products/${eff.id}/click`), {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ searchShareToken, sessionId, visitId: getOrCreateVisitId().id }),
@@ -233,7 +420,7 @@ export function ProductChatCard({
           }}
           className="gathering-btn-primary-gradient flex items-center justify-center gap-2 rounded-full py-2.5 text-center font-brand text-xs font-semibold text-white active:scale-[0.97]"
         >
-          <StoreLogo source={product.source} />
+          <StoreLogo source={eff.source} />
           Comprar en {store}
         </a>
         <div className={`grid gap-2 ${onCompareToggle ? "grid-cols-2" : "grid-cols-1"}`}>
@@ -262,18 +449,28 @@ export function ProductChatCard({
           )}
         </div>
         <OtherStoresButton
-          productId={product.id}
+          productId={eff.id}
           productTitle={product.title}
           current={{
-            source: product.source,
-            price_cash: product.price_cash,
-            price_installment: product.price_installment,
-            installment_count: product.installment_count ?? null,
-            url: product.url,
-            affiliate_url: product.affiliate_url,
+            source: eff.source,
+            price_cash: eff.price_cash,
+            price_installment: eff.price_installment,
+            installment_count: eff.installment_count,
+            url: eff.url,
+            affiliate_url: eff.affiliate_url,
           }}
+          onCompareAdd={onCompareAdd}
+          comparedIds={comparedIds}
           triggerClassName="flex w-full items-center justify-center gap-1 rounded-full border border-gathering-outline-variant py-1.5 font-brand text-xs font-semibold text-gathering-on-surface-variant transition-colors hover:bg-black/5 active:scale-[0.97]"
         />
+        <button
+          type="button"
+          onClick={handleShare}
+          className="flex w-full items-center justify-center gap-1 rounded-full border border-gathering-outline-variant py-1.5 font-brand text-xs font-semibold text-gathering-on-surface-variant transition-colors hover:bg-black/5 active:scale-[0.97]"
+        >
+          <span className="material-symbols-outlined text-[16px]">{shared ? "check" : "share"}</span>
+          {shared ? "¡Copiado!" : "Compartir opción"}
+        </button>
       </div>
     </article>
   );

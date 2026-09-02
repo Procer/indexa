@@ -1,6 +1,7 @@
 "use client";
 
 import { ProductChatCard } from "@/components/ProductChatCard";
+import { groupVariants } from "@/lib/domain/variantGroup";
 import type { AlternativeProduct } from "@/types";
 
 // Grilla de resultados de la pantalla principal — antes esto vivía adentro
@@ -14,10 +15,13 @@ interface RecommendedProductsGridProps {
   topPickIds?: string[] | null;
   onViewDetails: (product: AlternativeProduct) => void;
   onCompareToggle: (product: AlternativeProduct) => void;
+  onCompareAdd?: (ids: string[], open?: boolean) => void;
   isCompared: (productId: string) => boolean;
+  comparedIds?: string[];
   compareDisabled: boolean;
   searchShareToken?: string;
   sessionId?: string;
+  paymentMode?: "cash" | "installments";
 }
 
 export function RecommendedProductsGrid({
@@ -25,19 +29,30 @@ export function RecommendedProductsGrid({
   topPickIds,
   onViewDetails,
   onCompareToggle,
+  onCompareAdd,
   isCompared,
+  comparedIds,
   compareDisabled,
   searchShareToken,
   sessionId,
+  paymentMode = "cash",
 }: RecommendedProductsGridProps) {
   if (products.length === 0) return null;
+
+  // Si el set mezcla opciones dentro y fuera del presupuesto pedido, las que
+  // entran llevan un chip verde de contraste (ver ProductChatCard.showBudgetFit).
+  const showBudgetFit = products.some((p) => p.out_of_budget);
 
   const byId = new Map(products.map((p) => [p.id, p]));
   const topPicks = (topPickIds ?? [])
     .map((id) => byId.get(id))
     .filter((p): p is AlternativeProduct => !!p);
   const topPickIdSet = new Set(topPicks.map((p) => p.id));
-  const rest = topPicks.length > 0 ? products.filter((p) => !topPickIdSet.has(p.id)) : products;
+  // Los topPicks (curados por el chat) se muestran tal cual. El "resto" se
+  // colapsa: casi-duplicados (color / SO / 256↔512GB) van a una sola tarjeta
+  // con selector, liberando lugares del top para variedad real.
+  const restBase = topPicks.length > 0 ? products.filter((p) => !topPickIdSet.has(p.id)) : products;
+  const rest = groupVariants(restBase);
 
   return (
     <div className="flex flex-col gap-4">
@@ -51,10 +66,14 @@ export function RecommendedProductsGrid({
               pickRank={i + 1}
               onViewDetails={onViewDetails}
               onCompareToggle={onCompareToggle}
+              onCompareAdd={onCompareAdd}
               isCompared={isCompared(p.id)}
+              comparedIds={comparedIds}
               compareDisabled={compareDisabled}
               searchShareToken={searchShareToken}
               sessionId={sessionId}
+              paymentMode={paymentMode}
+              showBudgetFit={showBudgetFit}
             />
           ))}
         </div>
@@ -78,10 +97,14 @@ export function RecommendedProductsGrid({
                 product={p}
                 onViewDetails={onViewDetails}
                 onCompareToggle={onCompareToggle}
+                onCompareAdd={onCompareAdd}
                 isCompared={isCompared(p.id)}
+                comparedIds={comparedIds}
                 compareDisabled={compareDisabled}
                 searchShareToken={searchShareToken}
                 sessionId={sessionId}
+                paymentMode={paymentMode}
+                showBudgetFit={showBudgetFit}
               />
             ))}
           </div>

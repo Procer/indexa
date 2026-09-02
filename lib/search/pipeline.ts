@@ -1,12 +1,13 @@
 import { getActiveSponsoredPlacements, getProductsByBrand, getProductsBySpec, getProductsByIds, getSearchPipelineInputs } from "@/lib/db/queries";
 import { getPoolCache, setPoolCache } from "@/lib/search/cache";
 import { hybridSearch } from "@/lib/search/hybridSearch";
-import { scoreResults } from "@/lib/search/scorer";
+import { scoreResults, qualityPriceBoost } from "@/lib/search/scorer";
 import { getRequiredSpecs, TIER_RANK } from "@/lib/domain/usageToSpecs";
 import { buildDedupeKey } from "@/lib/domain/dedupe";
+import { estimatedMonthly } from "@/lib/domain/budgetFit";
 import type { NotebookSpecs, Product, Slots, SponsoredPlacement } from "@/types";
 
-export const ACCESSORY_KEYWORDS = /\b(mochila|funda|bolso|bolsa|mouse|teclado|auricular|parlante|cable|adaptador|hub|soporte|pad|mousepad|cargador|fuente|cuaderno|batería externa|cooler|ventilador|limpiador|kit de limpieza|escritorio|silla|mueble|biblioteca|estante|rack de|mesa|armario|cajonera|archivero|repisa|librería|organizador|base para|kit de|powerbank|reloj|smart\s*watch)\b/i;
+export const ACCESSORY_KEYWORDS = /\b(mochila|funda|bolso|bolsa|mouse|teclado|auricular|parlante|cable|adaptador|hub|soporte|pad|mousepad|cargador|fuente|cuaderno|bater[ií]a externa|power\s*bank|cooler|ventilador|limpiador|kit de limpieza|escritorio|silla|mueble|biblioteca|estante|rack de|mesa|armario|cajonera|archivero|repisa|librer[ií]a|organizador|base para|kit de|reloj|smart\s*watch|smart\s*band|pulsera inteligente|vidrio templado|templado|protector de pantalla|mica|carcasa|estuche|case|manos libres|micro\s?sd|tarjeta de memoria|tr[ií]pode|gimbal|estabilizador|palo selfie|selfie stick|a(?:ro|nillo) de luz|l[aá]mpara|difusor)\b/i;
 
 // A pedido explícito del usuario: Celeron/Pentium/Athlon (la gama de entrada
 // más floja de Intel/AMD) nunca se recomiendan en notebook/desktop, sin
@@ -15,6 +16,40 @@ export const ACCESSORY_KEYWORDS = /\b(mochila|funda|bolso|bolsa|mouse|teclado|au
 // siendo válido para i3/Ryzen 3 de entrada): es una exclusión dura sobre
 // estas familias puntuales de chip.
 const WEAK_PROCESSOR_RE = /celeron|pentium|athlon/i;
+
+// Tablets "infantiles" ("Tablet Infantil ...", "para niños", "kids") — solo son
+// la recomendación correcta si el usuario está comprando puntualmente para un
+// chico. No hay un use_case "kids" en el enum (ver detectUseCase.ts: "Para mis
+// hijos" queda sin mapear a propósito), así que la intención se detecta en el
+// texto crudo de la búsqueda. Sin esa señal, una tablet infantil rankeando #1
+// para "tablet para trabajo" es un bug (reportado en vivo 2026-08-31). Solo
+// aplica a category=tablet.
+const KIDS_TABLET_RE = /\binfantil(?:es)?\b|\bkids?\b|para (?:ni[ñn][oa]s?|chic[oa]s|nen[ea]s)\b/i;
+
+// Formato puntual pedido en el texto de la búsqueda ("samsung fold", "celular
+// plegable", "un flip"). No hay un slot para esto — se usa solo para que la
+// transparencia de presupuesto de abajo traiga la línea correcta (ej. los Z
+// Fold/Flip de $2M+) en vez de los 8 celulares más baratos de la marca.
+// "plegable"/"foldable" caen a "fold" (la variante más pedida).
+function detectFormFactor(queryText: string | undefined): string | null {
+  if (!queryText) return null;
+  if (/\bflip\b/i.test(queryText)) return "flip";
+  if (/\bfold(able)?\b|\bplegable\b/i.test(queryText)) return "fold";
+  return null;
+}
+const KIDS_INTENT_RE = /\binfantil\b|\bkids?\b|\bhij[oa]s?\b|\bnen[ea]s?\b|\bni[ñn][oa]s?\b|para (?:mi|los|las|un[ao]?) (?:hij|chic|nen|ni[ñn])/i;
+
+// Marcas reales de tablets en el mercado AR. Una tablet de marca fuera de esta
+// lista que además declara RAM altísima (>10GB) casi siempre tiene la spec
+// inventada por la tienda/importador (visto en vivo: "aiprotablet 24GB RAM",
+// "ATOZEE YQ10SMAX 18GB RAM", "PEICHENG 10GB" — físicamente imposible a ese
+// precio; el tope real del mercado es la Galaxy Tab S9/S10 con 12GB). Se
+// penaliza fuerte en el re-rank, no se excluye (puede haber una genérica
+// honesta con specs bajas más abajo en la lista).
+const MAINSTREAM_TABLET_BRANDS = new Set([
+  "samsung", "lenovo", "xiaomi", "apple", "motorola", "huawei", "tcl",
+  "nokia", "alcatel", "positivo", "philco", "hyundai", "kanji",
+]);
 
 // La marca preferida (slots.preferences.brands_preferred) no forma parte de
 // expanded_query (ver prompts.ts) ni de los filtros SQL de hybridSearch (solo
@@ -85,8 +120,17 @@ export async function buildRankedPool(params: {
     .map((product) => ({
       ...product,
       similarity: scoreMap.get(product.id)!.similarity,
-      final_score: scoreMap.get(product.id)!.final_score,
+      // El grado de calidad/precio recién está disponible acá (getProductsByIds
+      // trae el Product completo; hybrid_search/scoreResults no lo ven). Ajuste
+      // acotado ±0.06 — ver qualityPriceBoost en scorer.ts.
+      final_score: scoreMap.get(product.id)!.final_score + qualityPriceBoost(product.quality_price_score),
     }));
+
+  // Re-ordenar con el ajuste de calidad/precio ya incorporado: en el path
+  // angosto no hay otro sort garantizado antes del dedupe (los re-ranks de
+  // over-spec / tablet más abajo son condicionales). Idempotente para el path
+  // wide, que vuelve a ordenar por final_score enseguida.
+  scoredProducts.sort((a, b) => b.final_score - a.final_score);
 
   if (needsWidePool) {
     // Prioridad dura para marca preferida, no un empujón de score: un boost
@@ -138,25 +182,34 @@ export async function buildRankedPool(params: {
       // mensual (bug reportado en vivo: "quiero dell" con presupuesto en cuotas
       // decía que no había ninguna). Mismo criterio que la migración del filtro
       // SQL: si no hay price_installment cargado, se estima con price_cash / 12.
+      // 20% de tolerancia antes de marcar "fuera de presupuesto" — mismo slack
+      // que el filtro SQL y classifyBudgetFit (ver BUDGET_TOLERANCE en
+      // budgetFit.ts): que $1.000/mes de diferencia no dispare el badge naranja.
       const maxMonthly = slots.budget_monthly_ars;
       const isOverMonthly = (p: Product) => {
         if (maxMonthly == null) return false;
-        const monthly = p.price_installment ?? (p.price_cash != null ? p.price_cash / 12 : null);
-        return monthly != null && monthly > maxMonthly;
+        const monthly = estimatedMonthly(p);
+        return monthly != null && monthly > maxMonthly * 1.2;
       };
       const isOutOfBudget = (p: Product) =>
-        (maxCash != null && (p.price_cash ?? 0) > maxCash) ||
+        (maxCash != null && (p.price_cash ?? 0) > maxCash * 1.2) ||
         (minCash != null && (p.price_cash ?? Infinity) < minCash) ||
         isOverMonthly(p);
       const tagOutOfBudget = (p: Product): "above" | "below" =>
-        (maxCash != null && (p.price_cash ?? 0) > maxCash) || isOverMonthly(p) ? "above" : "below";
+        (maxCash != null && (p.price_cash ?? 0) > maxCash * 1.2) || isOverMonthly(p) ? "above" : "below";
 
       // Se juntan los extras de marca y de procesador en una sola tanda antes
       // de insertar — así un producto que matchea ambos no se cuenta/inserta
       // dos veces (seenIds se actualiza entre una búsqueda y la otra).
+      const formFactor = detectFormFactor(queryText);
       let outOfBudgetExtras: RankedProduct[] = [];
       if (hasBrandPreference) {
-        const candidates = await getProductsByBrand(slots.category, slots.preferences.brands_preferred, 8);
+        const candidates = await getProductsByBrand(
+          slots.category,
+          slots.preferences.brands_preferred,
+          formFactor ? 12 : 8,
+          formFactor ?? undefined
+        );
         const extras = candidates
           .filter((p) => !seenIds.has(p.id) && isOutOfBudget(p))
           .slice(0, 2)
@@ -174,7 +227,14 @@ export async function buildRankedPool(params: {
         outOfBudgetExtras = outOfBudgetExtras.concat(extras);
       }
       if (outOfBudgetExtras.length > 0) {
-        const insertAt = Math.max(brandMatchCount, processorMatchCount);
+        // Se insertan justo después de los matches reales dentro de
+        // presupuesto — pero con un tope de 3: cuando TODO el pool es la marca
+        // pedida (ej. "samsung fold", la marca es prácticamente un filtro
+        // duro), brandMatchCount ≈ 60 y los extras quedaban al final del pool,
+        // fuera del top-20 que ve la grilla y el saludo (bug: "quiero samsung
+        // fold" no mostraba ningún Z Fold marcado ni lo mencionaba el chat).
+        // Con el tope quedan visibles arriba, con su badge "fuera de presupuesto".
+        const insertAt = Math.min(Math.max(brandMatchCount, processorMatchCount), 3);
         scoredProducts = [
           ...scoredProducts.slice(0, insertAt),
           ...outOfBudgetExtras,
@@ -183,6 +243,11 @@ export async function buildRankedPool(params: {
       }
     }
   }
+
+  // ¿El usuario está comprando puntualmente para un chico? (texto crudo de la
+  // búsqueda — el flujo guiado concatena todo: "...Tablet. Trabajo. hasta...").
+  // Sin esta señal se filtran las tablets infantiles más abajo.
+  const kidsIntent = KIDS_INTENT_RE.test(queryText ?? "");
 
   // Agrupar por buildDedupeKey en vez de descartar duplicados: el pool ya viene
   // ordenado por score, así que el primero de cada grupo es el de mejor score
@@ -224,6 +289,25 @@ export async function buildRankedPool(params: {
         const s = product.specs as Partial<NotebookSpecs>;
         if (s.processor_tier == null) return false;
         if (s.processor_model && WEAK_PROCESSOR_RE.test(s.processor_model)) return false;
+      }
+      // Tablet infantil sin que el usuario haya pedido algo para un chico → afuera.
+      if (product.category === "tablet" && !kidsIntent && KIDS_TABLET_RE.test(product.title)) {
+        return false;
+      }
+      // Tablet no-viable para NINGÚN uso que el asistente recomiende: combos de
+      // gama basura tipo "Gadnic 1GB RAM 8GB Android 7" (reportado en vivo para
+      // "tablet para trabajo"). Solo excluye lo claramente muerto — valores
+      // reales (no el centinela 0 de extracción fallida) y muy por debajo del
+      // piso: ≤2GB RAM y ≤16GB de almacenamiento a la vez. Lo apenas flojo se
+      // penaliza más abajo (tabletJunkPenalty), no se excluye.
+      if (product.category === "tablet") {
+        const s = product.specs as { ram_gb?: number; storage_gb?: number };
+        if (
+          typeof s.ram_gb === "number" && s.ram_gb > 0 && s.ram_gb <= 2 &&
+          typeof s.storage_gb === "number" && s.storage_gb > 0 && s.storage_gb <= 16
+        ) {
+          return false;
+        }
       }
       return true;
     });
@@ -272,6 +356,43 @@ export async function buildRankedPool(params: {
       }
       return sB - sA;
     });
+  }
+
+  // Re-rank tablet: el bloque de over-spec de arriba no cubre category=tablet
+  // (no tienen processor_tier). Acá se empuja abajo — sin excluir — la basura
+  // típica de esta categoría: RAM inverosímil (spec inventada) en marcas no
+  // mainstream, y restos de "infantil" cuando no se filtraron por intención.
+  const hasTablet =
+    slots.category === "tablet" || (slots.category === null && merged.some((p) => p.category === "tablet"));
+  if (hasTablet) {
+    const tabletJunkPenalty = (p: RankedProduct): number => {
+      if (p.category !== "tablet") return 0;
+      let penalty = 0;
+      const s = p.specs as { ram_gb?: number; storage_gb?: number; os?: string };
+      const ram = s.ram_gb;
+      const storage = s.storage_gb;
+      const brand = (p.brand ?? "").toLowerCase();
+      if (typeof ram === "number" && ram > 10 && !MAINSTREAM_TABLET_BRANDS.has(brand)) penalty += 0.3;
+      if (!kidsIntent && KIDS_TABLET_RE.test(p.title)) penalty += 0.3;
+      // Gama muy floja para uso real: poca RAM, poco almacenamiento, o Android
+      // viejo (≤9, sin updates de seguridad y con apps que ya no instalan). No
+      // se excluye —puede ser lo único en un presupuesto de piso— pero se
+      // hunde para que no encabece un pedido de "tablet para trabajo".
+      if (typeof ram === "number" && ram > 0 && ram <= 2) penalty += 0.35;
+      if (typeof storage === "number" && storage > 0 && storage <= 16) penalty += 0.2;
+      // Android viejo — el campo `os` normalizado no es confiable (una Gadnic
+      // "Android 7" del título quedó con os="Android 14"), así que se mira
+      // también el título.
+      const osMajor = parseInt(
+        (s.os ?? "").match(/android\s*(\d{1,2})/i)?.[1] ??
+          p.title.match(/android\s*(\d{1,2})/i)?.[1] ??
+          "",
+        10
+      );
+      if (!Number.isNaN(osMajor) && osMajor <= 9) penalty += 0.2;
+      return penalty;
+    };
+    merged.sort((a, b) => b.final_score - tabletJunkPenalty(b) - (a.final_score - tabletJunkPenalty(a)));
   }
 
   return merged;

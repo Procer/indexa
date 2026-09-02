@@ -225,3 +225,188 @@ export function isLikelySameProduct(a: DedupeCandidate, b: DedupeCandidate): boo
 
   return titleTokenOverlap(a.title, b.title, a.brand ?? "") >= TITLE_OVERLAP_THRESHOLD;
 }
+
+// ─── "Modelos parecidos" (segundo bloque de "En otras tiendas") ───────────────
+//
+// isLikelySameProduct arriba es a propósito estricto: solo agrupa el MISMO SKU
+// (misma capacidad, mismo chip, misma cámara). Eso deja afuera comparaciones
+// igual de útiles para el usuario — la MISMA línea/modelo con una diferencia
+// menor: 256GB vs 512GB, o la variante "Pro" vs "Pro+". isSimilarProduct captura
+// eso SIN aflojar el matching estricto (siguen siendo dos listas separadas en la
+// UI). Guardas para no volver al falso positivo histórico (HP 250 básica
+// agrupada con EliteBook): generación de título idéntica, alto solape de tokens
+// de identidad, banda de precio acotada, y como mucho 2 specs clave distintas.
+
+// Tamaños de pantalla decimales ("6.83", "15,6") y combos RAM/almacenamiento
+// pegados ("8/256gb") — ruido que ensucia tanto el solape de identidad como la
+// detección de generación. Se limpian ANTES de tokenizar en este path (el path
+// estricto no los toca, mantiene su comportamiento actual).
+const DECIMAL_SIZE_RE = /\b\d+[.,]\d+\b/g;
+const RAM_STORAGE_COMBO_RE = /\b\d+\s*\/\s*\d+\s*(gb|tb)\b/gi;
+
+const SIMILAR_STOPWORDS = new Set([
+  ...Array.from(STOPWORDS),
+  "smartphone", "telefono", "phone", "cel", "equipo", "nuevo", "libre",
+  "5g", "4g", "lte", "dual", "sim",
+]);
+
+function cleanForSimilar(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(NOISE_WORDS, " ")
+    .replace(DECIMAL_SIZE_RE, " ")
+    .replace(RAM_STORAGE_COMBO_RE, " ")
+    // "Pro+" / "Pro Plus" / "Plus" sueltos → un token de identidad estable, así
+    // "Note 15 Pro+" y "Note 15 Pro Plus" se ven iguales entre sí y DISTINTOS de
+    // "Note 15 Pro" (que no tiene el token) y de "Note 15" pelado.
+    .replace(/\bpro\s*\+/g, " proplus ")
+    .replace(/\bpro\s+plus\b/g, " proplus ")
+    .replace(/\bplus\b/g, " proplus ");
+}
+
+function similarIdentityTokens(title: string, brand: string): Set<string> {
+  const brandNorm = brand.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return new Set(
+    cleanForSimilar(title)
+      .split(/[^a-z0-9]+/)
+      .filter(
+        (t) =>
+          t.length >= 2 &&
+          t !== brandNorm &&
+          !SIMILAR_STOPWORDS.has(t) &&
+          !/^\d+(gb|tb|mp|hz|w|mah|wh)$/.test(t)
+      )
+  );
+}
+
+// Números "pelados" del título tras limpiar tamaños de pantalla y specs — en la
+// práctica son marcadores de generación/serie ("15" en "Redmi Note 15", "14" en
+// "Note 14"). Si ambos títulos tienen alguno y NO coinciden, no son la misma
+// línea. Si alguno queda vacío, no se aplica la guarda (no todos los modelos
+// numeran la generación así).
+function generationMarkers(title: string): Set<string> {
+  return new Set(
+    cleanForSimilar(title)
+      .split(/[^a-z0-9]+/)
+      .filter((t) => /^\d{1,4}$/.test(t))
+  );
+}
+
+function sameGeneration(a: string, b: string): boolean {
+  const ga = generationMarkers(a);
+  const gb = generationMarkers(b);
+  if (ga.size === 0 || gb.size === 0) return true;
+  if (ga.size !== gb.size) return false;
+  for (const t of Array.from(ga)) if (!gb.has(t)) return false;
+  return true;
+}
+
+function similarTitleOverlap(a: string, b: string, brand: string): number {
+  const setA = similarIdentityTokens(a, brand);
+  const setB = similarIdentityTokens(b, brand);
+  if (setA.size === 0 || setB.size === 0) return 0;
+  let shared = 0;
+  Array.from(setA).forEach((t) => { if (setB.has(t)) shared++; });
+  return shared / Math.min(setA.size, setB.size);
+}
+
+const SIMILAR_TITLE_OVERLAP_THRESHOLD = 0.7;
+const SIMILAR_PRICE_MIN_RATIO = 0.5;
+const SIMILAR_PRICE_MAX_RATIO = 2;
+const SIMILAR_MAX_SPEC_DIFFS = 2;
+
+// Specs "clave" por categoría — las que mueven el precio dentro de una misma
+// línea. Solo se cuenta una diferencia cuando AMBOS lados declaran el valor.
+const KEY_SPEC_FIELDS: Record<string, string[]> = {
+  phone: ["ram_gb", "storage_gb", "processor_chip", "main_camera_mp"],
+  notebook: ["ram_gb", "storage_gb", "processor_tier", "gpu"],
+  desktop: ["ram_gb", "storage_gb", "processor_tier", "gpu"],
+  tablet: ["ram_gb", "storage_gb", "processor_tier", "has_cellular"],
+  tv: ["screen_inches", "resolution", "panel_type"],
+};
+
+function specValue(specs: unknown, field: string): string | number | boolean | null {
+  const s = (specs ?? {}) as Record<string, unknown>;
+  const v = s[field];
+  if (typeof v === "number") return normNum(v);
+  if (typeof v === "string") return normStr(v);
+  if (typeof v === "boolean") return v;
+  return null;
+}
+
+interface SpecDiff {
+  field: string;
+  a: string | number | boolean;
+  b: string | number | boolean;
+}
+
+// Diferencias de specs clave entre dos productos (solo campos que ambos
+// declaran). Devuelve null si supera el máximo tolerado o si no hay suficientes
+// campos comparables para afirmar que es la misma línea.
+function keySpecDiffs(category: string, a: unknown, b: unknown): SpecDiff[] | null {
+  const fields = KEY_SPEC_FIELDS[category] ?? ["ram_gb", "storage_gb"];
+  let comparable = 0;
+  const diffs: SpecDiff[] = [];
+  for (const field of fields) {
+    const va = specValue(a, field);
+    const vb = specValue(b, field);
+    if (va == null || vb == null) continue;
+    comparable++;
+    if (va !== vb) diffs.push({ field, a: va, b: vb });
+  }
+  if (comparable < 2) return null;
+  if (diffs.length === 0 || diffs.length > SIMILAR_MAX_SPEC_DIFFS) return null;
+  return diffs;
+}
+
+export interface SimilarMatch {
+  differences: string[];
+}
+
+const SPEC_FIELD_LABELS: Record<string, (v: string | number | boolean) => string> = {
+  ram_gb: (v) => `${v} GB RAM`,
+  storage_gb: (v) => `${v} GB`,
+  processor_chip: (v) => String(v),
+  processor_tier: (v) => String(v),
+  main_camera_mp: (v) => `${v} MP`,
+  gpu: (v) => String(v),
+  has_cellular: (v) => (v ? "con datos móviles" : "solo WiFi"),
+  screen_inches: (v) => `${v}"`,
+  resolution: (v) => String(v),
+  panel_type: (v) => String(v),
+};
+
+function labelSpec(field: string, v: string | number | boolean): string {
+  return (SPEC_FIELD_LABELS[field] ?? ((x) => String(x)))(v);
+}
+
+// Match "parecido" — MISMA línea/modelo con una diferencia menor. No sustituye a
+// isLikelySameProduct: el endpoint muestra las dos listas por separado.
+export function findSimilarMatch(
+  a: DedupeCandidate & { price_cash?: number | null },
+  b: DedupeCandidate & { price_cash?: number | null }
+): SimilarMatch | null {
+  if (a.category !== b.category) return null;
+  const brandA = (a.brand ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const brandB = (b.brand ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!brandA || brandA !== brandB) return null;
+
+  // Los idénticos ya van en el bloque exacto.
+  if (isLikelySameProduct(a, b)) return null;
+
+  if (!sameGeneration(a.title, b.title)) return null;
+  if (similarTitleOverlap(a.title, b.title, a.brand ?? "") < SIMILAR_TITLE_OVERLAP_THRESHOLD) return null;
+
+  const pa = a.price_cash ?? null;
+  const pb = b.price_cash ?? null;
+  if (pa != null && pb != null && pa > 0) {
+    const ratio = pb / pa;
+    if (ratio < SIMILAR_PRICE_MIN_RATIO || ratio > SIMILAR_PRICE_MAX_RATIO) return null;
+  }
+
+  const diffs = keySpecDiffs(a.category, a.specs, b.specs);
+  if (diffs == null) return null;
+
+  const differences = diffs.map((d) => `${labelSpec(d.field, d.b)} (vs ${labelSpec(d.field, d.a)})`);
+  return { differences };
+}

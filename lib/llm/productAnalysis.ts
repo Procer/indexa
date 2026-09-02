@@ -68,9 +68,9 @@ export async function generateProductAnalysis(
     // Determinístico, no via LLM: grounded en los specs reales del producto
     // y en los use_cases declarados, así nunca queda desactualizado ni
     // depende de que el LLM haya corrido (ver enrichWithAnalysis / caché).
-    selection_reason: buildQuickSelectionReason(product.category, product.specs, slots.use_cases),
-    spec_highlights: explainProductSpecs(product.category, product.specs, slots.use_cases),
-    spec_highlights_simple: explainProductSpecsSimple(product.category, product.specs, slots.use_cases),
+    selection_reason: buildQuickSelectionReason(product.category, product.specs, slots.use_cases, product.title),
+    spec_highlights: explainProductSpecs(product.category, product.specs, slots.use_cases, product.title),
+    spec_highlights_simple: explainProductSpecsSimple(product.category, product.specs, slots.use_cases, product.title),
     upgrade_note:
       typeof raw.upgrade_note === "string" ? raw.upgrade_note : null,
   };
@@ -106,9 +106,9 @@ export async function enrichWithAnalysis(
             ...product,
             quality_price_score: score,
             quality_price_analysis: analysisText,
-            selection_reason: buildQuickSelectionReason(product.category, product.specs, slots.use_cases),
-            spec_highlights: explainProductSpecs(product.category, product.specs, slots.use_cases),
-            spec_highlights_simple: explainProductSpecsSimple(product.category, product.specs, slots.use_cases),
+            selection_reason: buildQuickSelectionReason(product.category, product.specs, slots.use_cases, product.title),
+            spec_highlights: explainProductSpecs(product.category, product.specs, slots.use_cases, product.title),
+            spec_highlights_simple: explainProductSpecsSimple(product.category, product.specs, slots.use_cases, product.title),
             upgrade_note: product.upgrade_note ?? null,
             analysis_from_cache: true,
           };

@@ -54,3 +54,26 @@ export function detectBrandMention(input: string): string | null {
   }
   return null;
 }
+
+// Igual que detectBrandMention pero devuelve TODAS las marcas nombradas, no la
+// primera — para pedidos como "quiero iphone y samsung", que antes perdían la
+// segunda marca. Deduplica por nombre visible (iphone/apple colapsan a "Apple")
+// y respeta el orden en que aparecen en el texto.
+export function detectBrandMentions(input: string): string[] {
+  const l = input.toLowerCase();
+  const hits: { brand: string; at: number }[] = [];
+  for (const brand of KNOWN_BRANDS) {
+    const m = new RegExp(`\\b${brand}\\b`).exec(l);
+    if (m) hits.push({ brand: displayName(brand), at: m.index });
+  }
+  hits.sort((a, b) => a.at - b.at);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const { brand } of hits) {
+    const key = brand.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(brand);
+  }
+  return out;
+}

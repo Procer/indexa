@@ -5,6 +5,7 @@ import { withBasePath } from "@/lib/basePath";
 import { ProductChatCard } from "@/components/ProductChatCard";
 import { Portal } from "@/components/Portal";
 import { ResultsFilterBar } from "@/components/ResultsFilterBar";
+import { getUpgradeNote } from "@/lib/domain/upgradeability";
 import type { AlternativeProduct, EnrichedProduct } from "@/types";
 
 interface AllResultsModalProps {
@@ -34,6 +35,8 @@ function toAlternativeProduct(p: EnrichedProduct): AlternativeProduct {
     quality_price_score: p.quality_price_score,
     spec_highlights: p.spec_highlights,
     spec_highlights_simple: p.spec_highlights_simple,
+    specs: p.specs,
+    upgrade_note: getUpgradeNote(p.category, p.specs, p.upgradeable),
     also_at: p.also_at,
   };
 }

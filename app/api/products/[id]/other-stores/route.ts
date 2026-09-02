@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProductsByIds } from "@/lib/db/queries";
 import { sql } from "@/lib/db/sql";
-import { isLikelySameProduct } from "@/lib/domain/dedupe";
-import type { ProductSource, ProductStoreVariant } from "@/types";
+import { findSimilarMatch, isLikelySameProduct } from "@/lib/domain/dedupe";
+import type { ProductSource, ProductStoreVariant, SimilarStoreVariant } from "@/types";
 
 interface OtherStoreCandidate {
   id: string;
@@ -25,9 +25,13 @@ interface OtherStoreCandidate {
 // botón siempre puede buscar, no depende de que el duplicado haya tenido
 // buena suerte de ranking en esa búsqueda particular.
 //
-// Match combinado specs+título (ver lib/domain/dedupe.ts para el porqué:
-// ni el título exacto solo ni las specs solas funcionaban bien en la
-// práctica contra el catálogo real).
+// Devuelve dos listas separadas:
+//  - `variants`: el MISMO SKU en otra tienda (isLikelySameProduct — match
+//    estricto, misma capacidad/chip/cámara). La UI compara precio de igual a
+//    igual y marca "más barato".
+//  - `similar`: la MISMA línea/modelo con una diferencia menor de specs
+//    (findSimilarMatch — ej. 256GB vs 512GB, "Pro" vs "Pro+"). La UI la muestra
+//    aparte, con las diferencias explícitas y sin juicio de "más barato".
 export async function GET(
   _request: NextRequest,
   { params }: { params: { id: string } }
@@ -49,19 +53,41 @@ export async function GET(
       LIMIT 300
     `;
 
-    const variants: ProductStoreVariant[] = candidates
-      .filter((c) => isLikelySameProduct(product, c))
-      .map((c) => ({
-        source: c.source,
-        price_cash: c.price_cash,
-        price_installment: c.price_installment,
-        installment_count: c.installment_count,
-        url: c.url,
-        affiliate_url: c.affiliate_url,
-      }))
-      .sort((a, b) => (a.price_cash ?? Infinity) - (b.price_cash ?? Infinity));
+    const variants: ProductStoreVariant[] = [];
+    const similar: SimilarStoreVariant[] = [];
 
-    return NextResponse.json({ variants });
+    for (const c of candidates) {
+      if (isLikelySameProduct(product, c)) {
+        variants.push({
+          source: c.source,
+          price_cash: c.price_cash,
+          price_installment: c.price_installment,
+          installment_count: c.installment_count,
+          url: c.url,
+          affiliate_url: c.affiliate_url,
+        });
+        continue;
+      }
+      const match = findSimilarMatch(product, c);
+      if (match) {
+        similar.push({
+          id: c.id,
+          source: c.source,
+          title: c.title,
+          differences: match.differences,
+          price_cash: c.price_cash,
+          price_installment: c.price_installment,
+          installment_count: c.installment_count,
+          url: c.url,
+          affiliate_url: c.affiliate_url,
+        });
+      }
+    }
+
+    variants.sort((a, b) => (a.price_cash ?? Infinity) - (b.price_cash ?? Infinity));
+    similar.sort((a, b) => (a.price_cash ?? Infinity) - (b.price_cash ?? Infinity));
+
+    return NextResponse.json({ variants, similar });
   } catch (error) {
     console.error("[GET /api/products/[id]/other-stores]", error);
     return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 });

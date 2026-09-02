@@ -140,6 +140,15 @@ export interface ProductStoreVariant {
   affiliate_url: string | null;
 }
 
+// Misma línea/modelo en otra tienda pero con una diferencia menor de specs
+// (ej. 256GB vs 512GB, "Pro" vs "Pro+"). Se muestra en un bloque aparte del de
+// coincidencia exacta — ver app/api/products/[id]/other-stores/route.ts.
+export interface SimilarStoreVariant extends ProductStoreVariant {
+  id: string;
+  title: string;
+  differences: string[];
+}
+
 export interface Product {
   id: string;
   external_id: string;
@@ -423,6 +432,22 @@ export interface SavedSearchListItem {
 
 // ─── Chat del comparador ──────────────────────────────────────────────────────
 
+// Una opción dentro del selector de variantes de una tarjeta (ver
+// AlternativeProduct.variants / lib/domain/variantGroup.ts).
+export interface VariantOption {
+  id: string;
+  // Etiqueta corta de lo que la distingue: "512GB", "Gris", "con datos",
+  // "512GB · Negro". "otra versión" si no se pudo caracterizar.
+  label: string;
+  price_cash: number | null;
+  price_installment: number | null;
+  installment_count: number | null;
+  url: string;
+  affiliate_url: string | null;
+  source: ProductSource;
+  isPrimary: boolean;
+}
+
 export interface AlternativeProduct {
   id: string;
   title: string;
@@ -442,6 +467,22 @@ export interface AlternativeProduct {
   quality_price_score?: QualityPriceScore | null;
   spec_highlights?: string[];
   spec_highlights_simple?: string[];
+  // Specs crudas del producto — para mostrar el dato concreto ("i3", "8GB",
+  // "256GB SSD") junto al veredicto llano en la tarjeta, y para el resumen
+  // que arma la función de compartir selección. La llenan los conversores
+  // que parten de un EnrichedProduct/Product completo.
+  specs?: ProductSpecs;
+  // Casi-duplicados (misma línea/modelo, diferencia menor: color / SO / 256↔512GB)
+  // colapsados en esta tarjeta con un selector. Lo arma groupVariants() del lado
+  // del cliente sobre la grilla de resultados; incluye una entrada para el
+  // producto primario. Al elegir una variante cambian precio y link de compra;
+  // las specs mostradas siguen siendo las del primario.
+  variants?: VariantOption[];
+  // Nota determinística de "qué se puede cambiar a futuro" (getUpgradeNote:
+  // category + specs + upgradeable) — no la nota del LLM de EnrichedProduct,
+  // que casi siempre viene null. La llenan los conversores que parten de un
+  // EnrichedProduct/Product completo.
+  upgrade_note?: string | null;
   out_of_budget?: "above" | "below" | null;
   // Mismo producto detectado en otras tiendas — ver Product.also_at. Solo lo
   // llenan los conversores que parten de un EnrichedProduct ya dedupeado.

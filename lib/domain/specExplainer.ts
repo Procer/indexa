@@ -302,8 +302,10 @@ export function explainScreenMeaningShort(
 export function explainProductSpecs(
   category: ProductCategory,
   specs: ProductSpecs,
-  useCases: UseCase[]
+  useCases: UseCase[],
+  title?: string
 ): string[] {
+  specs = sanitizeSpecs(category, specs, title);
   if (category === "notebook" || category === "desktop") {
     const s = specs as Partial<NotebookSpecs>;
     if (s.ram_gb == null || s.processor_tier == null || !s.processor_brand || !s.processor_model) {
@@ -395,12 +397,300 @@ function gpuBulletSimple(gpu: GpuType): string {
   return "Gráfica: pensada para uso cotidiano, no gaming.";
 }
 
+const STORAGE_TYPE_SHORT: Record<StorageType, string> = { HDD: "HDD", SSD_SATA: "SSD", SSD_NVME: "SSD NVMe" };
+
+function fmtStorageShort(gb: number): string {
+  return gb >= 1000 ? `${(gb / 1000).toLocaleString("es-AR")}TB` : `${gb}GB`;
+}
+
+// Etiqueta ultra-corta del procesador para mostrar el dato crudo en la tarjeta
+// ("i3", "Ryzen 5", "Ultra 7", "M2"). Cae al nombre de gama si el modelo no
+// matchea ningún patrón conocido.
+function shortProcessorLabel(
+  model: string | null | undefined,
+  tier: ProcessorTier | null | undefined
+): string | null {
+  const m = (model ?? "").toLowerCase();
+  let g: RegExpMatchArray | null;
+  if ((g = m.match(/\bcore\s*ultra\s*([3579])\b/))) return `Ultra ${g[1]}`;
+  if ((g = m.match(/\bi([3579])\b/))) return `i${g[1]}`;
+  if ((g = m.match(/\bryzen\s*ai\s*([3579])\b/))) return `Ryzen AI ${g[1]}`;
+  if ((g = m.match(/\bryzen\s*([3579])\b/))) return `Ryzen ${g[1]}`;
+  if ((g = m.match(/\b(celeron|pentium|athlon)\b/))) return g[1][0].toUpperCase() + g[1].slice(1);
+  if ((g = m.match(/\bm([1234])\b/))) return `M${g[1]}`;
+  if ((g = m.match(/\bsnapdragon\b/))) return "Snapdragon";
+  if (tier) return TIER_LABEL[tier];
+  return null;
+}
+
+// ─── Cordura de specs (valores inverosímiles del normalizador) ────────────────
+// Bug real visto en vivo: "Notebook Lenovo LOQ i5-12450HX 24GB SSD512GB" quedó
+// con specs.storage_gb = 24 (el normalizador copió el número de la RAM). El
+// título casi siempre trae el dato bueno, así que cuando el valor guardado es
+// físicamente inverosímil se intenta recuperar del título antes de mostrarlo.
+
+// Menor almacenamiento plausible por categoría (GB). Debajo de esto el valor
+// casi siempre es la RAM filtrada o un error de extracción.
+function isImplausibleStorageGb(category: ProductCategory, gb: number): boolean {
+  if (category === "notebook" || category === "desktop") return gb < 64;
+  if (category === "phone" || category === "tablet") return gb < 8;
+  return false;
+}
+
+// Recupera el almacenamiento del título ("SSD512GB", "512GB SSD", "1TB",
+// "M.2 256 GB"). Prioriza el token pegado a SSD/HDD/NVMe; si no, el mayor
+// token en GB que sea un tamaño de disco plausible (≥120GB). null si no hay
+// nada confiable.
+function recoverStorageGbFromTitle(title: string): number | null {
+  const t = title.toLowerCase();
+  const tb = t.match(/(\d+(?:[.,]\d+)?)\s*tb\b/);
+  if (tb) return Math.round(parseFloat(tb[1].replace(",", ".")) * 1024);
+  // Pegado a SSD/HDD/NVMe, con unidad ("SSD 512GB") o sin ella ("SSD480").
+  const near = t.match(
+    /(?:ssd|hdd|nvme|m\.?2|emmc)\s*(\d{2,4})\s*gb\b|(\d{2,4})\s*gb\s*(?:ssd|hdd|nvme|m\.?2|emmc)|(?:ssd|hdd|nvme|m\.?2)\s*(\d{3,4})\b/
+  );
+  if (near) {
+    const n = parseInt(near[1] ?? near[2] ?? near[3], 10);
+    if (n >= 64) return n;
+  }
+  const plausible = Array.from(t.matchAll(/(\d{2,4})\s*gb\b/g))
+    .map((m) => parseInt(m[1], 10))
+    .filter((n) => n >= 120);
+  return plausible.length > 0 ? Math.max(...plausible) : null;
+}
+
+// Devuelve un storage_gb confiable: el guardado si es verosímil, si no el
+// recuperado del título, si no null (mejor no mostrar número que uno falso).
+function resolveStorageGb(
+  category: ProductCategory,
+  storageGb: number | null | undefined,
+  title: string | undefined
+): number | null {
+  if (storageGb && !isImplausibleStorageGb(category, storageGb)) return storageGb;
+  if (title) {
+    const recovered = recoverStorageGbFromTitle(title);
+    if (recovered && !isImplausibleStorageGb(category, recovered)) return recovered;
+  }
+  return null;
+}
+
+/**
+ * Valor crudo y corto por spec, keyeado por la MISMA etiqueta en minúscula que
+ * usa explainProductSpecsSimple ("rapidez", "memoria", "almacenamiento",
+ * "cámara", "batería"). Para mostrar el número/nombre real ("i3", "8GB",
+ * "256GB SSD") junto al veredicto en lenguaje llano de la tarjeta. `title` es
+ * opcional pero permite recuperar el almacenamiento cuando el dato guardado es
+ * inverosímil (ver resolveStorageGb).
+ */
+export function shortSpecValues(
+  category: ProductCategory,
+  specs: ProductSpecs,
+  title?: string
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  const storageGb = resolveStorageGb(
+    category,
+    (specs as Partial<NotebookSpecs>).storage_gb,
+    title
+  );
+
+  if (category === "notebook" || category === "desktop") {
+    const s = specs as Partial<NotebookSpecs>;
+    const proc = shortProcessorLabel(s.processor_model, s.processor_tier);
+    if (proc) out["rapidez"] = proc;
+    if (s.ram_gb) out["memoria"] = `${s.ram_gb}GB`;
+    if (storageGb) {
+      out["almacenamiento"] = `${fmtStorageShort(storageGb)}${
+        s.storage_type ? ` ${STORAGE_TYPE_SHORT[s.storage_type]}` : ""
+      }`;
+    }
+    return out;
+  }
+
+  if (category === "phone") {
+    const s = specs as Partial<PhoneSpecs>;
+    if (s.ram_gb) out["memoria"] = `${s.ram_gb}GB`;
+    if (storageGb) out["almacenamiento"] = fmtStorageShort(storageGb);
+    if (s.main_camera_mp) out["cámara"] = `${s.main_camera_mp}MP`;
+    if (s.battery_mah) out["batería"] = `${s.battery_mah.toLocaleString("es-AR")}mAh`;
+    return out;
+  }
+
+  if (category === "tablet") {
+    const s = specs as Partial<TabletSpecs>;
+    if (s.ram_gb) out["memoria"] = `${s.ram_gb}GB`;
+    if (storageGb) out["almacenamiento"] = fmtStorageShort(storageGb);
+    return out;
+  }
+
+  return out;
+}
+
+// ─── Datos físicos en lenguaje llano (pantalla, peso, tamaño) ─────────────────
+
+// Guard de peso: el normalizador a veces guarda GRAMOS en weight_kg (visto en
+// vivo: 40 notebooks con weight_kg ≈ 2200 → son 2,2 kg). Corrige y descarta lo
+// que sigue fuera del rango físico de una notebook.
+export function resolveWeightKg(weightKg: number | null | undefined): number | null {
+  if (weightKg == null || Number.isNaN(weightKg)) return null;
+  let kg = weightKg;
+  if (kg > 100) kg = kg / 1000; // gramos → kg
+  if (kg < 0.6 || kg > 5) return null;
+  return Math.round(kg * 100) / 100;
+}
+
+function fmtKg(kg: number): string {
+  return kg.toLocaleString("es-AR", { maximumFractionDigits: 2 });
+}
+
+// Comparación tangible del peso con un objeto cotidiano conocido.
+function weightComparison(kg: number): string {
+  if (kg <= 1.3) return "como una botella de agua de 1½ litro";
+  if (kg <= 1.8) return "como dos botellas de agua de 1½ litro";
+  if (kg <= 2.3) return "como un diccionario grande";
+  return "como tres botellas de agua de 1½ litro";
+}
+
+function weightFeel(kg: number): string {
+  if (kg <= 1.5) return "liviana para llevar a todos lados";
+  if (kg <= 2) return "peso normal para una notebook";
+  return "vas a notar el peso si la cargás todos los días";
+}
+
+function inchesRange(category: ProductCategory): [number, number] {
+  if (category === "phone") return [4, 8];
+  if (category === "tv") return [19, 120];
+  if (category === "tablet") return [6, 15];
+  return [10, 18.5]; // notebook / desktop
+}
+
+// Recupera el tamaño de pantalla del título (`15.6"`, `15,6 pulgadas`, `55"`)
+// cuando la spec guardada falta o está fuera de rango para la categoría.
+function recoverInchesFromTitle(title: string, category: ProductCategory): number | null {
+  const m = title.toLowerCase().match(/\b(\d{1,3}(?:[.,]\d)?)\s*(?:"|''|pulg\.?|pulgadas?)/);
+  if (!m) return null;
+  const n = parseFloat(m[1].replace(",", "."));
+  const [lo, hi] = inchesRange(category);
+  return n >= lo && n <= hi ? n : null;
+}
+
+function resolveInches(
+  category: ProductCategory,
+  raw: number | null | undefined,
+  title: string | undefined
+): number | null {
+  const [lo, hi] = inchesRange(category);
+  if (typeof raw === "number" && raw >= lo && raw <= hi) return raw;
+  return title ? recoverInchesFromTitle(title, category) : null;
+}
+
+/**
+ * Copia de `specs` con los campos que el normalizador suele arruinar ya
+ * saneados: `storage_gb` recuperado del título cuando el valor guardado es
+ * inverosímil (la RAM filtrada al disco), `weight_kg` convertido de gramos a
+ * kg. Si no hay forma de recuperar un valor, se quita (mejor sin dato que con
+ * un número falso).
+ *
+ * El catálogo ya se corrigió en bloque (`scripts/fixSpecsFromTitle.ts`); esto
+ * es la red de seguridad para ingestas futuras y para el server (chat/análisis),
+ * que hasta ahora no aplicaba los guards que sí tenía la tarjeta.
+ */
+export function sanitizeSpecs<T extends ProductSpecs>(
+  category: ProductCategory,
+  specs: T,
+  title?: string
+): T {
+  const s = { ...(specs as Record<string, unknown>) };
+  if (typeof s.storage_gb === "number") {
+    const fixed = resolveStorageGb(category, s.storage_gb, title);
+    if (fixed == null) delete s.storage_gb;
+    else s.storage_gb = fixed;
+  }
+  if (typeof s.weight_kg === "number") {
+    const fixed = resolveWeightKg(s.weight_kg);
+    if (fixed == null) delete s.weight_kg;
+    else s.weight_kg = fixed;
+  }
+  return s as T;
+}
+
+function tvSizeHint(inches: number): string {
+  if (inches >= 60) return "grande, se disfruta en un living amplio y de lejos";
+  if (inches >= 48) return "buen tamaño para living o dormitorio";
+  if (inches >= 40) return "cómoda para un dormitorio o espacio mediano";
+  return "chica, para la cocina o un ambiente reducido";
+}
+
+function lowerFirst(s: string): string {
+  return s.charAt(0).toLowerCase() + s.slice(1);
+}
+
+function stripSizePrefix(s: string): string {
+  return s.replace(/^Tamaño físico:\s*/i, "").replace(/\.$/, "");
+}
+
+export interface CardFact {
+  label: string;
+  value?: string;
+  text: string;
+}
+
+/**
+ * Datos físicos entendibles para un usuario común, con comparaciones concretas
+ * (pantalla, peso, tamaño). Determinístico, reusa los explicadores existentes.
+ * `title` permite recuperar valores cuando la spec guardada es inverosímil.
+ */
+export function extraCardFacts(
+  category: ProductCategory,
+  specs: ProductSpecs,
+  title?: string
+): CardFact[] {
+  const s = specs as Partial<NotebookSpecs & TabletSpecs & PhoneSpecs & { screen_inches: number }>;
+  const inches = resolveInches(category, s.screen_inches, title);
+  const facts: CardFact[] = [];
+
+  if (category === "notebook") {
+    if (inches) {
+      facts.push({ label: "Pantalla", value: `${inches}"`, text: lowerFirst(explainScreenMeaningShort(inches, category)).replace(/\.$/, "") });
+      facts.push({ label: "Tamaño", text: stripSizePrefix(explainPhysicalSize(inches, category)) });
+    }
+    const kg = resolveWeightKg((s as Partial<NotebookSpecs>).weight_kg);
+    if (kg) facts.push({ label: "Peso", value: `${fmtKg(kg)} kg`, text: `${weightComparison(kg)}, ${weightFeel(kg)}` });
+    return facts;
+  }
+
+  if (category === "phone") {
+    if (inches) {
+      facts.push({ label: "Pantalla", value: `${inches}"`, text: lowerFirst(explainScreenMeaningShort(inches, category)).replace(/\.$/, "") });
+      facts.push({ label: "En la mano", text: stripSizePrefix(explainPhysicalSize(inches, category)) });
+    }
+    return facts;
+  }
+
+  if (category === "tablet") {
+    if (inches) {
+      facts.push({ label: "Pantalla", value: `${inches}"`, text: lowerFirst(explainScreenMeaningShort(inches, category)).replace(/\.$/, "") });
+      facts.push({ label: "Tamaño", text: stripSizePrefix(explainPhysicalSize(inches, category)) });
+    }
+    return facts;
+  }
+
+  if (category === "tv") {
+    if (inches) facts.push({ label: "Pantalla", value: `${inches}"`, text: tvSizeHint(inches) });
+    return facts;
+  }
+
+  return facts;
+}
+
 /** Versión amigable de explainProductSpecs: mismos puntos, sin jerga técnica ni números de modelo. */
 export function explainProductSpecsSimple(
   category: ProductCategory,
   specs: ProductSpecs,
-  useCases: UseCase[]
+  useCases: UseCase[],
+  title?: string
 ): string[] {
+  specs = sanitizeSpecs(category, specs, title);
   if (category === "notebook" || category === "desktop") {
     const s = specs as Partial<NotebookSpecs>;
     if (s.ram_gb == null || s.processor_tier == null) return [];
@@ -495,10 +785,11 @@ export function classifyHighlightLevel(text: string): HighlightLevel {
 export function buildQuickSelectionReason(
   category: ProductCategory,
   specs: ProductSpecs,
-  useCases: UseCase[]
+  useCases: UseCase[],
+  title?: string
 ): string {
   const label = formatUseCasesLabel(useCases);
-  const bullets = explainProductSpecs(category, specs, useCases);
+  const bullets = explainProductSpecs(category, specs, useCases, title);
   const strongPoint = bullets.find(
     (b) => !SHORTFALL_MARKERS.some((marker) => b.includes(marker))
   );

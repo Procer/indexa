@@ -43,7 +43,13 @@ export async function getProductIdsByCategory(
 export async function getProductsByBrand(
   category: string,
   brands: string[],
-  limit = 8
+  limit = 8,
+  // Opcional: además de la marca, exigir que el título contenga esta palabra
+  // (ej. "fold" / "flip"). Se usa para la transparencia de presupuesto cuando
+  // el usuario pidió una línea/formato puntual ("samsung fold") que no entra
+  // en su presupuesto — sin esto getProductsByBrand traía los 8 Samsung más
+  // baratos (ninguno plegable) y no se insertaba nada marcado fuera de rango.
+  titleContains?: string
 ): Promise<Product[]> {
   const sanitized = brands
     .map((b) => b.replace(/[^a-zA-Z0-9À-ÿ\s]/g, "").trim())
@@ -51,11 +57,15 @@ export async function getProductsByBrand(
   if (sanitized.length === 0) return [];
 
   const patterns = sanitized.map((b) => `%${b}%`);
+  const titlePattern = titleContains
+    ? `%${titleContains.replace(/[^a-zA-Z0-9À-ÿ\s]/g, "").trim()}%`
+    : null;
   const rows = await sql<Product[]>`
     SELECT * FROM products
     WHERE category = ${category}
       AND available = true
       AND brand ILIKE ANY(${patterns}::text[])
+      AND (${titlePattern}::text IS NULL OR title ILIKE ${titlePattern})
     ORDER BY price_cash ASC NULLS LAST
     LIMIT ${limit}
   `;

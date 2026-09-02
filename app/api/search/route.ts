@@ -35,6 +35,7 @@ import {
 import { buildQuickSelectionReason, explainProductSpecs, explainProductSpecsSimple } from "@/lib/domain/specExplainer";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { detectBrandMention } from "@/lib/domain/detectBrand";
+import { detectProcessorMention } from "@/lib/domain/detectProcessor";
 import { detectTagUseCase } from "@/lib/domain/detectUseCase";
 import type {
   EnrichedProduct,
@@ -175,7 +176,31 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Mismo respaldo determinístico que la marca, pero para el procesador
+    // puntual — el slot-filling no extrae "i7"/"Ryzen 7" a
+    // preferences.processor_model_preferred de forma confiable (ni con
+    // temperature: 0), así que un pedido de procesador que llega vía refinement
+    // desde el chat ("notebook con procesador i7 hasta ...") podía salir sin
+    // preferencia y no disparar el camino needsWidePool + transparencia
+    // out_of_budget del pipeline. Solo rellena el hueco, no pisa lo que el LLM
+    // sí extrajo.
+    if (!freshSlots.preferences.processor_model_preferred) {
+      const mentionedProcessor = detectProcessorMention(brandSearchText);
+      if (mentionedProcessor) {
+        freshSlots.preferences.processor_model_preferred = mentionedProcessor;
+      }
+    }
+
     const slots = mergeKnownSlots(freshSlots, knownSlots);
+
+    // Campos que antes no salían en la línea [SEARCH] y hacían falta para
+    // depurar "pedí i7 / un refinement y no sé si lo tomó" (mismo hueco que ya
+    // se había tapado para marca con brandDebug, más abajo).
+    const reqDebug =
+      ` refinements=${JSON.stringify(refinements ?? [])}` +
+      (slots.preferences.processor_model_preferred
+        ? ` procPreferred=${JSON.stringify(slots.preferences.processor_model_preferred)}`
+        : "");
 
     // 2. Check input sufficiency
     if (!isInputSufficient(slots)) {
@@ -212,7 +237,7 @@ export async function POST(request: NextRequest) {
       console.log(
         `[SEARCH] needs_info input=${JSON.stringify(input.slice(0, 200))} category=${slots.category ?? "-"} ` +
           `use_cases=${JSON.stringify(slots.use_cases)} hasBudget=${!!(slots.budget_monthly_ars || slots.budget_cash_ars)} ` +
-          `durationMs=${Date.now() - startedAt}`
+          `durationMs=${Date.now() - startedAt}${reqDebug}`
       );
       const response: SearchResponse = {
         type: "needs_info",
@@ -240,9 +265,9 @@ export async function POST(request: NextRequest) {
         ...p,
         similarity: 0,
         final_score: Math.max(0, 1 - i * 0.05),
-        selection_reason: buildQuickSelectionReason(p.category, p.specs, slots.use_cases),
-        spec_highlights: explainProductSpecs(p.category, p.specs, slots.use_cases),
-        spec_highlights_simple: explainProductSpecsSimple(p.category, p.specs, slots.use_cases),
+        selection_reason: buildQuickSelectionReason(p.category, p.specs, slots.use_cases, p.title),
+        spec_highlights: explainProductSpecs(p.category, p.specs, slots.use_cases, p.title),
+        spec_highlights_simple: explainProductSpecsSimple(p.category, p.specs, slots.use_cases, p.title),
         upgrade_note: null,
         analysis_from_cache: true,
         also_at: alsoAtByProduct[i] ?? undefined,
@@ -282,7 +307,7 @@ export async function POST(request: NextRequest) {
       };
       console.log(
         `[SEARCH] results input=${JSON.stringify(input.slice(0, 200))} category=${slots.category ?? "-"} ` +
-          `count=${enrichedCached.length} totalPool=${poolIds.length} fromCache=true durationMs=${Date.now() - startedAt}`
+          `count=${enrichedCached.length} totalPool=${poolIds.length} fromCache=true durationMs=${Date.now() - startedAt}${reqDebug}`
       );
       return NextResponse.json(response);
     }
@@ -377,7 +402,7 @@ export async function POST(request: NextRequest) {
         : "";
     console.log(
       `[SEARCH] results input=${JSON.stringify(input.slice(0, 200))} category=${slots.category ?? "-"} ` +
-        `count=${enrichedResults.length} totalPool=${merged.length} fromCache=false durationMs=${Date.now() - startedAt}${brandDebug}`
+        `count=${enrichedResults.length} totalPool=${merged.length} fromCache=false durationMs=${Date.now() - startedAt}${reqDebug}${brandDebug}`
     );
     return NextResponse.json(response);
   } catch (error) {

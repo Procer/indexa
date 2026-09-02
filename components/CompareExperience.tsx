@@ -25,7 +25,7 @@ import { withBasePath } from "@/lib/basePath";
 import { addRecentProducts, getRecentProducts } from "@/lib/storage/localStorage";
 import { TIER_RANK } from "@/lib/domain/usageToSpecs";
 import { describeBudgetForChat } from "@/lib/domain/budgetTiers";
-import type { AlternativeProduct, CompareItem, NotebookSpecs, PhoneSpecs, Product, Search, TabletSpecs, UseCase } from "@/types";
+import type { AlternativeProduct, CompareItem, NotebookSpecs, PhoneSpecs, Product, Search, SimilarStoreVariant, TabletSpecs, UseCase } from "@/types";
 
 // Extraído de app/compare/page.tsx para poder montarse en dos modos: como la
 // página completa /compare (acceso directo/compartible, sin cambios) o como
@@ -604,6 +604,89 @@ function ChatBubble({
   );
 }
 
+// Jugada #6: "modelos parecidos" a los que se están comparando, con "+ Agregar"
+// al toque. Junta los `similar` de /api/products/[id]/other-stores de cada
+// producto comparado, dedupea y saca los que ya están en la comparación.
+function SimilarInCompare({
+  items,
+  onAdd,
+}: {
+  items: CompareItem[];
+  onAdd: (id: string) => void;
+}) {
+  const [similars, setSimilars] = useState<SimilarStoreVariant[]>([]);
+  const idsKey = items.map((i) => i.product.id).join(",");
+  const atMax = items.length >= 5;
+
+  useEffect(() => {
+    let cancelled = false;
+    const ids = idsKey ? idsKey.split(",") : [];
+    Promise.all(
+      ids.map((id) =>
+        fetch(withBasePath(`/api/products/${id}/other-stores`))
+          .then((r) => (r.ok ? r.json() : { similar: [] }))
+          .catch(() => ({ similar: [] }))
+      )
+    ).then((results: { similar?: SimilarStoreVariant[] }[]) => {
+      if (cancelled) return;
+      const seen = new Set(ids);
+      const merged: SimilarStoreVariant[] = [];
+      for (const r of results) {
+        for (const s of r.similar ?? []) {
+          if (seen.has(s.id)) continue;
+          seen.add(s.id);
+          merged.push(s);
+        }
+      }
+      merged.sort((a, b) => (a.price_cash ?? Infinity) - (b.price_cash ?? Infinity));
+      setSimilars(merged.slice(0, 6));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [idsKey]);
+
+  if (similars.length === 0) return null;
+
+  return (
+    <div className="gathering-glass-card mx-auto mt-6 max-w-6xl rounded-2xl p-5">
+      <h3 className="font-brand text-sm font-bold text-gathering-on-surface">Parecidos a los que estás viendo</h3>
+      <p className="mt-1 font-brand text-xs text-gathering-on-surface-variant">
+        Misma línea, con alguna diferencia. {atMax ? "Quitá uno para poder agregar otro." : "Agregá el que quieras a la comparación."}
+      </p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {similars.map((s) => (
+          <div key={s.id} className="flex flex-col gap-2 rounded-xl border border-gathering-outline-variant/50 p-3">
+            <p className="line-clamp-2 font-brand text-xs font-semibold text-gathering-on-surface">{s.title}</p>
+            {s.differences.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {s.differences.map((d) => (
+                  <span key={d} className="rounded-full bg-gathering-surface-container-high px-2 py-0.5 font-brand text-[10px] text-gathering-on-surface-variant">
+                    {d}
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="mt-auto flex items-center justify-between gap-2 pt-1">
+              <span className="font-brand text-xs text-gathering-on-surface-variant">
+                {s.price_cash ? formatPrice(s.price_cash) : s.price_installment ? `${formatPrice(s.price_installment)}/mes` : "—"}
+              </span>
+              <button
+                type="button"
+                disabled={atMax}
+                onClick={() => onAdd(s.id)}
+                className="flex items-center gap-1 rounded-full border border-gathering-primary-fixed-dim px-2.5 py-1 font-brand text-[11px] font-semibold text-gathering-primary-fixed-dim transition-colors hover:bg-gathering-primary/10 disabled:opacity-40"
+              >
+                <span className="material-symbols-outlined text-[14px]">add</span> Agregar
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function MultiCompareView({
   items,
   onRemove,
@@ -704,6 +787,8 @@ function MultiCompareView({
         <div className="gathering-glass-card rounded-2xl">
           <CompareTable items={items} onRemove={onRemove} />
         </div>
+
+        <SimilarInCompare items={items} onAdd={onAddProduct} />
       </main>
     </div>
   );
@@ -761,7 +846,7 @@ export function CompareExperience({ ids, searchToken = null, mode, onClose }: Co
   }
 
   function handleAddProduct(productId: string) {
-    if (currentIds.includes(productId)) return;
+    if (currentIds.includes(productId) || currentIds.length >= 5) return;
     trackEvent("product_compare_add", getOrCreateVisitId().id, { productId });
     updateIds([...currentIds, productId]);
   }
@@ -1009,6 +1094,10 @@ export function CompareExperience({ ids, searchToken = null, mode, onClose }: Co
               ))}
             </div>
           </div>
+        </div>
+
+        <div className="mx-auto max-w-5xl px-4 pb-10">
+          <SimilarInCompare items={items} onAdd={handleAddProduct} />
         </div>
 
         {/* ── Footer: solo en modo página completa ── */}

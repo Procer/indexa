@@ -17,9 +17,12 @@ import { CompareExperience, ChatFAB } from "@/components/CompareExperience";
 import { Footer } from "@/components/Footer";
 import { saveSearch as saveSearchLocally } from "@/lib/storage/localStorage";
 import { buildQuickSelectionReason, explainProductSpecs, explainProductSpecsSimple, formatUseCasesLabel } from "@/lib/domain/specExplainer";
+import { getUpgradeNote } from "@/lib/domain/upgradeability";
+import { buildSelectionShareText } from "@/lib/domain/shareSelection";
 import { formatArs } from "@/lib/domain/budgetTiers";
 import { HOME_SEED_PHRASE, HOME_SEED_QUESTION } from "@/lib/domain/homeSeed";
 import { detectCategoryLocally } from "@/lib/domain/detectCategory";
+import { detectBrandMention } from "@/lib/domain/detectBrand";
 import { withBasePath } from "@/lib/basePath";
 import { getOrCreateVisitId } from "@/lib/analytics/visit";
 import { trackEvent } from "@/lib/analytics/track";
@@ -66,6 +69,8 @@ function toAlternativeProduct(p: EnrichedProduct): AlternativeProduct {
     quality_price_score: p.quality_price_score,
     spec_highlights: p.spec_highlights,
     spec_highlights_simple: p.spec_highlights_simple,
+    specs: p.specs,
+    upgrade_note: getUpgradeNote(p.category, p.specs, p.upgradeable),
     out_of_budget: p.out_of_budget,
     also_at: p.also_at,
   };
@@ -117,9 +122,9 @@ function productToEnriched(product: Product, index: number, useCases: UseCase[])
     ...product,
     similarity: 0,
     final_score: Math.max(0, 1 - index * 0.05),
-    selection_reason: buildQuickSelectionReason(product.category, product.specs, useCases),
-    spec_highlights: explainProductSpecs(product.category, product.specs, useCases),
-    spec_highlights_simple: explainProductSpecsSimple(product.category, product.specs, useCases),
+    selection_reason: buildQuickSelectionReason(product.category, product.specs, useCases, product.title),
+    spec_highlights: explainProductSpecs(product.category, product.specs, useCases, product.title),
+    spec_highlights_simple: explainProductSpecsSimple(product.category, product.specs, useCases, product.title),
     upgrade_note: null,
     analysis_from_cache: true,
   };
@@ -258,6 +263,7 @@ export default function SearchResultsPage() {
   const [questions, setQuestions] = useState<GuidingQuestion[]>([]);
   const [inlineQuestions, setInlineQuestions] = useState<GuidingQuestion[]>([]);
   const [copied, setCopied] = useState(false);
+  const [selectionShared, setSelectionShared] = useState(false);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [showAllResultsModal, setShowAllResultsModal] = useState(false);
   const [showCompareExperience, setShowCompareExperience] = useState(false);
@@ -371,7 +377,10 @@ export default function SearchResultsPage() {
     // up the candidate cache before the user finishes selecting.
     if (!opts?.skipOptimistic) {
       const category = detectCategoryLocally(input);
-      const hasUseCase = detectHasUseCase(input);
+      // Pedido concreto (marca + categoría) → el servidor saltea la pregunta de
+      // uso (ver isInputSufficient/hasSpecificRequest). Espejarlo acá para no
+      // mostrar la pregunta de uso optimista y que después el server la borre.
+      const hasUseCase = detectHasUseCase(input) || (!!detectBrandMention(input) && !!category);
       const hasBudget = detectHasBudget(input);
       const optimisticQs =
         input === HOME_SEED_PHRASE ? [HOME_SEED_QUESTION] : getOptimisticQuestions(category, hasUseCase, hasBudget);
@@ -407,6 +416,7 @@ export default function SearchResultsPage() {
               // Rare: input was already sufficient for results
               const currentOriginal = originalInput || input;
               sessionStorage.setItem(`search_${data.share_token}`, JSON.stringify({ ...data, rawInput: input, originalInput: currentOriginal }));
+              setError(false);
               setProducts(data.products);
               setInlineQuestions(data.inline_questions ?? []);
               setTotalCount(data.total_count);
@@ -460,12 +470,19 @@ export default function SearchResultsPage() {
         window.history.pushState(null, "", withBasePath(`/search/refine`));
       }
     } catch {
-      setError(true);
-      setProducts([]);
+      // No pisar con un error una grilla que otro camino (ej. el fetch
+      // optimista en background) ya llenó: si resolvedTokenRef cambió a un
+      // share_token real, una búsqueda SÍ resolvió — este catch es de una
+      // llamada paralela/tardía que perdió la carrera (o un blip de red con
+      // el server lento). Solo mostramos el error si nada resolvió todavía.
+      if (resolvedTokenRef.current === token) {
+        setError(true);
+        setProducts([]);
+      }
     } finally {
       setLoading(false);
     }
-  }, [originalInput, sessionId]);
+  }, [originalInput, sessionId, token]);
 
   useEffect(() => {
     // "loading" token = pending search stored in sessionStorage by home page.
@@ -584,10 +601,28 @@ export default function SearchResultsPage() {
   // handleAnswer con el array completo de la grilla de una sola vez.
   const handleGuidedAnswer = (phrase: string) => {
     const combined = rawInput ? `${rawInput}. ${phrase}` : phrase;
+    // Si con esta respuesta ya están categoría + uso + presupuesto, el próximo
+    // paso NO es otra pregunta sino la búsqueda real (~3-5s de /api/search).
+    // Igual que handleBudgetSelect, mostramos YA el splash "Analizando" con el
+    // logo — antes, al responder la última tarjeta (típicamente el presupuesto,
+    // que en el chat guía pasa por acá y no por handleBudgetSelect), quedaba la
+    // vidriera nítida 3-5s y se leía como que no había pasado nada. Mismo
+    // criterio local que el path optimista de runSearch (líneas ~383-386).
+    const category = detectCategoryLocally(combined);
+    const hasUseCase = detectHasUseCase(combined) || (!!detectBrandMention(combined) && !!category);
+    const hasBudget = detectHasBudget(combined);
+    if (category && hasUseCase && hasBudget) {
+      setFinalizing(true);
+    }
     runNewSearch(combined, []);
   };
 
   const handleBudgetSelect = (budgetText: string) => {
+    // El presupuesto es la última pregunta del flujo guiado — apenas se
+    // responde, mostramos YA el splash de "Analizando" (ver `finalizing`), sin
+    // esperar los ~4-5s que tarda /api/search. Antes quedaba la vidriera nítida
+    // con solo el spinner chico del chat y se leía como que no pasó nada.
+    setFinalizing(true);
     // Siempre combina con originalInput (sin presupuesto previo) para evitar acumulación.
     // Ej: si rawInput ya tiene "...hasta 200k...", se reemplaza por el nuevo presupuesto.
     const base = originalInput || rawInput;
@@ -605,6 +640,36 @@ export default function SearchResultsPage() {
       if (prev.length >= 5) return prev;
       return [...prev, product];
     });
+  };
+
+  // Jugada #5: agregar al comparador "modelos parecidos" del modal "En otras
+  // tiendas" — solo llegan por id (SimilarStoreVariant), así que se traen
+  // completos por /api/products/[id] y se convierten a EnrichedProduct. `ids`
+  // incluye el producto de origen para que quede al lado en el comparador.
+  const addSimilarToCompare = async (ids: string[], open = false) => {
+    const fresh = await Promise.all(
+      ids.map(async (id) => {
+        try {
+          const res = await fetch(withBasePath(`/api/products/${id}`));
+          return res.ok ? ((await res.json()) as Product) : null;
+        } catch {
+          return null;
+        }
+      })
+    );
+    setCompareList((prev) => {
+      const have = new Set(prev.map((p) => p.id));
+      const room = Math.max(0, 5 - prev.length);
+      const toAdd = fresh
+        .filter((p): p is Product => !!p && !have.has(p.id))
+        .slice(0, room)
+        .map((p, i) => productToEnriched(p, prev.length + i, []));
+      toAdd.forEach((p) =>
+        trackEvent("product_compare_add", getOrCreateVisitId().id, { productId: p.id })
+      );
+      return [...prev, ...toAdd];
+    });
+    if (open) setShowCompareExperience(true);
   };
 
   // El chat trabaja con AlternativeProduct (versión resumida) — el panel de
@@ -645,6 +710,25 @@ export default function SearchResultsPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Compartir las opciones seleccionadas (la misma selección que alimenta el
+  // comparador): specs en lenguaje corto + precio + link de compra por opción.
+  // navigator.share en mobile; copia al portapapeles como fallback.
+  const handleShareSelection = async () => {
+    if (compareList.length === 0) return;
+    const text = buildSelectionShareText(compareList);
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title: "Opciones de indexa", text });
+        return;
+      } catch {
+        // usuario canceló o el navegador rechazó — cae al portapapeles
+      }
+    }
+    copyToClipboard(text);
+    setSelectionShared(true);
+    setTimeout(() => setSelectionShared(false), 2500);
+  };
+
   // resultsWereEmpty distingue "todavía respondiendo preguntas" (products
   // vacío mientras se arma la próxima pregunta) de "ya se resolvió la
   // búsqueda y no hay nada para ese presupuesto" (products vacío pero
@@ -661,6 +745,17 @@ export default function SearchResultsPage() {
   useEffect(() => {
     if (hasResults) setResultsEverShown(true);
   }, [hasResults]);
+  // Splash de "Analizando tu mejor opción" que se pinta apenas el usuario
+  // responde el presupuesto (handleBudgetSelect), antes de que /api/search
+  // devuelva. Se apaga solo apenas hay algo real que mostrar (resultados,
+  // otra pregunta, "sin resultados", o error) — a partir de ahí toma la posta
+  // el overlay de la fase de resultados (!chatRecommendations).
+  const [finalizing, setFinalizing] = useState(false);
+  useEffect(() => {
+    if (products.length > 0 || questions.length > 0 || inlineQuestions.length > 0 || resultsWereEmpty || error) {
+      setFinalizing(false);
+    }
+  }, [products.length, questions.length, inlineQuestions.length, resultsWereEmpty, error]);
   // Vidriera al azar (DiscoverySections) mientras todavía no hay resultados
   // reales — una vez que resultsEverShown queda en true, no vuelve a mostrarse.
   const showGatheringLayout = chatActive && !resultsWereEmpty && !resultsEverShown;
@@ -678,6 +773,13 @@ export default function SearchResultsPage() {
   const chatCategory = searchSlots?.category ?? detectCategoryLocally(rawInput) ?? products[0]?.category ?? null;
   const chatUseCases = searchSlots?.use_cases ?? [];
   const chatBudgetMax = searchSlots?.budget_cash_ars ?? searchSlots?.budget_monthly_ars ?? null;
+  // El usuario eligió pagar en cuotas si dio un presupuesto mensual y no uno al
+  // contado — la tarjeta muestra entonces la cuota como número grande, no "$X
+  // contado" (bug reportado en vivo).
+  const paymentMode: "cash" | "installments" =
+    searchSlots?.budget_monthly_ars != null && searchSlots?.budget_cash_ars == null
+      ? "installments"
+      : "cash";
 
   // Mientras no llegó todavía la primera recomendación del chat (saludo en
   // curso), la grilla muestra el pool inicial sin rankear ni "mejor opción"
@@ -827,8 +929,9 @@ export default function SearchResultsPage() {
           </div>
         )}
 
-        {/* ── ERROR ─── */}
-        {!loading && error && (
+        {/* ── ERROR ─── (nunca junto a una grilla ya cargada: se veía el
+             cartel de "no pudimos" encima de 4 productos reales) */}
+        {!loading && error && products.length === 0 && (
           <div className="mt-10 flex flex-col items-center gap-3 text-center">
             <p className="font-brand text-lg font-medium text-gathering-on-surface">No pudimos realizar la búsqueda</p>
             <p className="font-brand text-sm text-gathering-on-surface-variant">Verificá tu conexión e intentá de nuevo</p>
@@ -847,9 +950,29 @@ export default function SearchResultsPage() {
           <SkeletonLoader hint={LOADING_HINTS[hintIndex]} hintIndex={hintIndex} />
         )}
 
+        {/* ── FINALIZANDO: splash inmediato al responder el presupuesto ── */}
+        {finalizing && !showResultsLayout && (
+          <Portal>
+            <div
+              className={`pointer-events-none fixed inset-0 z-20 flex flex-col items-center justify-center gap-3 ${
+                chatOpen ? "lg:pr-[26rem]" : ""
+              }`}
+            >
+              <LogoBrand logoClass="h-24 animate-dot-pulse" />
+              <p className="font-brand text-sm font-bold uppercase tracking-wide text-gathering-on-surface">
+                Analizando tu mejor opción...
+              </p>
+            </div>
+          </Portal>
+        )}
+
         {/* ── VIDRIERA: productos al azar mientras no hay resultados reales ── */}
         {showGatheringLayout && (
-          <div className="animate-fade-up lg:pr-[26rem]">
+          <div
+            className={`animate-fade-up transition-all duration-300 lg:pr-[26rem] ${
+              finalizing ? "pointer-events-none select-none opacity-40 blur-md" : ""
+            }`}
+          >
             <DiscoverySections
               sections={discoverySections}
               onViewDetails={handleViewDetails}
@@ -907,10 +1030,13 @@ export default function SearchResultsPage() {
                   topPickIds={displayedTopPickIds}
                   onViewDetails={handleViewDetails}
                   onCompareToggle={handleCompareToggleAlt}
+                  onCompareAdd={addSimilarToCompare}
                   isCompared={(id) => compareList.some((p) => p.id === id)}
+                  comparedIds={compareList.map((p) => p.id)}
                   compareDisabled={compareList.length >= 5}
                   searchShareToken={resolvedTokenRef.current}
                   sessionId={sessionId}
+                  paymentMode={paymentMode}
                 />
               </div>
             </div>
@@ -1006,8 +1132,20 @@ export default function SearchResultsPage() {
                 </div>
               ))}
             </div>
-            <div className="flex shrink-0 items-center gap-3">
-              <span className="font-brand text-sm text-gathering-on-surface-variant">{compareList.length}/5</span>
+            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+              <span className="hidden font-brand text-sm text-gathering-on-surface-variant sm:inline">
+                {compareList.length}/5
+              </span>
+              <button
+                type="button"
+                onClick={handleShareSelection}
+                className="flex items-center gap-1.5 rounded-xl border border-gathering-outline-variant px-3 py-2 font-brand text-sm font-semibold text-gathering-on-surface transition-colors hover:bg-black/5"
+              >
+                <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
+                </svg>
+                {selectionShared ? "¡Copiado!" : "Compartir"}
+              </button>
               <button
                 type="button"
                 onClick={() => setShowCompareExperience(true)}

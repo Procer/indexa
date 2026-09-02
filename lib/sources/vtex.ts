@@ -209,7 +209,20 @@ function sleep(ms: number) {
 // accesorios cuyo título los menciona (ej: "Mochila ... Porta Notebook").
 // El normalizador nunca falla — les inventa specs genéricas en vez de
 // descartarlos — así que hay que filtrarlos por título antes de normalizar.
-const ACCESSORY_TITLE_RE = /\b(mochila|funda|bolso|bolsa para|maletin|estuche|soporte para|porta ?notebook|porta ?celular|tripode|protector de pantalla|vidrio templado|cargador|fuente|cable|auricular|parlante|mouse|teclado|hub usb|power ?bank|correa|radio reloj|radio despertador|tablet(a)? de dibujo|tableta grafica|tableta gráfica|cuaderno|reparaci[oó]n|repuesto(s)?|herramientas|destornillador(es)?|kit de? (limpieza|herramientas))\b/i;
+const ACCESSORY_TITLE_RE = /\b(mochila|funda|bolso|bolsa para|maletin|estuche|soporte para|porta ?notebook|porta ?celular|tripode|protector de pantalla|vidrio templado|cargador|fuente|cable|auricular|parlante|mouse|teclado|hub usb|power ?bank|correa|radio reloj|radio despertador|tablet(a)? de dibujo|tableta grafica|tableta gráfica|tableta digital|tablet[ae] m[aá]gica|pizarra|morral|cuaderno|\breloj\b|smartwatch|smartband|bafle|barra de sonido|torre de sonido|home the[a]?tre|joystick|gamepad|control(es)? inal[aá]mbrico|reparaci[oó]n|repuesto(s)?|herramientas|destornillador(es)?|kit de? (limpieza|herramientas))\b/i;
+
+// La búsqueda VTEX por "tablet"/"tableta" en supermercados (Carrefour) trae toda
+// la góndola de "tableta [de chocolate]", tabletas insecticidas/limpiadoras,
+// galletitas "Les Tablettes", etc. — el normalizador les inventa specs
+// (os="Android 14", ram_gb=0). Se descartan por título antes de normalizar.
+const GROCERY_OR_HOUSEHOLD_TITLE_RE = /\b(chocolate|chocolat[ií]n|golosina|caramelo|alfajor|oblea|turr[oó]n|bomb[oó]n|dulce de leche|galletitas?|mermelada|yerba|insecticida|mosquito|repelente|detergente|lavavajillas?|lavarropas|limpiador(as|es)?|desodorante|shampoo|jab[oó]n|corega)\b/i;
+
+// Título que termina en un gramaje / volumen / conteo de unidades ("... 8 g.",
+// "... 90 grs", "... 80 uni", "... x 6 u") — patrón de producto de almacén o
+// farmacia, jamás de un equipo real (esos terminan en color, "Pulgadas", "GB",
+// código de modelo o "Pen"). "128GB" NO matchea: no hay borde de palabra tras la
+// "g".
+const CONSUMABLE_QUANTITY_SUFFIX_RE = /\b\d+(?:[.,]\d+)?\s?(?:g|gr|grs|kg|ml|cc|uni|unidades|u)\.?\s*$/i;
 
 // Anclado al inicio: un mueble ("Escritorio ...", "Mesa ...") a veces menciona
 // "Pc"/"Computación" de pasada y cuela en la búsqueda de notebook/desktop.
@@ -248,6 +261,8 @@ export function isVtexNoiseTitle(title: string, category: ProductCategory): bool
   return (
     ACCESSORY_TITLE_RE.test(title) ||
     OFF_TOPIC_TITLE_START_RE.test(title.trim()) ||
+    GROCERY_OR_HOUSEHOLD_TITLE_RE.test(title) ||
+    CONSUMABLE_QUANTITY_SUFFIX_RE.test(title.trim()) ||
     belongsToOtherCategory(title, category)
   );
 }

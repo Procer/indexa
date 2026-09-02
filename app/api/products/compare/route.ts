@@ -35,9 +35,9 @@ export async function POST(request: NextRequest) {
         analysis = {
           quality_price_score: product.quality_price_score,
           quality_price_analysis: product.quality_price_analysis,
-          selection_reason: buildQuickSelectionReason(product.category, product.specs, []),
-          spec_highlights: explainProductSpecs(product.category, product.specs, []),
-          spec_highlights_simple: explainProductSpecsSimple(product.category, product.specs, []),
+          selection_reason: buildQuickSelectionReason(product.category, product.specs, [], product.title),
+          spec_highlights: explainProductSpecs(product.category, product.specs, [], product.title),
+          spec_highlights_simple: explainProductSpecsSimple(product.category, product.specs, [], product.title),
           upgrade_note: null,
         };
       }

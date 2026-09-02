@@ -8,7 +8,10 @@ import { getChatGreetingCache, setChatGreetingCache, type ChatGreetingPayload } 
 import { getOrBuildPoolIds } from "@/lib/search/pipeline";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { detectCategoryLocally } from "@/lib/domain/detectCategory";
-import { detectBrandMention } from "@/lib/domain/detectBrand";
+import { detectBrandMentions } from "@/lib/domain/detectBrand";
+import { detectProcessorMention } from "@/lib/domain/detectProcessor";
+import { classifyBudgetFit } from "@/lib/domain/budgetFit";
+import { getUpgradeNote } from "@/lib/domain/upgradeability";
 import { describeBudgetForChat } from "@/lib/domain/budgetTiers";
 import type { AlternativeProduct, EnrichedProduct, ProductCategory, UseCase } from "@/types";
 
@@ -54,14 +57,6 @@ const CATEGORY_WORD: Record<string, string> = {
   tv: "Smart TV",
   phone: "celular",
 };
-
-// El prompt le pide al modelo texto plano, pero por las dudas se limpia
-// cualquier markdown de negrita que se cuele antes de cachear la respuesta
-// (la burbuja del chat no renderiza markdown, así que "**texto**" se vería
-// literal).
-function stripMarkdownBold(text: string): string {
-  return text.replace(/\*\*(.+?)\*\*/g, "$1");
-}
 
 // Acumulador de argumentos de tool calls mientras llegan fragmentados por el
 // stream — recommend_products/suggest_refinement no le devuelven nada al
@@ -249,24 +244,115 @@ function findMentionedResultNumber(text: string, loadedProducts: EnrichedProduct
 // oración — enterrarlo entre las demás instrucciones del prompt de sistema
 // no alcanzaba en la práctica: el modelo priorizaba la recomendación
 // entusiasta y se olvidaba de aclarar que ningún resultado cumple el pedido.
-function buildGreetingPrompt(refinements: string[]): string {
+// El saludo ya NO le pide al modelo que elija los picks vía recommend_products
+// — los resultados llegan rankeados del pipeline, así que los top N se marcan de
+// forma determinística (ver POST) y acá solo se le pide la lectura en texto.
+// Motivo: gpt-4o-mini, cuando emite un tool call en el mismo turno, muy seguido
+// deja `content` vacío, lo que forzaba una segunda llamada (empty_reply_retry) y
+// sumaba 2-4s a la fase "Analizando tu mejor opción".
+function buildGreetingPrompt(
+  refinements: string[],
+  picks: { title: string; outOfBudget: "above" | "below" | null }[],
+  budgetLabel: string | null,
+  rawInput: string,
+  hasSpecificAsk: boolean
+): string {
+  // El pedido puntual puede venir de un refinement del chat O del texto de la
+  // búsqueda directa (ej. "quiero samsung fold" tipeado en el home) — ahí
+  // refinements viene vacío pero rawInput tiene el pedido igual. Solo se
+  // incluye el chequeo si el pipeline detectó una señal concreta (marca /
+  // procesador / formato), para no hacer que el modelo "invente" un pedido
+  // incumplido en una búsqueda vaga (mismo riesgo de sobre-disparo que tuvo
+  // el guard de alcance).
+  const ask = refinements[refinements.length - 1] ?? (rawInput.trim() || null);
   const honestyCheck =
-    refinements.length > 0
-      ? `Antes que nada: el usuario llegó a esta búsqueda pidiendo puntualmente "${refinements[refinements.length - 1]}". Si es un requisito técnico concreto (modelo de procesador, marca, cantidad de RAM, etc.) y NINGÚN resultado de abajo lo cumple, tu PRIMERA oración tiene que decirlo explícitamente — nunca arranques directo con el pick como si cumpliera ese pedido. `
+    ask && hasSpecificAsk
+      ? `Fijate qué pidió puntualmente el usuario en su búsqueda: "${ask}". Si nombró un modelo, una línea o una característica concreta (ej. "plegable", "gama alta", un modelo puntual) y NINGÚN resultado de abajo la cumple, tu primera oración tiene que decirlo con el nombre concreto de lo que pidió — y si hay opciones así marcadas "fuera de presupuesto" abajo, aclarar que existen pero se pasan del presupuesto (con el monto). Si los resultados SÍ cumplen lo que pidió (ej. son todos de la marca pedida), NO digas que no encontraste nada — arrancá directo con el pick. `
       : "";
+
+  const overCount = picks.filter((p) => p.outOfBudget === "above").length;
+  const budgetHint = budgetLabel ? ` (${budgetLabel})` : "";
+  const budgetLine =
+    picks.length === 0
+      ? ""
+      : overCount === picks.length
+        ? `IMPORTANTE: NINGUNA de estas opciones entra en el presupuesto del usuario${budgetHint}. Tu PRIMERA oración tiene que decirlo claro y sin vueltas, y aclarar que le mostrás las más cercanas. `
+        : overCount > 0
+          ? `OJO: hay ${overCount} opción(es) marcada(s) "fuera de presupuesto"${budgetHint} entre los resultados — son lo que el usuario pidió pero se pasan de precio. Decilo claro y visible en el texto (qué es y cuánto sale la más barata), y aclarar que igual le mostrás alternativas dentro del presupuesto. `
+          : budgetLabel
+            ? `TODAS las opciones de abajo entran en el presupuesto del usuario${budgetHint} — NO digas ni sugieras que no encontraste nada dentro del presupuesto. `
+            : "";
+
+  const picksLine =
+    picks.length > 0
+      ? `Los resultados de abajo YA están ordenados de mejor a peor. El mejor es: ${picks[0].title}. `
+      : "";
+
   return (
     honestyCheck +
-    "Arrancá vos la conversación: mirá los resultados actuales contra el presupuesto y uso " +
-    "declarados y dame de entrada tus hasta 4 mejores picks ordenados de mejor a peor (menos " +
-    "si hay menos de 4 opciones cargadas), no te quedes con uno solo si hay más opciones " +
-    "decentes; o si ninguno satisface bien lo que buscás, decilo y proponé buscar de otra " +
-    "forma. Máximo 4 oraciones, directo al punto, sin esperar a que te pregunte algo primero. " +
-    "Esta primera respuesta también tiene que cumplir las reglas imperativas de arriba: dale " +
-    "un ejemplo cotidiano concreto de para qué le va a servir tu mejor pick (no solo la spec " +
-    "traducida), y si el precio es relevante, mencioná de una las dos formas de pago con los " +
-    "montos reales. Acordate de llamar a recommend_products con esos números en esta misma " +
-    "respuesta."
+    budgetLine +
+    picksLine +
+    "Escribí el saludo inicial: MÁXIMO 2 oraciones EN TOTAL (3 solo si tenés que avisar de algo " +
+    "fuera de presupuesto). Hablá SOLO del primer resultado dentro de presupuesto " +
+    "(una frase corta de para qué le sirve en la vida real, sin jerga) y una mención al precio. " +
+    "REGLA DE PRECIO: si el presupuesto declarado es 'por mes', compará SIEMPRE contra el precio EN " +
+    "CUOTAS del producto (Nx $Y/mes), nunca contra el precio de contado — son montos muy distintos y " +
+    "confundirlos hace parecer que algo no entra cuando sí entra. Si el producto no tiene plan de " +
+    "cuotas publicado, decí el precio de contado aclarando que no tiene cuotas. NO enumeres ni " +
+    "comentes los demás resultados uno por uno. Remarcá en **negrita** el nombre del producto. " +
+    "Escribí SOLO el texto para el usuario — no llames funciones."
   );
+}
+
+// Detección de "redirect determinístico": un mensaje del usuario que ya define
+// respuesta + refinement sin necesidad del LLM (cambio de categoría / marca
+// nueva / procesador puntual). Es la misma lógica que los bloques homónimos
+// dentro del stream — extraída para poder cortar ANTES de gastar en
+// getOrBuildPoolIds + enrichWithAnalysis + las llamadas a gpt-4o-mini, cuyo
+// texto en estos casos se descartaba entero (visto en vivo: "quiero samsung"
+// tardó 25s por dos llamadas al LLM tiradas a la basura).
+function detectDeterministicRedirect(
+  message: string,
+  currentCategory: ProductCategory | null,
+  preferredBrands: string[],
+  preferredProcessor: string | null,
+  budgetLabel: string | null
+): { reply: string; suggestedRefinement: string } | null {
+  const impliedCategory = detectCategoryLocally(message);
+  if (impliedCategory && currentCategory && impliedCategory !== currentCategory) {
+    return { reply: "Listo, te busco eso.", suggestedRefinement: message.trim() };
+  }
+
+  const prefBrands = preferredBrands.map((b) => b.toLowerCase());
+  const mentionedBrands = detectBrandMentions(message);
+  if (mentionedBrands.some((b) => !prefBrands.includes(b.toLowerCase()))) {
+    const categoryWord = CATEGORY_WORD[currentCategory ?? "notebook"] ?? "";
+    const brandsBold = mentionedBrands.map((b) => `**${b}**`);
+    const brandsPhrase =
+      brandsBold.length === 1
+        ? brandsBold[0]
+        : `${brandsBold.slice(0, -1).join(", ")} y ${brandsBold[brandsBold.length - 1]}`;
+    return {
+      reply: budgetLabel
+        ? `Listo, te busco ${brandsPhrase} con ese presupuesto. En los resultados te marco cuáles entran y cuáles se pasan.`
+        : `Listo, te busco ${brandsPhrase}.`,
+      suggestedRefinement: [categoryWord, mentionedBrands.join(" "), budgetLabel].filter(Boolean).join(" "),
+    };
+  }
+
+  const prefProcessor = (preferredProcessor ?? "").toLowerCase();
+  const mentionedProcessor = detectProcessorMention(message);
+  if (mentionedProcessor && !prefProcessor.includes(mentionedProcessor.toLowerCase())) {
+    const categoryWord = CATEGORY_WORD[currentCategory ?? "notebook"] ?? "una notebook";
+    return {
+      reply: budgetLabel
+        ? `Listo, busco ${categoryWord} con procesador **${mentionedProcessor}**. En los resultados te marco cuáles entran en tu presupuesto y cuáles se pasan.`
+        : `Listo, busco ${categoryWord} con procesador **${mentionedProcessor}**.`,
+      suggestedRefinement: [categoryWord, `con procesador ${mentionedProcessor}`, budgetLabel].filter(Boolean).join(" "),
+    };
+  }
+
+  return null;
 }
 
 const FALLBACK_REPLY_GREETING = "Hola! Soy tu asesor técnico — puedo recomendarte qué elegir de estos resultados o buscar de nuevo si nada te convence. ¿Qué necesitás?";
@@ -289,6 +375,8 @@ function toRecommendedProduct(p: EnrichedProduct): AlternativeProduct {
     quality_price_score: p.quality_price_score,
     spec_highlights: p.spec_highlights ?? [],
     spec_highlights_simple: p.spec_highlights_simple ?? [],
+    specs: p.specs,
+    upgrade_note: getUpgradeNote(p.category, p.specs, p.upgradeable),
     out_of_budget: p.out_of_budget,
     also_at: p.also_at,
   };
@@ -318,6 +406,58 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const search = shareToken ? await getSearchByShareToken(shareToken) : null;
+
+    // Preferí siempre el presupuesto de search.slots (fuente autoritativa,
+    // distingue contado de cuotas) por sobre el budgetMax plano que manda el
+    // cliente — ver describeBudgetForChat.
+    const budgetLabel =
+      describeBudgetForChat(search?.slots) ?? (budgetMax ? `hasta $${budgetMax.toLocaleString("es-AR")} ARS` : null);
+
+    // ── Atajo determinístico ────────────────────────────────────────────────
+    // Si el mensaje del usuario es un pedido de cambio de categoría / marca
+    // nueva / procesador puntual, la respuesta y el refinement ya están
+    // decididos SIN LLM (los bloques homónimos más abajo hacían exactamente
+    // esto, pero DESPUÉS de correr getOrBuildPoolIds + enrichWithAnalysis + 1-2
+    // llamadas a gpt-4o-mini cuyo texto se terminaba descartando — visto en
+    // vivo: "quiero samsung" tardó 25s). Se resuelve acá y se saltea todo lo
+    // caro: el usuario ve la respuesta al instante y la búsqueda nueva la
+    // dispara suggestedRefinement igual.
+    const shortCircuit =
+      !greeting && message?.trim()
+        ? detectDeterministicRedirect(
+            message,
+            category ?? search?.slots.category ?? null,
+            search?.slots.preferences.brands_preferred ?? [],
+            search?.slots.preferences.processor_model_preferred ?? null,
+            budgetLabel
+          )
+        : null;
+    if (shortCircuit) {
+      const enc = new TextEncoder();
+      const scStream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const payload: ChatGreetingPayload = {
+            reply: shortCircuit.reply,
+            recommendedProducts: undefined,
+            topPickIds: undefined,
+            suggestedRefinement: shortCircuit.suggestedRefinement,
+          };
+          controller.enqueue(enc.encode(`data: ${JSON.stringify({ type: "text", value: shortCircuit.reply })}\n\n`));
+          controller.enqueue(enc.encode(`data: ${JSON.stringify({ type: "done", ...payload })}\n\n`));
+          controller.close();
+        },
+      });
+      console.log(
+        `[CHAT] turn shareToken=${shareToken} greeting=false shortCircuit=true durationMs=${Date.now() - startedAt} ` +
+          `userMessage=${JSON.stringify(message.slice(0, 200))} recommended=0 topPicks=[] ` +
+          `suggestedRefinement=${JSON.stringify(shortCircuit.suggestedRefinement)} replyChars=${shortCircuit.reply.length}`
+      );
+      return new Response(scStream, {
+        headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+      });
+    }
+
     // Resumen del pool completo (incluye productos que el usuario todavía no
     // cargó scrolleando) — si no hay shareToken o el pool no se puede
     // recuperar, se cae de vuelta a resumir solo lo que mandó el cliente.
@@ -333,7 +473,6 @@ export async function POST(request: NextRequest) {
     // inicial. quality_price_score/analysis ya viene cacheado en DB para la
     // mayoría (24hs) — solo los nunca analizados antes disparan una llamada
     // al LLM acá, mismo patrón que ya usa /api/search/[token]/more.
-    const search = shareToken ? await getSearchByShareToken(shareToken) : null;
     const loadedProducts: EnrichedProduct[] = search
       ? await enrichWithAnalysis(
           poolProducts.slice(0, MAX_DETAILED_PRODUCTS).map((p) => ({ ...p, similarity: 0, final_score: 0 })),
@@ -341,11 +480,31 @@ export async function POST(request: NextRequest) {
         )
       : products.slice(0, MAX_DETAILED_PRODUCTS);
 
-    // Preferí siempre el presupuesto de search.slots (fuente autoritativa,
-    // distingue contado de cuotas) por sobre el budgetMax plano que manda el
-    // cliente — ver describeBudgetForChat.
-    const budgetLabel =
-      describeBudgetForChat(search?.slots) ?? (budgetMax ? `hasta $${budgetMax.toLocaleString("es-AR")} ARS` : null);
+    // El pool que rearma refine-chat viene de la DB (getProductsByIds), que NO
+    // persiste la etiqueta out_of_budget que puso lib/search/pipeline.ts. Esa
+    // etiqueta solo la arma el pipeline para los productos que él mismo inserta
+    // "por transparencia" cuando la búsqueda nació de un pedido puntual de
+    // marca/procesador — así que en ese caso se re-deriva acá (mismo criterio,
+    // ver classifyBudgetFit) para que el saludo lo diga y las tarjetas del chat
+    // lo marquen. En una búsqueda normal (sin marca/procesador pedido) no se
+    // toca nada: el pipeline nunca taguea ahí.
+    const wantsExactSpec = !!(
+      search?.slots.preferences.processor_model_preferred ||
+      (search?.slots.preferences.brands_preferred.length ?? 0) > 0
+    );
+    if (wantsExactSpec && search) {
+      for (const p of loadedProducts) {
+        p.out_of_budget = classifyBudgetFit(p, search.slots);
+      }
+    }
+
+    // Picks deterministas del saludo: el pool ya viene rankeado, así que los
+    // primeros N son los picks. No se delega al modelo (ver buildGreetingPrompt).
+    const GREETING_PICK_COUNT = 4;
+    const greetingPickCount = greeting ? Math.min(GREETING_PICK_COUNT, loadedProducts.length) : 0;
+    const greetingPicks = loadedProducts
+      .slice(0, greetingPickCount)
+      .map((p) => ({ title: p.title, outOfBudget: p.out_of_budget ?? null }));
 
     const systemPrompt = buildSearchRefineChatPrompt({
       rawInput: rawInput ?? "",
@@ -366,12 +525,39 @@ export async function POST(request: NextRequest) {
     const baseMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
       { role: "system", content: systemPrompt },
       ...history,
-      { role: "user", content: greeting ? buildGreetingPrompt(refinements ?? []) : message },
+      {
+        role: "user",
+        content: greeting
+          ? buildGreetingPrompt(
+              refinements ?? [],
+              greetingPicks,
+              budgetLabel,
+              rawInput ?? "",
+              !!(
+                (search?.slots.preferences.brands_preferred.length ?? 0) > 0 ||
+                search?.slots.preferences.processor_model_preferred ||
+                /\bfold(able)?\b|\bflip\b|\bplegable\b/i.test(rawInput ?? "")
+              )
+            )
+          : message,
+      },
     ];
 
     const encoder = new TextEncoder();
     const toolCallAccumulators = new Map<number, ToolCallAccumulator>();
     let replyText = "";
+
+    // Siembra el pick determinista del saludo como si fuera un tool call real,
+    // para que resolveToolCalls y las redes de seguridad de abajo funcionen
+    // igual — sin haberle pasado `tools` al modelo en esa llamada.
+    if (greeting && greetingPickCount > 0) {
+      toolCallAccumulators.set(-1, {
+        name: "recommend_products",
+        arguments: JSON.stringify({
+          resultNumbers: Array.from({ length: greetingPickCount }, (_, i) => i + 1),
+        }),
+      });
+    }
 
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
@@ -381,12 +567,13 @@ export async function POST(request: NextRequest) {
 
         async function streamCompletion(
           streamMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
-          withTools: boolean
+          withTools: boolean,
+          maxTokens = 500
         ) {
           const openaiStream = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: streamMessages,
-            max_tokens: 300,
+            max_tokens: maxTokens,
             temperature: 0.7,
             stream: true,
             ...(withTools ? { tools: SEARCH_REFINE_CHAT_TOOLS } : {}),
@@ -408,7 +595,12 @@ export async function POST(request: NextRequest) {
         }
 
         try {
-          await streamCompletion(baseMessages, true);
+          // El saludo NO pasa `tools`: los picks ya están sembrados de forma
+          // determinística, así se evita el content vacío que en el saludo
+          // disparaba casi siempre el empty_reply_retry. Los turnos con mensaje
+          // real del usuario sí usan tools (el modelo tiene que decidir qué
+          // recomendar / si buscar de nuevo).
+          await streamCompletion(baseMessages, !greeting, greeting ? 220 : 500);
 
           // Ver extractLeakedToolCall: a veces el modelo, además de (o en vez
           // de) la tool call real, "narra" la llamada como texto al final.
@@ -416,24 +608,30 @@ export async function POST(request: NextRequest) {
           // tool call real ya capturado) — el evento "done" manda el texto ya
           // limpio y el cliente lo usa para corregir lo que ya streameó. Solo
           // se usa como fuente de datos si no hay un tool call real todavía,
-          // para no pisar uno válido con una narración duplicada.
-          const salvage = extractLeakedToolCall(replyText, loadedProducts);
-          if (salvage.toolName && salvage.args) {
-            const hadRealToolCall = toolCallAccumulators.size > 0;
-            replyText = salvage.cleanText;
-            if (!hadRealToolCall) {
-              toolCallAccumulators.set(-1, { name: salvage.toolName, arguments: JSON.stringify(salvage.args) });
+          // para no pisar uno válido con una narración duplicada. No corre en
+          // el saludo: ahí no se pasan tools y los picks ya vienen sembrados,
+          // así que no hay nada que rescatar (y el texto menciona los títulos
+          // a propósito, lo que daría falsos positivos de "leaked tool call").
+          if (!greeting) {
+            const salvage = extractLeakedToolCall(replyText, loadedProducts);
+            if (salvage.toolName && salvage.args) {
+              const hadRealToolCall = toolCallAccumulators.size > 0;
+              replyText = salvage.cleanText;
+              if (!hadRealToolCall) {
+                toolCallAccumulators.set(-1, { name: salvage.toolName, arguments: JSON.stringify(salvage.args) });
+              }
+              console.log(
+                `[CHAT] leaked_tool_call shareToken=${shareToken} toolName=${salvage.toolName} usedAsFallback=${!hadRealToolCall}`
+              );
             }
-            console.log(
-              `[CHAT] leaked_tool_call shareToken=${shareToken} toolName=${salvage.toolName} usedAsFallback=${!hadRealToolCall}`
-            );
           }
 
           // A veces gpt-4o-mini llama a la función pero deja "content" vacío
           // (prioriza la tool call en vez de combinarla con texto). En ese
           // caso se pide una segunda pasada corta, ya sabiendo qué se
-          // recomendó, solo para no dejar la tarjeta sin explicación.
-          if (!replyText.trim() && toolCallAccumulators.size > 0) {
+          // recomendó, solo para no dejar la tarjeta sin explicación. No aplica
+          // al saludo (ahí no se pasan tools, el texto vacío cae al fallback).
+          if (!greeting && !replyText.trim() && toolCallAccumulators.size > 0) {
             console.log(`[CHAT] empty_reply_retry shareToken=${shareToken}`);
             const { topPickTitles } = resolveToolCalls(toolCallAccumulators, loadedProducts);
             const summary = topPickTitles?.join(", ");
@@ -458,7 +656,10 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        let reply = stripMarkdownBold(replyText.trim() || (greeting ? FALLBACK_REPLY_GREETING : FALLBACK_REPLY_ERROR));
+        // El texto va tal cual: la burbuja del chat (ChatMessageText) renderiza
+        // el markdown de **negrita** que el prompt le pide al modelo para
+        // remarcar productos/modelos/marcas.
+        let reply = replyText.trim() || (greeting ? FALLBACK_REPLY_GREETING : FALLBACK_REPLY_ERROR);
         const resolved = resolveToolCalls(toolCallAccumulators, loadedProducts);
         let recommendedProducts = resolved.recommendedProducts;
         let topPickIds = resolved.topPickIds;
@@ -496,8 +697,11 @@ export async function POST(request: NextRequest) {
         // menciona una marca que NO es la ya preferida en esta búsqueda, se
         // fuerza acá una búsqueda nueva para esa marca, sin depender del
         // modelo.
-        const mentionedBrand = !greeting && !categoryChanged ? detectBrandMention(message) : null;
-        const brandMentionIsNew = !!(mentionedBrand && !currentPreferredBrands.includes(mentionedBrand.toLowerCase()));
+        // Todas las marcas nombradas, no solo la primera ("quiero iphone y
+        // samsung" antes perdía Samsung o iPhone según el orden).
+        const mentionedBrands = !greeting && !categoryChanged ? detectBrandMentions(message) : [];
+        const newBrands = mentionedBrands.filter((b) => !currentPreferredBrands.includes(b.toLowerCase()));
+        const brandMentionIsNew = newBrands.length > 0;
         if (brandMentionIsNew) {
           recommendedProducts = undefined;
           topPickIds = undefined;
@@ -508,7 +712,50 @@ export async function POST(request: NextRequest) {
           // una búsqueda nueva vía slot-filling, así que si el presupuesto era
           // mensual tiene que decir "por mes" acá también, o el slot-filling
           // puede reinterpretarlo como precio de contado.
-          suggestedRefinement = [categoryWord, mentionedBrand, budgetLabel].filter(Boolean).join(" ");
+          suggestedRefinement = [categoryWord, mentionedBrands.join(" "), budgetLabel].filter(Boolean).join(" ");
+          // Reemplaza la prosa del LLM (que respondió contra el pool viejo y
+          // suele editorializar "no tengo X en tu rango"). El pedido se resuelve
+          // en la búsqueda nueva que dispara suggestedRefinement; el aviso de
+          // presupuesto lo dan las tarjetas (out_of_budget), no el texto.
+          const brandsBold = mentionedBrands.map((b) => `**${b}**`);
+          const brandsPhrase =
+            brandsBold.length === 1
+              ? brandsBold[0]
+              : `${brandsBold.slice(0, -1).join(", ")} y ${brandsBold[brandsBold.length - 1]}`;
+          reply = budgetLabel
+            ? `Listo, te busco ${brandsPhrase} con ese presupuesto. En los resultados te marco cuáles entran y cuáles se pasan.`
+            : `Listo, te busco ${brandsPhrase}.`;
+        }
+
+        // Mención de procesador puntual determinística (ej. "quiero con i7",
+        // "que sea Ryzen 7", "una con core 7") — mismo problema y misma
+        // solución que la marca de arriba, pero sin fallback previo: el prompt
+        // le pide al modelo llamar suggest_refinement, y en su lugar muy seguido
+        // pide permiso ("¿querés que busque i7?") y tira solo el chip, o
+        // recomienda del pool viejo sin buscar. Si el mensaje nombra un
+        // procesador que NO es el ya preferido en esta búsqueda, se fuerza acá
+        // la re-búsqueda y una respuesta seca, sin pedir permiso. Gateado por
+        // !brandMentionIsNew para no pisar el bloque de marca cuando se piden
+        // las dos cosas a la vez (la marca ya arma su propia frase de búsqueda).
+        const currentPreferredProcessor = (search?.slots.preferences.processor_model_preferred ?? "").toLowerCase();
+        const mentionedProcessor =
+          !greeting && !categoryChanged && !brandMentionIsNew ? detectProcessorMention(message) : null;
+        const processorMentionIsNew =
+          !!mentionedProcessor && !currentPreferredProcessor.includes(mentionedProcessor.toLowerCase());
+        if (processorMentionIsNew) {
+          recommendedProducts = undefined;
+          topPickIds = undefined;
+          topPickTitles = undefined;
+          const categoryWord = CATEGORY_WORD[currentCategory ?? "notebook"] ?? "una notebook";
+          // Misma lógica que la marca: la frase se vuelve el rawInput de una
+          // búsqueda nueva vía slot-filling, así que el presupuesto tiene que ir
+          // con "por mes"/"al contado" ya desambiguado (budgetLabel).
+          suggestedRefinement = [categoryWord, `con procesador ${mentionedProcessor}`, budgetLabel]
+            .filter(Boolean)
+            .join(" ");
+          reply = budgetLabel
+            ? `Listo, busco ${categoryWord} con procesador **${mentionedProcessor}**. En los resultados te marco cuáles entran en tu presupuesto y cuáles se pasan.`
+            : `Listo, busco ${categoryWord} con procesador **${mentionedProcessor}**.`;
         }
 
         // Red de seguridad determinística: el modelo a veces dice "no
@@ -579,7 +826,9 @@ export async function POST(request: NextRequest) {
           `[CHAT] turn shareToken=${shareToken} greeting=${!!greeting} durationMs=${Date.now() - startedAt} ` +
             `userMessage=${JSON.stringify((message ?? "").slice(0, 200))} ` +
             `recommended=${recommendedProducts?.length ?? 0} topPicks=${JSON.stringify(topPickTitles ?? [])} ` +
-            `suggestedRefinement=${JSON.stringify(finalSuggestedRefinement ?? null)} replyChars=${reply.length}`
+            `suggestedRefinement=${JSON.stringify(finalSuggestedRefinement ?? null)} replyChars=${reply.length} ` +
+            `greetingOverBudget=${greeting ? greetingPicks.filter((p) => p.outOfBudget === "above").length : "-"} ` +
+            `replyPreview=${JSON.stringify(reply.slice(0, 140))}`
         );
 
         send({ type: "done", ...responsePayload });
