@@ -85,6 +85,29 @@ const CATEGORY_LABEL: Record<string, string> = {
   phone: "Celular",
 };
 
+// POST /api/search con reintento y backoff — las búsquedas tardan 6-9s cuando
+// OpenAI va lento y un blip de red o un 5xx puntual del server ocupado
+// disparaba el error directo ("No pudimos realizar la búsqueda") con el
+// backend sano. Un 4xx real (que no sea 429) se devuelve sin reintentar.
+async function postSearchWithRetry(payload: unknown, attempts = 3): Promise<Response> {
+  let lastErr: unknown = new Error("search failed");
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const res = await fetch(withBasePath("/api/search"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok || (res.status >= 400 && res.status < 500 && res.status !== 429)) return res;
+      lastErr = new Error(`HTTP ${res.status}`);
+    } catch (e) {
+      lastErr = e;
+    }
+    if (i < attempts - 1) await new Promise((r) => setTimeout(r, 600 * 2 ** i)); // 600ms, 1200ms
+  }
+  throw lastErr;
+}
+
 // Resumen legible de qué está filtrando la búsqueda ahora mismo — pedido
 // explícito del usuario tras varias pruebas en vivo donde no quedaba claro
 // qué había interpretado el sistema (categoría/uso/presupuesto/marca) de su
@@ -445,10 +468,11 @@ export default function SearchResultsPage() {
     setQuestions([]);
     setInlineQuestions([]);
     try {
-      const res = await fetch(withBasePath("/api/search"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input, refinements, sessionId, knownSlots: searchSlotsRef.current ?? undefined }),
+      const res = await postSearchWithRetry({
+        input,
+        refinements,
+        sessionId,
+        knownSlots: searchSlotsRef.current ?? undefined,
       });
       if (!res.ok) throw new Error();
       const data = (await res.json()) as SearchResponse;
