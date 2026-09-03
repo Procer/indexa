@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { SponsoredBadge } from "./SponsoredBadge";
 import { PriceHistorySparkline } from "./PriceHistorySparkline";
-import { SpecHighlights, type SpecDisplayMode } from "./SpecHighlights";
+import { SpecHighlights, type SpecDisplayMode, type PracticeFact } from "./SpecHighlights";
 import { OtherStoresButton } from "./OtherStoresButton";
 import { getUpgradeNote } from "@/lib/domain/upgradeability";
 import { getAlertContact, saveAlertContact } from "@/lib/storage/localStorage";
@@ -20,6 +20,9 @@ interface ProductCardProps {
   searchShareToken?: string;
   sessionId?: string;
   specMode?: SpecDisplayMode;
+  // "En la práctica": datos físicos llanos, renderizados dentro de la sección
+  // "Por qué te conviene" (usado por ProductDetailPanel).
+  practiceFacts?: PracticeFact[];
 }
 
 const SCORE_STYLES: Record<QualityPriceScore, { dot: string; label: string }> = {
@@ -67,7 +70,7 @@ function getSpecParts(product: EnrichedProduct): string[] {
 
 type AlertStatus = "idle" | "open" | "loading" | "saved" | "error";
 
-export function ProductCard({ product, onCompareToggle, isCompared, compareDisabled, searchShareToken, sessionId, specMode }: ProductCardProps) {
+export function ProductCard({ product, onCompareToggle, isCompared, compareDisabled, searchShareToken, sessionId, specMode, practiceFacts }: ProductCardProps) {
   const scoreStyle = product.quality_price_score ? SCORE_STYLES[product.quality_price_score] : null;
   const defaultTarget = product.price_cash ? Math.round(product.price_cash * 0.9) : 0;
   const upgradeNote = getUpgradeNote(product.category, product.specs, product.upgradeable);
@@ -229,6 +232,8 @@ export function ProductCard({ product, onCompareToggle, isCompared, compareDisab
           highlights={product.spec_highlights_simple ?? []}
           technicalHighlights={product.spec_highlights}
           mode={specMode}
+          practiceFacts={practiceFacts}
+          practiceCategory={product.category}
         />
 
         {/* A futuro: qué se puede mejorar más adelante y qué no (determinístico, ver lib/domain/upgradeability.ts) */}

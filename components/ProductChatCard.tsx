@@ -165,7 +165,7 @@ function SpecRows({
   if (rows.length === 0) return null;
 
   return (
-    <ul className="mb-3 flex flex-col gap-2">
+    <ul className="mb-3 flex flex-col gap-2.5">
       {rows.map((r) => (
         <li key={r.label} className="flex gap-2 font-brand text-xs leading-snug">
           <span
@@ -176,8 +176,9 @@ function SpecRows({
           />
           <div className="min-w-0 flex-1">
             {/* Etiqueta en columna de ancho fijo para que los chips de valor
-                gris queden alineados verticalmente entre filas (pedido del
-                usuario). "PANTALLA" es la etiqueta más larga. */}
+                gris queden alineados verticalmente entre filas. El veredicto
+                va en la 2ª línea pegado a la izquierda (bajo la etiqueta, no
+                bajo el chip) — pedido del usuario en test en vivo. */}
             <div className="flex items-center gap-1.5">
               <span className="flex w-[5.5rem] shrink-0 items-center">
                 <SpecTermPopover
@@ -193,9 +194,7 @@ function SpecRows({
                 </span>
               )}
             </div>
-            <span className="mt-0.5 block pl-[calc(5.5rem+0.375rem)] text-gathering-on-surface-variant">
-              {r.say}
-            </span>
+            <span className="mt-px block leading-tight text-gathering-on-surface-variant">{r.say}</span>
           </div>
         </li>
       ))}

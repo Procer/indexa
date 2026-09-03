@@ -2,7 +2,6 @@
 
 import { Portal } from "./Portal";
 import { ProductCard } from "./ProductCard";
-import { SpecTermPopover } from "./SpecTermPopover";
 import { extraCardFacts } from "@/lib/domain/specExplainer";
 import type { EnrichedProduct } from "@/types";
 
@@ -37,9 +36,9 @@ export function ProductDetailPanel({
   if (!product) return null;
 
   // Datos físicos en lenguaje llano (pantalla / tamaño / peso) con la
-  // comparación completa. En la tarjeta de resultado quedaron como fila
-  // compacta (Opción B); acá va la versión larga, que es lo que el usuario
-  // pidió tener siempre a mano en "Ver detalles".
+  // comparación completa. Se pasan a ProductCard → SpecHighlights, que los
+  // muestra como sub-bloque "En la práctica" JUSTO debajo de "Por qué te
+  // conviene" (pedido del usuario en test en vivo).
   const facts = product.specs ? extraCardFacts(product.category, product.specs, product.title) : [];
 
   return (
@@ -60,43 +59,6 @@ export function ProductDetailPanel({
             </button>
           </div>
           <div className="p-4 sm:p-6">
-            {/* "En la práctica" va ARRIBA de la ficha técnica (pedido del
-                usuario): la lectura en lenguaje llano de pantalla/tamaño/peso
-                primero, el detalle técnico de ProductCard debajo. */}
-            {facts.length > 0 && (
-              <div className="mb-5">
-                <span className="mb-2 block font-brand text-xs font-bold uppercase tracking-wide text-gathering-on-surface">
-                  En la práctica
-                </span>
-                <ul className="flex flex-col gap-2">
-                  {facts.map((f) => (
-                    <li
-                      key={f.label}
-                      className="flex gap-2 font-brand text-xs leading-snug text-gathering-on-surface-variant"
-                    >
-                      <span
-                        className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-gathering-outline-variant"
-                        aria-hidden
-                      />
-                      <span className="min-w-0">
-                        <SpecTermPopover
-                          category={product.category}
-                          label={f.label}
-                          className="font-bold uppercase tracking-wide text-gathering-on-surface"
-                        />
-                        {f.value && (
-                          <span className="mx-1 rounded bg-gathering-surface-container-highest px-1.5 py-px text-[10px] font-bold text-gathering-on-surface">
-                            {f.value}
-                          </span>
-                        )}{" "}
-                        {f.text}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
             <ProductCard
               product={product}
               onCompareToggle={onCompareToggle}
@@ -105,6 +67,7 @@ export function ProductDetailPanel({
               searchShareToken={searchShareToken}
               sessionId={sessionId}
               specMode="bar"
+              practiceFacts={facts}
             />
           </div>
         </div>

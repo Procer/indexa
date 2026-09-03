@@ -2,6 +2,18 @@
 
 import { useState } from "react";
 import { classifyHighlightLevel, type HighlightLevel } from "@/lib/domain/specExplainer";
+import { SpecTermPopover } from "./SpecTermPopover";
+import type { ProductCategory } from "@/types";
+
+// Datos físicos en lenguaje llano (pantalla / tamaño / peso con la comparación
+// completa). En la tarjeta de resultado van como fila compacta; acá, en "Ver
+// detalle", el usuario los quiere como sub-bloque propio JUSTO debajo de la
+// caja "Por qué te conviene".
+export interface PracticeFact {
+  label: string;
+  value?: string;
+  text: string;
+}
 
 // ─── "Por qué te conviene" ─────────────────────────────────────────────────
 // Cada bullet simple viene como "Etiqueta: descripción" (ver specExplainer.ts).
@@ -17,6 +29,9 @@ interface SpecHighlightsProps {
   highlights: string[];
   technicalHighlights?: string[];
   mode?: SpecDisplayMode;
+  // "En la práctica" — sub-bloque opcional bajo "Por qué te conviene".
+  practiceFacts?: PracticeFact[];
+  practiceCategory?: ProductCategory;
 }
 
 // Posición semáforo (0-100%) y color por nivel — mismo criterio en los 3 modos.
@@ -165,32 +180,82 @@ function ChecklistRow({ highlight }: { highlight: string }) {
   );
 }
 
-export function SpecHighlights({ highlights, technicalHighlights, mode = "bar" }: SpecHighlightsProps) {
-  if (highlights.length === 0) return null;
+export function SpecHighlights({
+  highlights,
+  technicalHighlights,
+  mode = "bar",
+  practiceFacts,
+  practiceCategory,
+}: SpecHighlightsProps) {
+  if (highlights.length === 0 && !practiceFacts?.length) return null;
 
   return (
     <div>
-      <div className="mb-2 flex items-center gap-1.5">
-        <svg className="h-4 w-4 shrink-0 text-gathering-primary-fixed-dim" viewBox="0 0 24 24" fill="currentColor">
-          <path fillRule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zm13.36-1.814a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z" clipRule="evenodd" />
-        </svg>
-        <span className="text-xs font-bold uppercase tracking-wide text-gathering-on-surface">Por qué te conviene</span>
-      </div>
+      {highlights.length > 0 && (
+        <>
+          <div className="mb-2 flex items-center gap-1.5">
+            <svg className="h-4 w-4 shrink-0 text-gathering-primary-fixed-dim" viewBox="0 0 24 24" fill="currentColor">
+              <path fillRule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zm13.36-1.814a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z" clipRule="evenodd" />
+            </svg>
+            <span className="text-xs font-bold uppercase tracking-wide text-gathering-on-surface">Por qué te conviene</span>
+          </div>
 
-      {mode === "checklist" ? (
-        <div className="rounded-xl border border-gathering-outline-variant/50 bg-gathering-surface-container-low p-3">
-          {highlights.map((h) => <ChecklistRow key={h} highlight={h} />)}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {highlights.map((h) =>
-            mode === "fuel" ? <FuelRow key={h} highlight={h} /> : <BarRow key={h} highlight={h} />
+          {mode === "checklist" ? (
+            <div className="rounded-xl border border-gathering-outline-variant/50 bg-gathering-surface-container-low p-3">
+              {highlights.map((h) => <ChecklistRow key={h} highlight={h} />)}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {highlights.map((h) =>
+                mode === "fuel" ? <FuelRow key={h} highlight={h} /> : <BarRow key={h} highlight={h} />
+              )}
+            </div>
           )}
-        </div>
+
+          {technicalHighlights && technicalHighlights.length > 0 && (
+            <TechnicalDetail items={technicalHighlights} />
+          )}
+        </>
       )}
 
-      {technicalHighlights && technicalHighlights.length > 0 && (
-        <TechnicalDetail items={technicalHighlights} />
+      {/* "En la práctica" — sub-bloque JUSTO debajo de la caja anterior
+          (pedido del usuario en test en vivo). */}
+      {practiceFacts && practiceFacts.length > 0 && (
+        <div className={highlights.length > 0 ? "mt-4" : undefined}>
+          <span className="mb-2 block text-xs font-bold uppercase tracking-wide text-gathering-on-surface">
+            En la práctica
+          </span>
+          <ul className="flex flex-col gap-2">
+            {practiceFacts.map((f) => (
+              <li
+                key={f.label}
+                className="flex gap-2 font-brand text-xs leading-snug text-gathering-on-surface-variant"
+              >
+                <span
+                  className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-gathering-outline-variant"
+                  aria-hidden
+                />
+                <span className="min-w-0">
+                  {practiceCategory ? (
+                    <SpecTermPopover
+                      category={practiceCategory}
+                      label={f.label}
+                      className="font-bold uppercase tracking-wide text-gathering-on-surface"
+                    />
+                  ) : (
+                    <span className="font-bold uppercase tracking-wide text-gathering-on-surface">{f.label}</span>
+                  )}
+                  {f.value && (
+                    <span className="mx-1 rounded bg-gathering-surface-container-highest px-1.5 py-px text-[10px] font-bold text-gathering-on-surface">
+                      {f.value}
+                    </span>
+                  )}{" "}
+                  {f.text}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );
