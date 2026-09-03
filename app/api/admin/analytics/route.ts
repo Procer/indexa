@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db/sql";
-import { getAdminUser } from "@/lib/auth/adminAuth";
+import { getAdminSession } from "@/lib/auth/adminSession";
 import type { Slots, SearchAnalytics, ProductCategory } from "@/types";
 
 interface AnalyticsSearchRow {
@@ -19,8 +19,7 @@ const ALLOWED_DAYS = [7, 30, 90];
 
 // GET /api/admin/analytics?days=30 — indicadores de búsquedas para el panel admin.
 export async function GET(request: NextRequest) {
-  const admin = await getAdminUser(request);
-  if (!admin) {
+  if (!(await getAdminSession(request))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

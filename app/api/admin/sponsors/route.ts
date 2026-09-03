@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db/sql";
-import { getAdminUser } from "@/lib/auth/adminAuth";
+import { getAdminSession } from "@/lib/auth/adminSession";
 import type { SponsoredPlacement } from "@/types";
 
 // GET /api/admin/sponsors
 export async function GET(request: NextRequest) {
-  if (!(await getAdminUser(request))) {
+  if (!(await getAdminSession(request))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
 
 // POST /api/admin/sponsors
 export async function POST(request: NextRequest) {
-  if (!(await getAdminUser(request))) {
+  if (!(await getAdminSession(request))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

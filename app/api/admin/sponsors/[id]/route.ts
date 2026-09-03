@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db/sql";
-import { getAdminUser } from "@/lib/auth/adminAuth";
+import { getAdminSession } from "@/lib/auth/adminSession";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -23,7 +23,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  if (!(await getAdminUser(request))) {
+  if (!(await getAdminSession(request))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   if (!UUID_RE.test(params.id)) {
@@ -55,7 +55,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  if (!(await getAdminUser(request))) {
+  if (!(await getAdminSession(request))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   if (!UUID_RE.test(params.id)) {

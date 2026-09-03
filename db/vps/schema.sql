@@ -107,8 +107,9 @@ CREATE INDEX idx_searches_share_token ON searches(share_token);
 CREATE INDEX idx_searches_created_at  ON searches(created_at DESC);
 
 -- =============================================================================
--- profiles  → tabla de usuarios local (reemplaza el espejo de auth.users)
--- La llena el sistema de login externo. Sin trigger, sin RLS.
+-- profiles  → tabla de usuarios del SITIO PÚBLICO (reemplaza el espejo de
+-- auth.users). La llena el login externo (Supabase Auth). Sin trigger, sin RLS.
+-- El panel /admin NO usa esta tabla — ver admin_users más abajo.
 -- =============================================================================
 CREATE TABLE profiles (
   id         UUID PRIMARY KEY,
@@ -117,6 +118,44 @@ CREATE TABLE profiles (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX idx_profiles_email ON profiles(lower(email));
+
+-- =============================================================================
+-- admin_auth  → login propio del panel /admin (email + contraseña, sesión por
+-- cookie, alta por link de invitación). Ver lib/auth/adminSession.ts y
+-- db/vps/admin_auth.sql (mismo contenido, para aplicar sobre una base ya viva).
+-- =============================================================================
+CREATE TABLE admin_users (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email          TEXT NOT NULL,
+  password_hash  TEXT,
+  role           TEXT NOT NULL DEFAULT 'admin' CHECK (role IN ('admin', 'super_admin')),
+  active         BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by     UUID REFERENCES admin_users(id) ON DELETE SET NULL,
+  last_login_at  TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX idx_admin_users_email ON admin_users (lower(email));
+
+CREATE TABLE admin_sessions (
+  token          TEXT PRIMARY KEY,
+  admin_user_id  UUID NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at     TIMESTAMPTZ NOT NULL,
+  user_agent     TEXT
+);
+CREATE INDEX idx_admin_sessions_user    ON admin_sessions (admin_user_id);
+CREATE INDEX idx_admin_sessions_expires ON admin_sessions (expires_at);
+
+CREATE TABLE admin_invites (
+  token          TEXT PRIMARY KEY,
+  admin_user_id  UUID NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+  purpose        TEXT NOT NULL DEFAULT 'set_password'
+                 CHECK (purpose IN ('set_password', 'reset_password')),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at     TIMESTAMPTZ NOT NULL,
+  used_at        TIMESTAMPTZ
+);
+CREATE INDEX idx_admin_invites_user ON admin_invites (admin_user_id);
 
 -- =============================================================================
 -- saved_products

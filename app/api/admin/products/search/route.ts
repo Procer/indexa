@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db/sql";
-import { getAdminUser } from "@/lib/auth/adminAuth";
+import { getAdminSession } from "@/lib/auth/adminSession";
 
 // GET /api/admin/products/search?q=... — busca productos por título para el panel de patrocinados
 export async function GET(request: NextRequest) {
-  if (!(await getAdminUser(request))) {
+  if (!(await getAdminSession(request))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
