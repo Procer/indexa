@@ -16,6 +16,37 @@ import { buildPriceVerdicts } from "@/lib/domain/priceVerdict";
 import { describeBudgetForChat } from "@/lib/domain/budgetTiers";
 import type { AlternativeProduct, EnrichedProduct, ProductCategory, UseCase } from "@/types";
 
+// Nombres de tienda que se pueden nombrar en el chat sin ambigüedad con
+// palabras comunes del español (por eso NO están "Vea", "Disco", "Jumbo",
+// "Naldo", "Pardo", "Coppel"). Mapea variante escrita → nombre canónico.
+const STORE_MENTION_MATCH: Record<string, string> = {
+  fravega: "Frávega",
+  "frávega": "Frávega",
+  carrefour: "Carrefour",
+  musimundo: "Musimundo",
+  garbarino: "Garbarino",
+  compumundo: "Compumundo",
+  megatone: "Megatone",
+  cetrogar: "Cetrogar",
+  oncity: "On City",
+  "on city": "On City",
+  mercadolibre: "MercadoLibre",
+  "mercado libre": "MercadoLibre",
+  meli: "MercadoLibre",
+  changomas: "Changomas",
+  "chango mas": "Changomas",
+  "chango más": "Changomas",
+};
+
+// Devuelve el nombre canónico de la tienda si el texto la nombra, o null.
+function detectStoreMention(text: string): string | null {
+  const t = ` ${text.toLowerCase()} `;
+  for (const [needle, label] of Object.entries(STORE_MENTION_MATCH)) {
+    if (new RegExp(`[^a-záéíóúñ]${needle}([^a-záéíóúñ]|$)`, "i").test(t)) return label;
+  }
+  return null;
+}
+
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // Tope de productos con detalle completo de specs en el prompt (costo/latencia
@@ -325,7 +356,7 @@ function detectDeterministicRedirect(
   preferredBrands: string[],
   preferredProcessor: string | null,
   budgetLabel: string | null
-): { reply: string; suggestedRefinement: string } | null {
+): { reply: string; suggestedRefinement?: string; highlightFilter?: "store" } | null {
   const impliedCategory = detectCategoryLocally(message);
   if (impliedCategory && currentCategory && impliedCategory !== currentCategory) {
     return { reply: "Listo, te busco eso.", suggestedRefinement: message.trim() };
@@ -357,6 +388,17 @@ function detectDeterministicRedirect(
         ? `Listo, busco ${categoryWord} con procesador **${mentionedProcessor}**. En los resultados te marco cuáles entran en tu presupuesto y cuáles se pasan.`
         : `Listo, busco ${categoryWord} con procesador **${mentionedProcessor}**.`,
       suggestedRefinement: [categoryWord, `con procesador ${mentionedProcessor}`, budgetLabel].filter(Boolean).join(" "),
+    };
+  }
+
+  // Pregunta por una tienda puntual ("en Carrefour hay?", "solo Frávega",
+  // "tenés en Musimundo?"). No se re-busca (no hay slot de tienda) — se le
+  // indica el filtro de Tienda de la grilla y el cliente lo resalta.
+  const store = detectStoreMention(message);
+  if (store) {
+    return {
+      reply: `Para ver solo lo de **${store}**, usá el filtro **Tienda** que está arriba de los resultados — te lo resalté para que lo encuentres.`,
+      highlightFilter: "store",
     };
   }
 
@@ -507,6 +549,7 @@ export async function POST(request: NextRequest) {
             recommendedProducts: undefined,
             topPickIds: undefined,
             suggestedRefinement: shortCircuit.suggestedRefinement,
+            highlightFilter: shortCircuit.highlightFilter,
           };
           controller.enqueue(enc.encode(`data: ${JSON.stringify({ type: "text", value: shortCircuit.reply })}\n\n`));
           controller.enqueue(enc.encode(`data: ${JSON.stringify({ type: "done", ...payload })}\n\n`));
@@ -516,7 +559,8 @@ export async function POST(request: NextRequest) {
       console.log(
         `[CHAT] turn shareToken=${shareToken} greeting=false shortCircuit=true durationMs=${Date.now() - startedAt} ` +
           `userMessage=${JSON.stringify(message.slice(0, 200))} recommended=0 topPicks=[] ` +
-          `suggestedRefinement=${JSON.stringify(shortCircuit.suggestedRefinement)} replyChars=${shortCircuit.reply.length}`
+          `suggestedRefinement=${JSON.stringify(shortCircuit.suggestedRefinement ?? null)} replyChars=${shortCircuit.reply.length}` +
+          (shortCircuit.highlightFilter ? ` highlightFilter=${shortCircuit.highlightFilter}` : "")
       );
       return new Response(scStream, {
         headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
@@ -900,11 +944,25 @@ export async function POST(request: NextRequest) {
           (!greeting && !looksLikeQuestion && (!recommendedProducts || recommendedProducts.length === 0) && message.trim()
             ? message.trim()
             : undefined);
+
+        // El saludo cuando el texto de la búsqueda nombra una tienda ("...en
+        // Carrefour...") — no hay slot de tienda, así que se le indica el filtro
+        // de la grilla y el cliente lo resalta.
+        let highlightFilter: "store" | undefined;
+        if (greeting) {
+          const store = detectStoreMention(rawInput ?? "");
+          if (store) {
+            highlightFilter = "store";
+            reply = `${reply}\n\nPara ver solo lo de **${store}**, usá el filtro **Tienda** arriba de los resultados — te lo resalté.`;
+          }
+        }
+
         const responsePayload: ChatGreetingPayload = {
           reply,
           recommendedProducts,
           topPickIds,
           suggestedRefinement: finalSuggestedRefinement,
+          highlightFilter,
         };
 
         if (greeting && shareToken && replyText.trim()) {
@@ -917,6 +975,7 @@ export async function POST(request: NextRequest) {
             `recommended=${recommendedProducts?.length ?? 0} topPicks=${JSON.stringify(topPickTitles ?? [])} ` +
             `suggestedRefinement=${JSON.stringify(finalSuggestedRefinement ?? null)} replyChars=${reply.length} ` +
             `greetingOverBudget=${greeting ? greetingPicks.filter((p) => p.outOfBudget === "above").length : "-"} ` +
+            (highlightFilter ? `highlightFilter=${highlightFilter} ` : "") +
             `replyPreview=${JSON.stringify(reply.slice(0, 140))}`
         );
 

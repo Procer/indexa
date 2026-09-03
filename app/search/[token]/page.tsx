@@ -280,6 +280,8 @@ export default function SearchResultsPage() {
   // en null (todavía no llegó el saludo del bot) y la página se cae de vuelta
   // a `products` sin rankear mientras tanto, ver `displayedProducts` más abajo.
   const [chatRecommendations, setChatRecommendations] = useState<{ products: AlternativeProduct[]; topPickIds?: string[] } | null>(null);
+  // Filtro de la grilla que el chat pidió resaltar (ej. "store"). Se limpia solo.
+  const [highlightFacet, setHighlightFacet] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<"relevance" | "price_asc" | "price_desc">("relevance");
   const [chatOpen, setChatOpen] = useState(true);
   // Jugada #11: pregunta ya redactada sobre un producto puntual, inyectada al
@@ -733,6 +735,14 @@ export default function SearchResultsPage() {
     []
   );
 
+  // El chat pidió resaltar un filtro de la grilla (ej. "store" cuando el
+  // usuario preguntó por una tienda puntual). Se marca por ~5s y ResultsFilterBar
+  // hace el pulso + scroll.
+  const handleHighlightFilter = useCallback((facetKey: string) => {
+    setHighlightFacet(facetKey);
+    setTimeout(() => setHighlightFacet(null), 5000);
+  }, []);
+
   // Jugada #11: abre el chat con una consulta ya redactada sobre este equipo,
   // así el usuario no tiene que volver al chat y describirlo. El producto ya
   // viaja en `products` al backend del chat, que arma su bloque de specs.
@@ -905,7 +915,12 @@ export default function SearchResultsPage() {
         {hasResults && (
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <SortDropdown value={sortOrder} onChange={setSortOrder} />
-            <ResultsFilterBar products={products} category={chatCategory} onFilteredChange={setFilteredProducts} />
+            <ResultsFilterBar
+              products={products}
+              category={chatCategory}
+              onFilteredChange={setFilteredProducts}
+              highlightKey={highlightFacet}
+            />
           </div>
         )}
 
@@ -1117,6 +1132,7 @@ export default function SearchResultsPage() {
               appliedRefinements={appliedRefinements}
               onRefine={handleChatRefine}
               externalMessage={askAboutMsg}
+              onHighlightFilter={handleHighlightFilter}
             />
           </div>
         )}

@@ -8,9 +8,12 @@ interface ResultsFilterBarProps {
   products: EnrichedProduct[];
   category: ProductCategory | null;
   onFilteredChange: (filtered: EnrichedProduct[]) => void;
+  // Cuando el chat pide resaltar un facet (ej. "store"): el botón pulsa unos
+  // segundos y se scrollea a la vista. Se limpia solo desde el padre.
+  highlightKey?: string | null;
 }
 
-export function ResultsFilterBar({ products, category, onFilteredChange }: ResultsFilterBarProps) {
+export function ResultsFilterBar({ products, category, onFilteredChange, highlightKey }: ResultsFilterBarProps) {
   const facets = useMemo(() => getFilterFacets(category), [category]);
   const [selected, setSelected] = useState<Record<string, Set<string>>>({});
   // Recalcula las opciones de cada facet contra el resto de los filtros ya
@@ -22,6 +25,15 @@ export function ResultsFilterBar({ products, category, onFilteredChange }: Resul
   );
   const [openFacet, setOpenFacet] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const highlightBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Al pedir resaltar un facet, scrollearlo a la vista (el pulso lo hace la
+  // clase CSS mientras highlightKey coincida).
+  useEffect(() => {
+    if (highlightKey && highlightBtnRef.current) {
+      highlightBtnRef.current.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+    }
+  }, [highlightKey]);
 
   useEffect(() => {
     function handleOutsideClick(e: MouseEvent) {
@@ -60,16 +72,22 @@ export function ResultsFilterBar({ products, category, onFilteredChange }: Resul
         if (options.length === 0) return null;
         const selectedValues = selected[facet.key] ?? new Set<string>();
         const isOpen = openFacet === facet.key;
+        const isHighlighted = highlightKey === facet.key;
 
         return (
           <div key={facet.key} className="relative">
             <button
+              ref={isHighlighted ? highlightBtnRef : undefined}
               type="button"
               onClick={() => setOpenFacet(isOpen ? null : facet.key)}
               className={`flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 font-brand text-xs font-semibold transition-colors ${
                 selectedValues.size > 0
                   ? "border-gathering-primary-fixed-dim/50 bg-gathering-primary-fixed-dim/10 text-gathering-primary-fixed-dim"
                   : "border-gathering-outline-variant text-gathering-on-surface-variant hover:bg-black/5"
+              } ${
+                isHighlighted
+                  ? "animate-[pulse_0.8s_ease-in-out_4] ring-2 ring-gathering-primary-fixed-dim ring-offset-2 ring-offset-gathering-background"
+                  : ""
               }`}
             >
               {facet.label}

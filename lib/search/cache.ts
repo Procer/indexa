@@ -234,6 +234,9 @@ export interface ChatGreetingPayload {
   recommendedProducts?: AlternativeProduct[];
   topPickIds?: string[];
   suggestedRefinement?: string;
+  // El chat pide resaltar un filtro de la grilla (ej. "store" cuando el usuario
+  // preguntó por una tienda puntual).
+  highlightFilter?: "store";
 }
 
 export async function getChatGreetingCache(shareToken: string): Promise<ChatGreetingPayload | null> {

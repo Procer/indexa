@@ -51,6 +51,10 @@ interface GuidedSearchChatProps {
   // Jugada #11: mensaje inyectado desde afuera (botón "Consultar sobre este
   // equipo" de una tarjeta). Cada cambio de `key` lo envía como turno del chat.
   externalMessage?: { text: string; key: number } | null;
+  // El chat pide resaltar un filtro de la grilla (ej. "store" cuando el usuario
+  // pregunta por una tienda puntual — no hay slot de tienda, se lo mandamos al
+  // filtro de la grilla).
+  onHighlightFilter?: (facetKey: string) => void;
 }
 
 type ChatMessage = {
@@ -64,6 +68,7 @@ type ChatMessage = {
   recommendedProducts?: AlternativeProduct[];
   topPickIds?: string[];
   suggestedRefinement?: string;
+  highlightFilter?: string;
 };
 
 let idCounter = 0;
@@ -111,6 +116,7 @@ interface ChatDonePayload {
   recommendedProducts?: AlternativeProduct[];
   topPickIds?: string[];
   suggestedRefinement?: string;
+  highlightFilter?: string;
 }
 
 // El endpoint responde de dos formas: JSON normal cuando el saludo ya está
@@ -150,6 +156,7 @@ async function consumeChatResponse(
       recommendedProducts: data.recommendedProducts,
       topPickIds: data.topPickIds,
       suggestedRefinement: data.suggestedRefinement,
+      highlightFilter: data.highlightFilter,
     });
     return data;
   }
@@ -187,12 +194,14 @@ async function consumeChatResponse(
           recommendedProducts: event.recommendedProducts,
           topPickIds: event.topPickIds,
           suggestedRefinement: event.suggestedRefinement,
+          highlightFilter: event.highlightFilter,
         });
         finalPayload = {
           reply: event.reply ?? "",
           recommendedProducts: event.recommendedProducts,
           topPickIds: event.topPickIds,
           suggestedRefinement: event.suggestedRefinement,
+          highlightFilter: event.highlightFilter,
         };
       }
     }
@@ -216,6 +225,7 @@ export function GuidedSearchChat({
   onMinimize,
   onRecommendations,
   externalMessage,
+  onHighlightFilter,
 }: GuidedSearchChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -361,10 +371,11 @@ export function GuidedSearchChat({
             greeting: true,
           }),
         });
-        await consumeChatResponse(res, botId, setMessages, (insertedAtIndex) => {
+        const greetingResult = await consumeChatResponse(res, botId, setMessages, (insertedAtIndex) => {
           resultsStartIndexRef.current = insertedAtIndex;
           setStreamingReply(true);
         });
+        if (greetingResult?.highlightFilter) onHighlightFilter?.(greetingResult.highlightFilter);
       } catch {
         setMessages((prev) => {
           resultsStartIndexRef.current = prev.length;
@@ -464,6 +475,7 @@ export function GuidedSearchChat({
         }),
       });
       const result = await consumeChatResponse(res, nextId(), setMessages, () => setStreamingReply(true));
+      if (result?.highlightFilter) onHighlightFilter?.(result.highlightFilter);
       // El usuario pidió que un mensaje de texto con intención clara de
       // búsqueda ("qué tenés de i5", "buscá con más batería") dispare la
       // búsqueda de una — sin el paso extra de tener que tocar el botón
