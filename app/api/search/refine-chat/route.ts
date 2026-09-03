@@ -384,6 +384,39 @@ function buildDeterministicPickReply(picks: EnrichedProduct[]): string {
   return `Para lo que buscás te marco ${list}. Están abajo con la lectura de specs en lenguaje simple para comparar.`;
 }
 
+// Saludo determinístico para el caso "pediste una marca/procesador puntual + hay
+// presupuesto": gpt-4o-mini acá miente seguido — con "quiero iphone" hasta
+// $110k/mes, 2 iPhone 13 ENTRABAN y el texto decía "no encontré ningún Apple en
+// tu presupuesto" (visto en vivo). El dato por-pick (out_of_budget) es
+// confiable; el texto del modelo no. Se arma la frase con los hechos.
+function buildGreetingBudgetReply(
+  inBudget: EnrichedProduct[],
+  over: EnrichedProduct[],
+  budgetLabel: string
+): string {
+  const overNote = (() => {
+    if (over.length === 0) return "";
+    const o = over[0];
+    const plural = over.length > 1;
+    const extra = plural ? ` y ${over.length - 1} más` : "";
+    return ` La **${o.title}**${extra} también aparece${plural ? "n" : ""}, pero se pasa${
+      plural ? "n" : ""
+    } de precio — la ves marcada abajo.`;
+  })();
+
+  if (inBudget.length === 0) {
+    return `Ninguna de estas opciones entra en tu presupuesto de ${budgetLabel} — te muestro las más cercanas.${overNote}`;
+  }
+
+  const p = inBudget[0];
+  const whyRaw = (p.spec_highlights_simple ?? [])[0] ?? p.selection_reason ?? "";
+  const why = whyRaw
+    .replace(/^[^:]+:\s*/, "")
+    .replace(/\s*\.\s*$/, "")
+    .trim();
+  return `La **${p.title}** entra en tu presupuesto de ${budgetLabel}${why ? ` — ${why}` : ""}.${overNote}`;
+}
+
 function toRecommendedProduct(p: EnrichedProduct): AlternativeProduct {
   return {
     id: p.id,
@@ -687,6 +720,20 @@ export async function POST(request: NextRequest) {
         // el markdown de **negrita** que el prompt le pide al modelo para
         // remarcar productos/modelos/marcas.
         let reply = replyText.trim() || (greeting ? FALLBACK_REPLY_GREETING : FALLBACK_REPLY_ERROR);
+
+        // Saludo + pedido puntual de marca/procesador + presupuesto: no se
+        // confía en el texto de gpt-4o-mini para el veredicto de presupuesto
+        // (miente seguido, ver buildGreetingBudgetReply). Se rearma con los
+        // hechos: out_of_budget por pick es la fuente de verdad.
+        if (greeting && budgetLabel && wantsExactSpec && greetingPickCount > 0) {
+          const picks = loadedProducts.slice(0, greetingPickCount);
+          reply = buildGreetingBudgetReply(
+            picks.filter((p) => p.out_of_budget !== "above"),
+            picks.filter((p) => p.out_of_budget === "above"),
+            budgetLabel
+          );
+        }
+
         const resolved = resolveToolCalls(toolCallAccumulators, loadedProducts);
         let recommendedProducts = resolved.recommendedProducts;
         let topPickIds = resolved.topPickIds;
