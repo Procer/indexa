@@ -175,20 +175,27 @@ function SpecRows({
             aria-hidden
           />
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-              <SpecTermPopover
-                category={category}
-                label={r.label}
-                variant="chip"
-                className="text-[11px] font-bold uppercase tracking-wide text-gathering-on-surface"
-              />
+            {/* Etiqueta en columna de ancho fijo para que los chips de valor
+                gris queden alineados verticalmente entre filas (pedido del
+                usuario). "PANTALLA" es la etiqueta más larga. */}
+            <div className="flex items-center gap-1.5">
+              <span className="flex w-[5.5rem] shrink-0 items-center">
+                <SpecTermPopover
+                  category={category}
+                  label={r.label}
+                  variant="chip"
+                  className="text-[11px] font-bold uppercase tracking-wide text-gathering-on-surface"
+                />
+              </span>
               {r.value && (
                 <span className="rounded bg-gathering-surface-container-highest px-1.5 py-px text-[10px] font-bold text-gathering-on-surface">
                   {r.value}
                 </span>
               )}
             </div>
-            <span className="mt-0.5 block text-gathering-on-surface-variant">{r.say}</span>
+            <span className="mt-0.5 block pl-[calc(5.5rem+0.375rem)] text-gathering-on-surface-variant">
+              {r.say}
+            </span>
           </div>
         </li>
       ))}

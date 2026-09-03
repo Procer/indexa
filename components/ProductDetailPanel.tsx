@@ -60,18 +60,11 @@ export function ProductDetailPanel({
             </button>
           </div>
           <div className="p-4 sm:p-6">
-            <ProductCard
-              product={product}
-              onCompareToggle={onCompareToggle}
-              isCompared={isCompared}
-              compareDisabled={compareDisabled}
-              searchShareToken={searchShareToken}
-              sessionId={sessionId}
-              specMode="bar"
-            />
-
+            {/* "En la práctica" va ARRIBA de la ficha técnica (pedido del
+                usuario): la lectura en lenguaje llano de pantalla/tamaño/peso
+                primero, el detalle técnico de ProductCard debajo. */}
             {facts.length > 0 && (
-              <div className="mt-5">
+              <div className="mb-5">
                 <span className="mb-2 block font-brand text-xs font-bold uppercase tracking-wide text-gathering-on-surface">
                   En la práctica
                 </span>
@@ -103,6 +96,16 @@ export function ProductDetailPanel({
                 </ul>
               </div>
             )}
+
+            <ProductCard
+              product={product}
+              onCompareToggle={onCompareToggle}
+              isCompared={isCompared}
+              compareDisabled={compareDisabled}
+              searchShareToken={searchShareToken}
+              sessionId={sessionId}
+              specMode="bar"
+            />
           </div>
         </div>
       </div>
