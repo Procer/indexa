@@ -39,7 +39,6 @@ export default function MyAlertsPage() {
         <div className="mx-auto flex max-w-3xl items-center justify-between">
           <a href={withBasePath("/")} className="flex items-center gap-2">
             <LogoBrand logoClass="h-11" />
-            <span className="font-brand text-xl font-bold text-gathering-on-surface">indexa</span>
           </a>
           <h1 className="font-brand text-sm font-semibold text-gathering-on-surface">Mis alertas de precio</h1>
         </div>

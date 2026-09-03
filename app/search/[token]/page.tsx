@@ -876,7 +876,6 @@ export default function SearchResultsPage() {
             className="flex flex-wrap items-center justify-center gap-3 sm:justify-start"
           >
             <LogoBrand logoClass="h-10 sm:h-12" />
-            <span className="font-brand text-xl font-bold text-gathering-on-surface sm:text-2xl">indexa</span>
             <span className="hidden h-6 w-px bg-gathering-outline-variant sm:block" aria-hidden="true" />
             <p className="font-brand text-xs font-medium uppercase text-gathering-on-surface-variant sm:text-sm">
               Toda la tecnología de Argentina, indexada para vos.

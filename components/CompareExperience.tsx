@@ -732,7 +732,6 @@ function MultiCompareView({
         <div className="mx-auto flex max-w-6xl items-center justify-between">
           <div className="flex items-center gap-2">
             <LogoBrand logoClass="h-11" />
-            <span className="font-brand text-xl font-bold text-gathering-on-surface">indexa</span>
           </div>
           <h1 className="font-brand text-sm font-semibold text-gathering-on-surface">Comparando {items.length} productos</h1>
           <button type="button" onClick={goBack} className="font-brand text-sm text-gathering-primary-fixed-dim hover:underline">← Volver</button>
@@ -1106,7 +1105,6 @@ export function CompareExperience({ ids, searchToken = null, mode, onClose }: Co
             <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-5">
               <div className="flex items-center gap-2">
                 <LogoBrand logoClass="h-6" />
-                <span className="font-brand text-sm font-bold text-gathering-on-surface">indexa</span>
               </div>
               <nav className="flex gap-6">
                 <a href={withBasePath("/privacy")} className="font-brand text-sm text-gathering-on-surface-variant hover:text-gathering-on-surface">Privacidad</a>

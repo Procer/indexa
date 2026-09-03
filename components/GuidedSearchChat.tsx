@@ -532,7 +532,7 @@ export function GuidedSearchChat({
         <div className="flex items-center gap-3">
           <a href={withBasePath("/")} className="shrink-0" aria-label="Volver al inicio">
             <div className="flex h-10 w-10 items-center justify-center rounded-full border border-gathering-primary/30 bg-gathering-primary-container/20">
-              <LogoBrand logoClass="h-5" />
+              <LogoBrand icon logoClass="h-5" />
             </div>
           </a>
           <div>
