@@ -5,7 +5,6 @@ import { OtherStoresButton } from "./OtherStoresButton";
 import { SpecTermPopover } from "./SpecTermPopover";
 import { PriceAlertControl } from "./PriceAlertControl";
 import {
-  classifyHighlightLevel,
   extraCardFacts,
   shortSpecValues,
   translationStrip,
@@ -26,18 +25,6 @@ import type { AlternativeProduct } from "@/types";
 // prolija aunque un título sea más corto que otro), specs en lista vertical,
 // y las acciones ancladas abajo del todo con "mt-auto". Estructura pedida
 // explícitamente por el usuario (mockup HTML de referencia).
-
-function specLabel(highlight: string): string {
-  const idx = highlight.indexOf(":");
-  return idx === -1 ? highlight : highlight.slice(0, idx).trim();
-}
-
-function specDesc(highlight: string): string {
-  const idx = highlight.indexOf(":");
-  const desc = idx === -1 ? highlight : highlight.slice(idx + 1).trim();
-  // Sin el punto final: en una lista de líneas cortas se lee más limpio.
-  return desc.replace(/\.$/, "");
-}
 
 // Bloque de precio: número grande + unidad, y una línea chica debajo. El orden
 // depende de cómo eligió pagar el usuario — si buscó "por mes / en cuotas", el
@@ -135,114 +122,74 @@ function StoreLogo({ source }: { source: string }) {
   );
 }
 
-// Lectura en lenguaje llano — SIEMPRE visible (antes vivía detrás del acordeón
-// "Ver specs", cerrado por defecto, así que el usuario no técnico nunca la
-// veía). Cada línea: punto de color semáforo (great/ok/warn) + etiqueta
-// funcional (Rapidez / Memoria / Almacenamiento…) + veredicto de una frase.
-// La ficha técnica cruda (nombre de procesador, tipo de SSD, GB) queda abajo
-// en el acordeón para quien la pida.
-function SpecHighlightsSimple({
-  highlights,
+// Opción B (mockup aprobado por el usuario): UNA fila compacta por spec —
+// punto semáforo + etiqueta funcional (con popover de glosario, jugada #7) +
+// valor crudo + veredicto de 1-2 palabras. Antes la tarjeta apilaba la tira de
+// traducción + las frases completas + los datos físicos + el recuadro "a
+// futuro": el mismo texto se repetía en cada resultado y se leía como un muro.
+// Las frases largas (el "por qué" completo) viven ahora en "Ver detalles".
+function shortFact(text: string): string {
+  // De "como una botella de agua de 1½ litro, peso normal para una notebook"
+  // queda solo la comparación corta para la fila.
+  return text.split(",")[0].trim();
+}
+
+function SpecRows({
+  chips,
   values,
+  facts,
   category,
 }: {
-  highlights: string[];
+  chips: TranslationChip[];
   values: Record<string, string>;
+  facts: CardFact[];
   category: ProductCategory;
 }) {
-  if (highlights.length === 0) return null;
+  const screen = facts.find((f) => f.label === "Pantalla");
+  const weight = facts.find((f) => f.label === "Peso");
+
+  const rows: {
+    label: string;
+    value?: string;
+    say: string;
+    level: TranslationChip["level"] | "neutral";
+  }[] = chips.map((c) => ({
+    label: c.label,
+    value: values[c.label.toLowerCase()],
+    say: c.word,
+    level: c.level,
+  }));
+  if (screen) rows.push({ label: "Pantalla", value: screen.value, say: shortFact(screen.text), level: "neutral" });
+  if (weight) rows.push({ label: "Peso", value: weight.value, say: shortFact(weight.text), level: "neutral" });
+
+  if (rows.length === 0) return null;
 
   return (
-    <ul className="mb-3 flex flex-col gap-1.5">
-      {highlights.map((h) => {
-        const level = classifyHighlightLevel(h);
-        const label = specLabel(h);
-        const value = values[label.toLowerCase()];
-        // Se saca SIEMPRE el número que a veces abre el veredicto ("512GB, abre
-        // todo casi al instante"): si hay chip, para no repetirlo; si no hay
-        // chip (dato inverosímil que no se pudo recuperar), para no mostrar un
-        // número posiblemente falso. El chip es la única fuente del valor.
-        const desc = specDesc(h).replace(/^\d[\d.,]*\s*(gb|tb)\b[,:]?\s*/i, "");
-        return (
-          <li
-            key={h}
-            className="flex gap-2 font-brand text-xs leading-snug text-gathering-on-surface-variant"
-          >
-            <span
-              className={`mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full ${LEVEL_DOT[level]}`}
-              aria-hidden
-            />
-            <span className="min-w-0">
-              <SpecTermPopover
-                category={category}
-                label={label}
-                className="font-bold uppercase tracking-wide text-gathering-on-surface"
-              />
-              {value && (
-                <span className="mx-1 rounded bg-gathering-surface-container-highest px-1.5 py-px text-[10px] font-bold text-gathering-on-surface">
-                  {value}
-                </span>
-              )}{" "}
-              {desc}
-            </span>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-// Tira de traducción (jugada #8): resumen de 1-2 palabras por spec clave, para
-// leer el estado del equipo de un vistazo antes de bajar a las frases completas.
-function TranslationStrip({ chips }: { chips: TranslationChip[] }) {
-  if (chips.length === 0) return null;
-  return (
-    <div className="mb-3 flex flex-wrap gap-x-3 gap-y-1">
-      {chips.map((c) => (
-        <span
-          key={c.label}
-          className="inline-flex items-center gap-1 font-brand text-[11px] leading-none text-gathering-on-surface-variant"
-        >
-          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${LEVEL_DOT[c.level]}`} aria-hidden />
-          <span aria-hidden>{c.icon}</span>
-          <span className="font-bold uppercase tracking-wide text-gathering-on-surface">{c.label}</span>
-          <span>· {c.word}</span>
-        </span>
-      ))}
-    </div>
-  );
-}
-
-// Datos físicos en lenguaje llano (pantalla, peso, tamaño) con comparaciones
-// concretas — "como una hoja A4", "como una botella de agua de 1½ litro". Punto
-// neutro (no semáforo): son descriptivos, no un juicio de "alcanza / no alcanza".
-function ExtraFacts({ facts, category }: { facts: CardFact[]; category: ProductCategory }) {
-  if (facts.length === 0) return null;
-
-  return (
-    <ul className="mb-3 flex flex-col gap-1.5">
-      {facts.map((f) => (
-        <li
-          key={f.label}
-          className="flex gap-2 font-brand text-xs leading-snug text-gathering-on-surface-variant"
-        >
+    <ul className="mb-3 flex flex-col gap-2">
+      {rows.map((r) => (
+        <li key={r.label} className="flex gap-2 font-brand text-xs leading-snug">
           <span
-            className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-gathering-outline-variant"
+            className={`mt-[3px] h-1.5 w-1.5 shrink-0 rounded-full ${
+              r.level === "neutral" ? "bg-gathering-outline-variant" : LEVEL_DOT[r.level]
+            }`}
             aria-hidden
           />
-          <span className="min-w-0">
-            <SpecTermPopover
-              category={category}
-              label={f.label}
-              className="font-bold uppercase tracking-wide text-gathering-on-surface"
-            />
-            {f.value && (
-              <span className="mx-1 rounded bg-gathering-surface-container-highest px-1.5 py-px text-[10px] font-bold text-gathering-on-surface">
-                {f.value}
-              </span>
-            )}{" "}
-            {f.text}
-          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+              <SpecTermPopover
+                category={category}
+                label={r.label}
+                variant="chip"
+                className="text-[11px] font-bold uppercase tracking-wide text-gathering-on-surface"
+              />
+              {r.value && (
+                <span className="rounded bg-gathering-surface-container-highest px-1.5 py-px text-[10px] font-bold text-gathering-on-surface">
+                  {r.value}
+                </span>
+              )}
+            </div>
+            <span className="mt-0.5 block text-gathering-on-surface-variant">{r.say}</span>
+          </div>
         </li>
       ))}
     </ul>
@@ -267,7 +214,6 @@ export function ProductChatCard({
   compareDisabled,
   showBudgetFit,
 }: ProductChatCardProps) {
-  const specs = product.spec_highlights_simple ?? [];
   const specValues = product.specs
     ? shortSpecValues(product.category, product.specs, product.title)
     : {};
@@ -470,25 +416,26 @@ export function ProductChatCard({
 
       <hr className="mb-3 border-t border-gathering-outline-variant" />
 
-      <TranslationStrip chips={stripChips} />
+      <SpecRows
+        chips={stripChips}
+        values={specValues}
+        facts={facts}
+        category={product.category}
+      />
 
-      <SpecHighlightsSimple highlights={specs} values={specValues} category={product.category} />
-
-      <ExtraFacts facts={facts} category={product.category} />
-
-      {/* "A futuro": qué se puede cambiar después y qué viene fijo — convierte
-          las specs en estrategia de compra. Determinístico (getUpgradeNote),
-          calculado en el conversor a AlternativeProduct. */}
+      {/* "A futuro": qué se puede cambiar después y qué viene fijo — una línea,
+          sin recuadro (Opción B). Se recorta a la primera oración: el detalle
+          largo (caveats de nube, etc.) queda para "Ver detalles". */}
       {product.upgrade_note && (
-        <div className="mb-3 flex gap-1.5 rounded-md bg-gathering-surface-container-highest/40 px-2.5 py-2 font-brand text-[11px] leading-snug text-gathering-on-surface-variant">
+        <p className="mb-3 flex gap-1.5 font-brand text-[11px] leading-snug text-gathering-on-surface-variant">
           <span
-            className="material-symbols-outlined mt-px shrink-0 text-[14px] text-gathering-primary-fixed-dim"
+            className="material-symbols-outlined shrink-0 text-[13px] text-gathering-primary-fixed-dim"
             aria-hidden
           >
             upgrade
           </span>
-          <span className="min-w-0">{product.upgrade_note}</span>
-        </div>
+          <span className="min-w-0">{product.upgrade_note.split(/[.:]\s|\s[—–]\s/)[0]}</span>
+        </p>
       )}
 
       {/* Acciones — siempre pegadas abajo del todo (mt-auto), aunque la

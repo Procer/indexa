@@ -41,6 +41,13 @@ interface ChatRequest {
   message: string;
   greeting?: boolean;
   refinements?: string[];
+  // Jugada #11: el mensaje viene del botón "Consultar sobre este equipo" de una
+  // tarjeta, no lo tipeó el usuario. Siempre nombra la marca/modelo del equipo
+  // ("Contame más sobre la HP Probook…"), así que sin esta señal los atajos
+  // determinísticos de marca/categoría/procesador lo interceptan y devuelven
+  // "te busco esa marca" en vez de responder sobre el equipo. Con askAbout=true
+  // el turno pasa derecho al LLM (el producto ya viaja en `products`).
+  askAbout?: boolean;
 }
 
 // Tope de tarjetas mostradas por respuesta — el chat ahora muestra SIEMPRE
@@ -411,7 +418,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = (await request.json()) as ChatRequest;
-    const { rawInput, useCases, budgetMax, category, products, shareToken, messages, message, greeting, refinements } = body;
+    const { rawInput, useCases, budgetMax, category, products, shareToken, messages, message, greeting, refinements, askAbout } = body;
 
     if ((!greeting && !message?.trim()) || !products || products.length === 0) {
       return NextResponse.json({ error: "Faltan parámetros" }, { status: 400 });
@@ -444,7 +451,7 @@ export async function POST(request: NextRequest) {
     // caro: el usuario ve la respuesta al instante y la búsqueda nueva la
     // dispara suggestedRefinement igual.
     const shortCircuit =
-      !greeting && message?.trim()
+      !greeting && !askAbout && message?.trim()
         ? detectDeterministicRedirect(
             message,
             category ?? search?.slots.category ?? null,
@@ -696,7 +703,9 @@ export async function POST(request: NextRequest) {
         // sin depender de que el modelo lo haya notado. Nunca aplica al
         // saludo (no tiene mensaje propio del usuario).
         const currentCategory = category ?? search?.slots.category ?? null;
-        const impliedCategory = !greeting ? detectCategoryLocally(message) : null;
+        // askAbout: consulta sobre un equipo puntual — no es un cambio de
+        // categoría/marca/procesador aunque el texto nombre todo eso.
+        const impliedCategory = !greeting && !askAbout ? detectCategoryLocally(message) : null;
         const categoryChanged = !!(impliedCategory && currentCategory && impliedCategory !== currentCategory);
         if (categoryChanged) {
           recommendedProducts = undefined;
@@ -719,7 +728,7 @@ export async function POST(request: NextRequest) {
         // modelo.
         // Todas las marcas nombradas, no solo la primera ("quiero iphone y
         // samsung" antes perdía Samsung o iPhone según el orden).
-        const mentionedBrands = !greeting && !categoryChanged ? detectBrandMentions(message) : [];
+        const mentionedBrands = !greeting && !askAbout && !categoryChanged ? detectBrandMentions(message) : [];
         const newBrands = mentionedBrands.filter((b) => !currentPreferredBrands.includes(b.toLowerCase()));
         const brandMentionIsNew = newBrands.length > 0;
         if (brandMentionIsNew) {
@@ -759,7 +768,7 @@ export async function POST(request: NextRequest) {
         // las dos cosas a la vez (la marca ya arma su propia frase de búsqueda).
         const currentPreferredProcessor = (search?.slots.preferences.processor_model_preferred ?? "").toLowerCase();
         const mentionedProcessor =
-          !greeting && !categoryChanged && !brandMentionIsNew ? detectProcessorMention(message) : null;
+          !greeting && !askAbout && !categoryChanged && !brandMentionIsNew ? detectProcessorMention(message) : null;
         const processorMentionIsNew =
           !!mentionedProcessor && !currentPreferredProcessor.includes(mentionedProcessor.toLowerCase());
         if (processorMentionIsNew) {

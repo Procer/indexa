@@ -5,13 +5,15 @@
 // spec — el usuario la abre/cierra cuando quiere, no compite por espacio
 // con los resultados. Sin LLM: contenido estático curado a mano.
 //
-// Metáfora elegida por tipo de spec (la que mejor traduce cada concepto,
-// no un tema único forzado en todas):
-// - Procesador / Gráfica → motor de auto (potencia, "motor extra" para tareas exigentes)
-// - RAM / Almacenamiento → objetos de casa (mesada de cocina, placard)
-// - Batería / Pantalla y peso → comparación directa y concreta, sin metáfora
-// - Cámara → resolución de una foto/impresora (zoom sin perder calidad)
-// - TV (panel/resolución/refresco) → ventana / cantidad de cuadros por segundo
+// Comparaciones elegidas para que las entienda cualquiera, sin tecnicismos
+// (feedback del usuario: "la comparación tiene que ser genérica y bien
+// comprendida por todo el mundo"):
+// - Procesador / Gráfica → motor de auto (más potencia, responde mejor)
+// - RAM → espacio de trabajo / escritorio (cuántas cosas abiertas a la vez)
+// - Almacenamiento → los GB de un celular (cuánto guardás)
+// - Batería / Pantalla y peso → comparación directa y concreta (horas, pulgadas, kg)
+// - Cámara → resolución de una foto (zoom sin perder calidad)
+// - TV (panel/resolución/refresco) → ventana / cuadros por segundo
 //
 // Cada entrada tiene DOS partes a propósito: `metaphor` explica QUÉ ES el
 // componente, `howToTell` explica CÓMO RECONOCER si el valor de ESTE
@@ -45,7 +47,7 @@ const RAM: GlossaryEntry = {
   icon: "🍳",
   label: "Memoria RAM",
   metaphor:
-    "Es como la mesada de tu cocina: cuanto más grande, más \"ollas\" (programas, pestañas) tenés a la vez sin que se choquen entre sí. Con poca mesada, tenés que ir guardando una cosa para sacar otra.",
+    "Es el espacio de trabajo del equipo, como el tamaño de un escritorio: cuanto más grande, más cosas podés tener abiertas a la vez (programas, pestañas del navegador) sin que se ponga lento. Con poco, tenés que ir cerrando una cosa para abrir otra.",
   howToTell:
     "¿Cómo saber si alcanza? Mirá directamente el número de GB: 8GB alcanza para el uso diario, 16GB es cómodo para tener varias cosas abiertas o diseño/gaming, 32GB+ es para tareas muy exigentes. Acá sí, más GB es siempre mejor.",
 };
@@ -55,7 +57,7 @@ const STORAGE: GlossaryEntry = {
   icon: "🗄️",
   label: "Almacenamiento",
   metaphor:
-    "Es el placard donde guardás todo: fotos, videos, programas. Un SSD además te entrega lo que buscás al instante; un disco rígido tradicional (HDD) tarda más, como revolver un placard desordenado.",
+    "Es cuánto podés guardar en el equipo: fotos, videos, programas — igual que los GB de un celular. Al ser SSD, además te abre y entrega todo al instante; un disco viejo (HDD) tarda bastante más.",
   howToTell:
     "¿Cómo saber si alcanza? Con 256GB vas justo si guardás muchas fotos o videos, 512GB es cómodo, 1TB+ es para quien acumula mucho contenido. Y si podés elegir, un SSD siempre es mejor que un HDD, sin importar la capacidad.",
 };
@@ -75,7 +77,7 @@ const SCREEN_PORTABLE: GlossaryEntry = {
   icon: "📐",
   label: "Pantalla y tamaño",
   metaphor:
-    "Más grande es más cómodo para mirar, pero también más pesado y grande para cargar todos los días. Es la misma decisión que elegir entre un cuaderno chico y una carpeta grande para la mochila.",
+    "El tamaño se mide en diagonal, en pulgadas. Más grande es más cómodo para mirar, pero también pesa y ocupa más en la mochila todos los días — la misma decisión que entre un anotador chico y una carpeta grande.",
   howToTell:
     "Acá no hay truco: son los números tal cual los ves. Cuantas menos pulgadas y menos kg, más fácil de cargar todos los días; cuantas más pulgadas, más cómodo para mirar de cerca.",
 };

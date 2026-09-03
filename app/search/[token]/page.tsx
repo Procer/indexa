@@ -737,7 +737,14 @@ export default function SearchResultsPage() {
   // así el usuario no tiene que volver al chat y describirlo. El producto ya
   // viaja en `products` al backend del chat, que arma su bloque de specs.
   const handleAskAbout = (product: AlternativeProduct) => {
-    const name = [product.brand, product.title].filter(Boolean).join(" ");
+    // El título casi siempre ya arranca con la marca ("Notebook HP Probook…") —
+    // no anteponerla nueva para no duplicarla ("la HP Notebook HP Probook…").
+    const title = product.title ?? "";
+    const brand = product.brand ?? "";
+    const name =
+      brand && !title.toLowerCase().includes(brand.toLowerCase())
+        ? `${brand} ${title}`
+        : title;
     setAskAboutMsg({
       text: `Contame más sobre la ${name}. ¿Me conviene para lo que busco?`,
       key: Date.now(),

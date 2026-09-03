@@ -2,6 +2,8 @@
 
 import { Portal } from "./Portal";
 import { ProductCard } from "./ProductCard";
+import { SpecTermPopover } from "./SpecTermPopover";
+import { extraCardFacts } from "@/lib/domain/specExplainer";
 import type { EnrichedProduct } from "@/types";
 
 // Panel de detalle completo — se abre al tocar "Ver más detalles" en una
@@ -34,6 +36,12 @@ export function ProductDetailPanel({
 }: ProductDetailPanelProps) {
   if (!product) return null;
 
+  // Datos físicos en lenguaje llano (pantalla / tamaño / peso) con la
+  // comparación completa. En la tarjeta de resultado quedaron como fila
+  // compacta (Opción B); acá va la versión larga, que es lo que el usuario
+  // pidió tener siempre a mano en "Ver detalles".
+  const facts = product.specs ? extraCardFacts(product.category, product.specs, product.title) : [];
+
   return (
     <Portal>
       <div className="fixed inset-0 z-40" role="dialog" aria-modal="true">
@@ -61,6 +69,40 @@ export function ProductDetailPanel({
               sessionId={sessionId}
               specMode="bar"
             />
+
+            {facts.length > 0 && (
+              <div className="mt-5">
+                <span className="mb-2 block font-brand text-xs font-bold uppercase tracking-wide text-gathering-on-surface">
+                  En la práctica
+                </span>
+                <ul className="flex flex-col gap-2">
+                  {facts.map((f) => (
+                    <li
+                      key={f.label}
+                      className="flex gap-2 font-brand text-xs leading-snug text-gathering-on-surface-variant"
+                    >
+                      <span
+                        className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-gathering-outline-variant"
+                        aria-hidden
+                      />
+                      <span className="min-w-0">
+                        <SpecTermPopover
+                          category={product.category}
+                          label={f.label}
+                          className="font-bold uppercase tracking-wide text-gathering-on-surface"
+                        />
+                        {f.value && (
+                          <span className="mx-1 rounded bg-gathering-surface-container-highest px-1.5 py-px text-[10px] font-bold text-gathering-on-surface">
+                            {f.value}
+                          </span>
+                        )}{" "}
+                        {f.text}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
       </div>

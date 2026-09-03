@@ -48,3 +48,6 @@ vps.txt
 # deploy tarballs
 indexa-*.tgz
 *.tgz
+
+# mockups de diseño (referencia local, no van al deploy público)
+public/muestra-*.html

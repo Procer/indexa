@@ -413,7 +413,12 @@ export function GuidedSearchChat({
     onSubmitAnswer(phrase);
   }
 
-  async function sendMessage(text: string) {
+  // `askAbout`: el turno viene del botón "Consultar sobre este equipo" de una
+  // tarjeta (jugada #11). El texto siempre nombra la marca/modelo del equipo,
+  // así que hay que evitar que se lea como cambio de categoría o como pedido
+  // de marca nueva — ni acá (redirección local) ni en el backend (atajo
+  // determinístico) ni después (auto-disparo de suggestedRefinement).
+  async function sendMessage(text: string, opts?: { askAbout?: boolean }) {
     setMessages((prev) => [...prev, { id: nextId(), role: "user", text }]);
 
     if (phaseRef.current === "gathering") {
@@ -431,7 +436,7 @@ export function GuidedSearchChat({
     // categoría — bug reportado en vivo: "hace dos búsquedas, primero me
     // mostró algo raro y después cambió solo". Se detecta acá, antes de
     // llamar al chat viejo, y se salta directo al cambio de categoría.
-    const impliedCategory = detectCategoryLocally(text);
+    const impliedCategory = opts?.askAbout ? null : detectCategoryLocally(text);
     if (impliedCategory && category && impliedCategory !== category) {
       freezeLastBotMessage();
       onRefine(text);
@@ -455,6 +460,7 @@ export function GuidedSearchChat({
             .slice(resultsStartIndexRef.current)
             .map((m) => ({ role: m.role === "bot" ? "ai" : ("user" as const), text: m.text })),
           message: text,
+          askAbout: opts?.askAbout ?? false,
         }),
       });
       const result = await consumeChatResponse(res, nextId(), setMessages, () => setStreamingReply(true));
@@ -467,7 +473,7 @@ export function GuidedSearchChat({
       // sin poder cumplir el mismo pedido podría reintentar en bucle sin que
       // el usuario haga nada. Acá, en cambio, cada disparo depende de un
       // mensaje nuevo del usuario — no hay forma de que se dispare sola.
-      if (result?.suggestedRefinement) {
+      if (!opts?.askAbout && result?.suggestedRefinement) {
         setTimeout(() => onRefine(result.suggestedRefinement!), 900);
       }
     } catch {
@@ -493,7 +499,7 @@ export function GuidedSearchChat({
     if (!externalMessage || externalMessage.key === externalKeyRef.current) return;
     externalKeyRef.current = externalMessage.key;
     if (phaseRef.current !== "results" || waitingReply || searching) return;
-    sendMessage(externalMessage.text);
+    sendMessage(externalMessage.text, { askAbout: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [externalMessage?.key]);
 

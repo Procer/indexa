@@ -510,6 +510,9 @@ export function shortSpecValues(
         s.storage_type ? ` ${STORAGE_TYPE_SHORT[s.storage_type]}` : ""
       }`;
     }
+    // La tira de traducción rotula esta spec como "Espacio" (no
+    // "Almacenamiento") — alias para que la fila compacta encuentre el valor.
+    if (out["almacenamiento"]) out["espacio"] = out["almacenamiento"];
     return out;
   }
 
@@ -519,6 +522,7 @@ export function shortSpecValues(
     if (storageGb) out["almacenamiento"] = fmtStorageShort(storageGb);
     if (s.main_camera_mp) out["cámara"] = `${s.main_camera_mp}MP`;
     if (s.battery_mah) out["batería"] = `${s.battery_mah.toLocaleString("es-AR")}mAh`;
+    if (out["almacenamiento"]) out["espacio"] = out["almacenamiento"];
     return out;
   }
 
@@ -526,6 +530,7 @@ export function shortSpecValues(
     const s = specs as Partial<TabletSpecs>;
     if (s.ram_gb) out["memoria"] = `${s.ram_gb}GB`;
     if (storageGb) out["almacenamiento"] = fmtStorageShort(storageGb);
+    if (out["almacenamiento"]) out["espacio"] = out["almacenamiento"];
     return out;
   }
 
