@@ -372,7 +372,12 @@ const FALLBACK_REPLY_ERROR = "No pude procesar tu pregunta. Intentá de nuevo.";
 // arma el texto con los picks que el modelo YA eligió + su lectura de specs en
 // lenguaje llano, sin round-trip extra.
 function buildDeterministicPickReply(picks: EnrichedProduct[]): string {
-  if (picks.length === 0) return FALLBACK_REPLY_ERROR;
+  if (picks.length === 0) {
+    // Sin picks y sin texto del modelo — NO tirar el "No pude procesar tu
+    // pregunta" (visto en vivo con "quiero difusor" y "en carrefour hay
+    // alguno?": preguntas legítimas que terminaban en un error sin salida).
+    return "Puedo contarte de cualquiera de los equipos de la lista o buscar algo distinto — decime qué necesitás.";
+  }
   if (picks.length === 1) {
     const p = picks[0];
     const why = (p.spec_highlights_simple ?? [])[0] ?? p.selection_reason ?? "";
@@ -698,14 +703,22 @@ export async function POST(request: NextRequest) {
           // recomendó, solo para no dejar la tarjeta sin explicación. No aplica
           // al saludo (ahí no se pasan tools, el texto vacío cae al fallback).
           if (!greeting && !replyText.trim() && toolCallAccumulators.size > 0) {
-            const { topPickIds: emptyReplyPickIds } = resolveToolCalls(toolCallAccumulators, loadedProducts);
+            const { topPickIds: emptyReplyPickIds, suggestedRefinement: emptyReplyRefinement } =
+              resolveToolCalls(toolCallAccumulators, loadedProducts);
             const picks = (emptyReplyPickIds ?? [])
               .map((id) => loadedProducts.find((p) => p.id === id))
               .filter((p): p is EnrichedProduct => !!p);
             console.log(
-              `[CHAT] empty_reply_deterministic shareToken=${shareToken} picks=${picks.length}`
+              `[CHAT] empty_reply_deterministic shareToken=${shareToken} picks=${picks.length}` +
+                (emptyReplyRefinement ? " withRefinement=1" : "")
             );
-            replyText = buildDeterministicPickReply(picks);
+            // Si el modelo eligió re-buscar (suggest_refinement) pero no escribió
+            // nada, el texto tiene que reflejar ESO, no un listado de picks ni un
+            // error genérico.
+            replyText =
+              picks.length === 0 && emptyReplyRefinement
+                ? "Dale, busco eso y te muestro lo que haya."
+                : buildDeterministicPickReply(picks);
             send({ type: "text", value: replyText });
           }
         } catch (error) {
