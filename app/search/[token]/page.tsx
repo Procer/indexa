@@ -736,11 +736,11 @@ export default function SearchResultsPage() {
   );
 
   // El chat pidió resaltar un filtro de la grilla (ej. "store" cuando el
-  // usuario preguntó por una tienda puntual). Se marca por ~5s y ResultsFilterBar
-  // hace el pulso + scroll.
+  // usuario preguntó por una tienda puntual). El resaltado + pulso quedan
+  // hasta que el usuario toca ese filtro (pedido del usuario) — ver
+  // ResultsFilterBar/onHighlightConsumed.
   const handleHighlightFilter = useCallback((facetKey: string) => {
     setHighlightFacet(facetKey);
-    setTimeout(() => setHighlightFacet(null), 5000);
   }, []);
 
   // Jugada #11: abre el chat con una consulta ya redactada sobre este equipo,
@@ -830,6 +830,11 @@ export default function SearchResultsPage() {
   // para no depender de si TS termina angostando el tipo de `searchSlots`
   // dentro de esos bloques.
   const chatCategory = searchSlots?.category ?? detectCategoryLocally(rawInput) ?? products[0]?.category ?? null;
+  // Una búsqueda nueva (cambia la categoría) invalida el resaltado de filtro
+  // pedido por el chat de la búsqueda anterior.
+  useEffect(() => {
+    setHighlightFacet(null);
+  }, [chatCategory]);
   const chatUseCases = searchSlots?.use_cases ?? [];
   const chatBudgetMax = searchSlots?.budget_cash_ars ?? searchSlots?.budget_monthly_ars ?? null;
   // El usuario eligió pagar en cuotas si dio un presupuesto mensual y no uno al
@@ -920,6 +925,7 @@ export default function SearchResultsPage() {
               category={chatCategory}
               onFilteredChange={setFilteredProducts}
               highlightKey={highlightFacet}
+              onHighlightConsumed={() => setHighlightFacet(null)}
             />
           </div>
         )}

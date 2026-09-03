@@ -784,11 +784,23 @@ export async function POST(request: NextRequest) {
         // hechos: out_of_budget por pick es la fuente de verdad.
         if (greeting && budgetLabel && wantsExactSpec && greetingPickCount > 0) {
           const picks = loadedProducts.slice(0, greetingPickCount);
-          reply = buildGreetingBudgetReply(
-            picks.filter((p) => p.out_of_budget !== "above"),
-            picks.filter((p) => p.out_of_budget === "above"),
-            budgetLabel
-          );
+          const reqBrands = (search?.slots.preferences.brands_preferred ?? []).map((b) => b.toLowerCase());
+          // Pidió una marca y NINGÚN pick es de esa marca (ej. "iphone en
+          // carrefour" y el pool no trajo ningún Apple) — decirlo, no recomendar
+          // un Android como si fuera lo pedido.
+          const brandUnmet =
+            reqBrands.length > 0 &&
+            !picks.some((p) => p.brand && reqBrands.some((b) => p.brand!.toLowerCase().includes(b)));
+          if (brandUnmet) {
+            const brandLabel = (search?.slots.preferences.brands_preferred ?? []).join(" / ");
+            reply = `No encontré **${brandLabel}** para esta búsqueda — te muestro lo más parecido dentro de tu presupuesto de ${budgetLabel}.`;
+          } else {
+            reply = buildGreetingBudgetReply(
+              picks.filter((p) => p.out_of_budget !== "above"),
+              picks.filter((p) => p.out_of_budget === "above"),
+              budgetLabel
+            );
+          }
         }
 
         const resolved = resolveToolCalls(toolCallAccumulators, loadedProducts);

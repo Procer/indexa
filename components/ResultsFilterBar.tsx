@@ -8,12 +8,20 @@ interface ResultsFilterBarProps {
   products: EnrichedProduct[];
   category: ProductCategory | null;
   onFilteredChange: (filtered: EnrichedProduct[]) => void;
-  // Cuando el chat pide resaltar un facet (ej. "store"): el botón pulsa unos
-  // segundos y se scrollea a la vista. Se limpia solo desde el padre.
+  // Cuando el chat pide resaltar un facet (ej. "store"): el botón pulsa y se
+  // scrollea a la vista. El resaltado queda HASTA que el usuario toca ese
+  // filtro — ahí se llama onHighlightConsumed para que el padre lo limpie.
   highlightKey?: string | null;
+  onHighlightConsumed?: () => void;
 }
 
-export function ResultsFilterBar({ products, category, onFilteredChange, highlightKey }: ResultsFilterBarProps) {
+export function ResultsFilterBar({
+  products,
+  category,
+  onFilteredChange,
+  highlightKey,
+  onHighlightConsumed,
+}: ResultsFilterBarProps) {
   const facets = useMemo(() => getFilterFacets(category), [category]);
   const [selected, setSelected] = useState<Record<string, Set<string>>>({});
   // Recalcula las opciones de cada facet contra el resto de los filtros ya
@@ -79,14 +87,17 @@ export function ResultsFilterBar({ products, category, onFilteredChange, highlig
             <button
               ref={isHighlighted ? highlightBtnRef : undefined}
               type="button"
-              onClick={() => setOpenFacet(isOpen ? null : facet.key)}
+              onClick={() => {
+                setOpenFacet(isOpen ? null : facet.key);
+                if (isHighlighted) onHighlightConsumed?.();
+              }}
               className={`flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 font-brand text-xs font-semibold transition-colors ${
                 selectedValues.size > 0
                   ? "border-gathering-primary-fixed-dim/50 bg-gathering-primary-fixed-dim/10 text-gathering-primary-fixed-dim"
                   : "border-gathering-outline-variant text-gathering-on-surface-variant hover:bg-black/5"
               } ${
                 isHighlighted
-                  ? "animate-[pulse_0.8s_ease-in-out_4] ring-2 ring-gathering-primary-fixed-dim ring-offset-2 ring-offset-gathering-background"
+                  ? "animate-[pulse_1.4s_ease-in-out_infinite] ring-2 ring-gathering-primary-fixed-dim ring-offset-2 ring-offset-gathering-background"
                   : ""
               }`}
             >
