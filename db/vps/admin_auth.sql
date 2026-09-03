@@ -41,3 +41,10 @@ CREATE TABLE IF NOT EXISTS admin_invites (
   used_at        TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_admin_invites_user ON admin_invites (admin_user_id);
+
+-- Si este archivo se corre como `postgres` (peer auth), las tablas quedan de
+-- `postgres` y la app (que se conecta como `techsearch`) no puede tocarlas.
+-- Transferir la propiedad al rol de la app. Idempotente.
+ALTER TABLE admin_users    OWNER TO techsearch;
+ALTER TABLE admin_sessions OWNER TO techsearch;
+ALTER TABLE admin_invites  OWNER TO techsearch;
