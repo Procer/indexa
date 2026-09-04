@@ -10,7 +10,7 @@ import type {
 
 // ─── Phone use case specs ─────────────────────────────────────────────────────
 
-interface PhoneRequiredSpecs {
+export interface PhoneRequiredSpecs {
   min_ram_gb: number;
   min_storage_gb: number;
   min_camera_mp: number | null;
@@ -69,6 +69,30 @@ export const PHONE_USE_CASE_SPECS: Record<string, PhoneRequiredSpecs> = {
     prefer_large_battery: false,
   },
 };
+
+// Máximo agregado de PHONE_USE_CASE_SPECS entre los use_cases del usuario —
+// misma lógica de "el más exigente gana" que getRequiredSpecs, para notebook/
+// desktop. Antes esto se recalculaba (parcial, solo min_ram_gb + booleans de
+// cámara/batería, sin min_storage_gb ni el valor de min_camera_mp) inline en
+// dos lugares de specExplainer.ts — se centraliza acá porque el re-rank de
+// pipeline.ts también lo necesita, con el valor de MP real, no solo un booleano.
+export function getRequiredPhoneSpecs(useCases: UseCase[]): PhoneRequiredSpecs {
+  const requiredList = useCases
+    .map((u) => PHONE_USE_CASE_SPECS[u])
+    .filter((r): r is PhoneRequiredSpecs => Boolean(r));
+  if (requiredList.length === 0) return PHONE_USE_CASE_SPECS.basic_use;
+  return requiredList.reduce<PhoneRequiredSpecs>((acc, r) => ({
+    min_ram_gb: Math.max(acc.min_ram_gb, r.min_ram_gb),
+    min_storage_gb: Math.max(acc.min_storage_gb, r.min_storage_gb),
+    min_camera_mp:
+      r.min_camera_mp !== null
+        ? Math.max(acc.min_camera_mp ?? 0, r.min_camera_mp)
+        : acc.min_camera_mp,
+    prefer_amoled: acc.prefer_amoled || r.prefer_amoled,
+    prefer_high_refresh: acc.prefer_high_refresh || r.prefer_high_refresh,
+    prefer_large_battery: acc.prefer_large_battery || r.prefer_large_battery,
+  }), requiredList[0]);
+}
 
 interface RequiredSpecs {
   processor_tier: ProcessorTier;

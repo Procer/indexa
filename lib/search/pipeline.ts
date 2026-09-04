@@ -2,11 +2,11 @@ import { getActiveSponsoredPlacements, getProductsByBrand, getProductsBySpec, ge
 import { getPoolCache, setPoolCache } from "@/lib/search/cache";
 import { hybridSearch } from "@/lib/search/hybridSearch";
 import { scoreResults, qualityPriceBoost } from "@/lib/search/scorer";
-import { getRequiredSpecs, TIER_RANK } from "@/lib/domain/usageToSpecs";
+import { getRequiredPhoneSpecs, getRequiredSpecs, TIER_RANK } from "@/lib/domain/usageToSpecs";
 import { buildDedupeKey } from "@/lib/domain/dedupe";
 import { estimatedMonthly } from "@/lib/domain/budgetFit";
 import { specSanityPenalty } from "@/lib/domain/specSanity";
-import type { NotebookSpecs, Product, Slots, SponsoredPlacement } from "@/types";
+import type { NotebookSpecs, PhoneSpecs, Product, Slots, SponsoredPlacement } from "@/types";
 
 export const ACCESSORY_KEYWORDS = /\b(mochila|funda|bolso|bolsa|mouse|teclado|auricular|parlante|cable|adaptador|hub|soporte|pad|mousepad|cargador|fuente|cuaderno|bater[ií]a externa|power\s*bank|cooler|ventilador|limpiador|kit de limpieza|escritorio|silla|mueble|biblioteca|estante|rack de|mesa|armario|cajonera|archivero|repisa|librer[ií]a|organizador|base para|kit de|reloj|smart\s*watch|smart\s*band|pulsera inteligente|vidrio templado|templado|protector de pantalla|mica|carcasa|estuche|case|manos libres|micro\s?sd|tarjeta de memoria|tr[ií]pode|gimbal|estabilizador|palo selfie|selfie stick|a(?:ro|nillo) de luz|l[aá]mpara|difusor)\b/i;
 
@@ -313,104 +313,140 @@ export async function buildRankedPool(params: {
       return true;
     });
 
-  // Re-rank: penalizar productos sobre-especificados para el uso declarado.
-  // Esto evita que un i7 desplace a un i5 cuando el uso es office/multimedia.
-  // La penalización es suave (no exclusión) para no eliminar la única opción dentro del presupuesto.
+  // Re-rank final: se unifica en UNA sola pasada la penalización de cada
+  // categoría (antes eran 3-4 `merged.sort()` independientes y secuenciales —
+  // bug real: cada sort solo mira SU propia penalización + final_score crudo,
+  // así que un ajuste ya aplicado por un sort anterior (ej. over-spec de
+  // notebook) se perdía en el siguiente sort si corría después, porque ese
+  // comparador no lo conocía. Con category=null (pool mixto) esto sí llegaba a
+  // pisar orden real). Se suman todas las penalizaciones aplicables por id y
+  // se ordena una sola vez al final, con matchPriority como criterio primario
+  // siempre (no solo cuando isSpecRankable).
+
+  const requiredTierRank = TIER_RANK[getRequiredSpecs(slots.use_cases).processor_tier];
   const isSpecRankable =
     slots.use_cases.length > 0 &&
     (slots.category === "notebook" || slots.category === "desktop" || slots.category === null);
-  if (isSpecRankable) {
-    const requiredTierRank = TIER_RANK[getRequiredSpecs(slots.use_cases).processor_tier];
-    // Bug real encontrado en vivo (2026-08-24): este sort corría SIN mirar
-    // matchPriority, así que pisaba por completo la prioridad dura de marca/
-    // procesador ya aplicada más arriba (líneas ~91-184) — un producto que
-    // matcheaba la única marca pedida (ej. Samsung dentro de presupuesto)
-    // podía terminar más allá del corte a 20 de /api/search si su final_score
-    // semántico era bajo, y el chat/búsqueda decían "no hay" existiendo.
-    // matchPriority se recalcula acá (no se reusa isBrandMatch/isProcessorMatch
-    // de arriba porque son locals de ese bloque) y se usa como criterio
-    // primario del sort — el score con penalización de over-spec queda como
-    // desempate, igual que antes.
-    const matchPriority = (p: RankedProduct): number => {
-      if (!hasBrandPreference && !hasProcessorPreference) return 0;
-      const brandMatch = hasBrandPreference && !!p.brand && preferredBrands.includes(p.brand.toLowerCase());
-      const model = (p.specs as Partial<NotebookSpecs>).processor_model;
-      const processorMatch =
-        hasProcessorPreference && !!model && model.toLowerCase().includes(preferredProcessor!.toLowerCase());
-      return brandMatch || processorMatch ? 1 : 0;
-    };
-    merged.sort((a, b) => {
-      const priorityDiff = matchPriority(b) - matchPriority(a);
-      if (priorityDiff !== 0) return priorityDiff;
 
-      let sA = a.final_score;
-      let sB = b.final_score;
-      const tierA = (a.specs as Partial<NotebookSpecs>).processor_tier;
-      const tierB = (b.specs as Partial<NotebookSpecs>).processor_tier;
-      if (tierA) {
-        const excess = TIER_RANK[tierA] - requiredTierRank;
-        if (excess > 0) sA -= excess * 0.12;
-      }
-      if (tierB) {
-        const excess = TIER_RANK[tierB] - requiredTierRank;
-        if (excess > 0) sB -= excess * 0.12;
-      }
-      return sB - sA;
-    });
-  }
-
-  // Re-rank tablet: el bloque de over-spec de arriba no cubre category=tablet
-  // (no tienen processor_tier). Acá se empuja abajo — sin excluir — la basura
-  // típica de esta categoría: RAM inverosímil (spec inventada) en marcas no
-  // mainstream, y restos de "infantil" cuando no se filtraron por intención.
   const hasTablet =
     slots.category === "tablet" || (slots.category === null && merged.some((p) => p.category === "tablet"));
-  if (hasTablet) {
-    const tabletJunkPenalty = (p: RankedProduct): number => {
-      if (p.category !== "tablet") return 0;
-      let penalty = 0;
-      const s = p.specs as { ram_gb?: number; storage_gb?: number; os?: string };
-      const ram = s.ram_gb;
-      const storage = s.storage_gb;
-      const brand = (p.brand ?? "").toLowerCase();
-      if (typeof ram === "number" && ram > 10 && !MAINSTREAM_TABLET_BRANDS.has(brand)) penalty += 0.3;
-      if (!kidsIntent && KIDS_TABLET_RE.test(p.title)) penalty += 0.3;
-      // Gama muy floja para uso real: poca RAM, poco almacenamiento, o Android
-      // viejo (≤9, sin updates de seguridad y con apps que ya no instalan). No
-      // se excluye —puede ser lo único en un presupuesto de piso— pero se
-      // hunde para que no encabece un pedido de "tablet para trabajo".
-      if (typeof ram === "number" && ram > 0 && ram <= 2) penalty += 0.35;
-      if (typeof storage === "number" && storage > 0 && storage <= 16) penalty += 0.2;
-      // Android viejo — el campo `os` normalizado no es confiable (una Gadnic
-      // "Android 7" del título quedó con os="Android 14"), así que se mira
-      // también el título.
-      const osMajor = parseInt(
-        (s.os ?? "").match(/android\s*(\d{1,2})/i)?.[1] ??
-          p.title.match(/android\s*(\d{1,2})/i)?.[1] ??
-          "",
-        10
-      );
-      if (!Number.isNaN(osMajor) && osMajor <= 9) penalty += 0.2;
-      return penalty;
-    };
-    merged.sort((a, b) => b.final_score - tabletJunkPenalty(b) - (a.final_score - tabletJunkPenalty(a)));
-  }
+
+  // Re-rank celular (calibración pendiente 2026-09-04): antes no existía
+  // ningún ajuste de ranking por use_case para phone — PHONE_USE_CASE_SPECS
+  // solo se usaba para el TEXTO de la tarjeta (specExplainer.ts), nunca para
+  // ordenar. Bug reportado en vivo: "celular para fotos y videos" con
+  // presupuesto holgado encabezaba con celulares de 4GB/64GB sin cámara
+  // decente, porque el score era puramente semántico + calidad/precio (que
+  // puede calificar EXCELENTE una gama baja *para su propio precio*, sin
+  // relación con si alcanza para el uso pedido). Penaliza —no excluye— RAM/
+  // almacenamiento/cámara por debajo de lo que pide el uso, proporcional al
+  // déficit (mismo criterio que el over-spec de notebook: ajuste suave).
+  const hasPhone =
+    slots.category === "phone" || (slots.category === null && merged.some((p) => p.category === "phone"));
+  const isPhoneRankable = slots.use_cases.length > 0 && hasPhone;
+  const requiredPhone = isPhoneRankable ? getRequiredPhoneSpecs(slots.use_cases) : null;
+  const phoneUnderSpecPenalty = (p: RankedProduct): number => {
+    if (!requiredPhone || p.category !== "phone") return 0;
+    const s = p.specs as Partial<PhoneSpecs>;
+    let penalty = 0;
+    if (typeof s.ram_gb === "number" && s.ram_gb > 0 && s.ram_gb < requiredPhone.min_ram_gb) {
+      penalty += Math.min(1, (requiredPhone.min_ram_gb - s.ram_gb) / requiredPhone.min_ram_gb) * 0.25;
+    }
+    if (typeof s.storage_gb === "number" && s.storage_gb > 0 && s.storage_gb < requiredPhone.min_storage_gb) {
+      penalty += Math.min(1, (requiredPhone.min_storage_gb - s.storage_gb) / requiredPhone.min_storage_gb) * 0.15;
+    }
+    if (
+      requiredPhone.min_camera_mp != null &&
+      typeof s.main_camera_mp === "number" &&
+      s.main_camera_mp > 0 &&
+      s.main_camera_mp < requiredPhone.min_camera_mp
+    ) {
+      penalty +=
+        Math.min(1, (requiredPhone.min_camera_mp - s.main_camera_mp) / requiredPhone.min_camera_mp) * 0.15;
+    }
+    if (requiredPhone.prefer_large_battery && typeof s.battery_mah === "number" && s.battery_mah > 0 && s.battery_mah < 5000) {
+      penalty += 0.08;
+    }
+    return penalty;
+  };
+
+  const tabletJunkPenalty = (p: RankedProduct): number => {
+    if (!hasTablet || p.category !== "tablet") return 0;
+    let penalty = 0;
+    const s = p.specs as { ram_gb?: number; storage_gb?: number; os?: string };
+    const ram = s.ram_gb;
+    const storage = s.storage_gb;
+    const brand = (p.brand ?? "").toLowerCase();
+    if (typeof ram === "number" && ram > 10 && !MAINSTREAM_TABLET_BRANDS.has(brand)) penalty += 0.3;
+    if (!kidsIntent && KIDS_TABLET_RE.test(p.title)) penalty += 0.3;
+    // Gama muy floja para uso real: poca RAM, poco almacenamiento, o Android
+    // viejo (≤9, sin updates de seguridad y con apps que ya no instalan). No
+    // se excluye —puede ser lo único en un presupuesto de piso— pero se
+    // hunde para que no encabece un pedido de "tablet para trabajo".
+    if (typeof ram === "number" && ram > 0 && ram <= 2) penalty += 0.35;
+    if (typeof storage === "number" && storage > 0 && storage <= 16) penalty += 0.2;
+    // Android viejo — el campo `os` normalizado no es confiable (una Gadnic
+    // "Android 7" del título quedó con os="Android 14"), así que se mira
+    // también el título.
+    const osMajor = parseInt(
+      (s.os ?? "").match(/android\s*(\d{1,2})/i)?.[1] ??
+        p.title.match(/android\s*(\d{1,2})/i)?.[1] ??
+        "",
+      10
+    );
+    if (!Number.isNaN(osMajor) && osMajor <= 9) penalty += 0.2;
+    return penalty;
+  };
+
+  const notebookOverSpecPenalty = (p: RankedProduct): number => {
+    if (!isSpecRankable) return 0;
+    const tier = (p.specs as Partial<NotebookSpecs>).processor_tier;
+    if (!tier) return 0;
+    const excess = TIER_RANK[tier] - requiredTierRank;
+    return excess > 0 ? excess * 0.12 : 0;
+  };
 
   // Cordura de specs general (jugada #9): hunde —sin excluir— unidades con
   // specs físicamente inverosímiles en CUALQUIER categoría (RAM inflada por la
-  // tienda, disco = RAM, pantalla fuera de rango). Generaliza el filtro
-  // anti-RAM-trucha que arriba solo cubría tablet. Se precalcula por id para no
-  // recomputar en cada comparación del sort.
+  // tienda, disco = RAM, pantalla fuera de rango).
   const sanityPenaltyById = new Map(
     merged.map((p) => [p.id, specSanityPenalty(p.category, p.specs, p.brand, p.price_cash).penalty])
   );
-  if (Array.from(sanityPenaltyById.values()).some((v) => v > 0)) {
-    merged.sort(
-      (a, b) =>
-        b.final_score - (sanityPenaltyById.get(b.id) ?? 0) -
-        (a.final_score - (sanityPenaltyById.get(a.id) ?? 0))
-    );
-  }
+
+  const totalPenaltyById = new Map(
+    merged.map((p) => [
+      p.id,
+      notebookOverSpecPenalty(p) +
+        tabletJunkPenalty(p) +
+        phoneUnderSpecPenalty(p) +
+        (sanityPenaltyById.get(p.id) ?? 0),
+    ])
+  );
+
+  // Bug real encontrado en vivo (2026-08-24): el sort de over-spec corría SIN
+  // mirar matchPriority, así que pisaba por completo la prioridad dura de
+  // marca/procesador ya aplicada más arriba (líneas ~91-184) — un producto que
+  // matcheaba la única marca pedida podía terminar más allá del corte a 20 de
+  // /api/search si su final_score semántico era bajo. matchPriority ahora es
+  // SIEMPRE la clave primaria del sort final (antes solo el bloque de
+  // notebook la aplicaba; tablet/sanity la ignoraban y podían volver a
+  // desordenar una marca ya priorizada).
+  const matchPriority = (p: RankedProduct): number => {
+    if (!hasBrandPreference && !hasProcessorPreference) return 0;
+    const brandMatch = hasBrandPreference && !!p.brand && preferredBrands.includes(p.brand.toLowerCase());
+    const model = (p.specs as Partial<NotebookSpecs>).processor_model;
+    const processorMatch =
+      hasProcessorPreference && !!model && model.toLowerCase().includes(preferredProcessor!.toLowerCase());
+    return brandMatch || processorMatch ? 1 : 0;
+  };
+
+  merged.sort((a, b) => {
+    const priorityDiff = matchPriority(b) - matchPriority(a);
+    if (priorityDiff !== 0) return priorityDiff;
+    const sA = a.final_score - (totalPenaltyById.get(a.id) ?? 0);
+    const sB = b.final_score - (totalPenaltyById.get(b.id) ?? 0);
+    return sB - sA;
+  });
 
   return merged;
 }

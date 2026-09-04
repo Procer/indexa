@@ -14,7 +14,7 @@ import type {
   TabletSpecs,
   UseCase,
 } from "@/types";
-import { getRequiredSpecs, PHONE_USE_CASE_SPECS, TIER_RANK } from "./usageToSpecs";
+import { getRequiredPhoneSpecs, getRequiredSpecs, TIER_RANK } from "./usageToSpecs";
 
 const TIER_LABEL: Record<ProcessorTier, string> = {
   low: "básica",
@@ -329,12 +329,10 @@ export function explainProductSpecs(
 
   if (category === "phone") {
     const s = specs as Partial<PhoneSpecs>;
-    const requiredList = useCases
-      .map((u) => PHONE_USE_CASE_SPECS[u])
-      .filter((r): r is (typeof PHONE_USE_CASE_SPECS)[string] => Boolean(r));
-    const minRam = requiredList.length > 0 ? Math.max(...requiredList.map((r) => r.min_ram_gb)) : 4;
-    const wantsCamera = requiredList.some((r) => r.min_camera_mp !== null);
-    const wantsBattery = requiredList.some((r) => r.prefer_large_battery);
+    const required = getRequiredPhoneSpecs(useCases);
+    const minRam = required.min_ram_gb;
+    const wantsCamera = required.min_camera_mp !== null;
+    const wantsBattery = required.prefer_large_battery;
 
     const bullets: string[] = [];
     if (s.ram_gb) bullets.push(ramBullet(s.ram_gb, minRam));
@@ -724,12 +722,10 @@ export function explainProductSpecsSimple(
 
   if (category === "phone") {
     const s = specs as Partial<PhoneSpecs>;
-    const requiredList = useCases
-      .map((u) => PHONE_USE_CASE_SPECS[u])
-      .filter((r): r is (typeof PHONE_USE_CASE_SPECS)[string] => Boolean(r));
-    const minRam = requiredList.length > 0 ? Math.max(...requiredList.map((r) => r.min_ram_gb)) : 4;
-    const wantsCamera = requiredList.some((r) => r.min_camera_mp !== null);
-    const wantsBattery = requiredList.some((r) => r.prefer_large_battery);
+    const required = getRequiredPhoneSpecs(useCases);
+    const minRam = required.min_ram_gb;
+    const wantsCamera = required.min_camera_mp !== null;
+    const wantsBattery = required.prefer_large_battery;
 
     const bullets: string[] = [];
     if (s.ram_gb) bullets.push(ramBulletSimple(s.ram_gb, minRam, useLabel));

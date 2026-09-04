@@ -249,11 +249,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(response);
     }
 
+    // Timings por etapa (calibración de latencia pendiente 2026-09-04): antes
+    // solo se logueaba el durationMs TOTAL — sin saber si el cuello de botella
+    // era slot-filling, embedding, SQL/vectorial o el análisis LLM por
+    // producto, cada hipótesis de optimización era a ciegas. Se agregan al
+    // final de la línea [SEARCH] results existente, no a una línea nueva.
+    const tSlots = Date.now();
+
     // 3. Expanded query: usar la del LLM combinado, o generar si vino null
     const expandedQuery = rawExpandedQuery ?? (await expandQuery(slots));
+    const tExpand = Date.now();
 
     // 4. Embedding
     const queryEmbedding = await generateQueryEmbedding(expandedQuery);
+    const tEmbed = Date.now();
 
     // 5. Caché estructurado por (category, use_cases, budget_tier)
     const cachedIds = await getStructuredCache(slots);
@@ -340,12 +349,15 @@ export async function POST(request: NextRequest) {
     // 7. Pool rankeado: SQL+vectorial → scoring → dedupe (also_at) → filtro de
     //    accesorios → re-rank por specs (ver lib/search/pipeline.ts).
     const merged = await buildRankedPool({ queryEmbedding, slots, candidateIds, sponsoredPlacements, queryText: input });
+    const tPool = Date.now();
 
     // Keep top 20 after re-ranking for LLM enrichment
     const mergedProducts = merged.slice(0, 20);
 
     // 9. Enrich with LLM analysis
     const enrichedResults = await enrichWithAnalysis(mergedProducts, slots);
+    const tEnrich = Date.now();
+    const freshAnalysisCount = enrichedResults.filter((p) => !p.analysis_from_cache).length;
 
     // Veredicto de precio vs. mediana de la config (jugada #15) — mediana del
     // catálogo completo (cacheada 6h); cae al pool `merged` si esa config no
@@ -412,9 +424,13 @@ export async function POST(request: NextRequest) {
               .map((p) => `${p.title}${p.out_of_budget ? `[${p.out_of_budget}]` : ""}`)
           )}`
         : "";
+    const stageDebug =
+      ` stages(ms)=slots:${tSlots - startedAt},expand:${tExpand - tSlots},embed:${tEmbed - tExpand},` +
+      `pool:${tPool - tEmbed},enrich:${tEnrich - tPool}(fresh:${freshAnalysisCount}/${enrichedResults.length}),` +
+      `medians:${Date.now() - tEnrich}`;
     console.log(
       `[SEARCH] results input=${JSON.stringify(input.slice(0, 200))} category=${slots.category ?? "-"} ` +
-        `count=${enrichedResults.length} totalPool=${merged.length} fromCache=false durationMs=${Date.now() - startedAt}${reqDebug}${brandDebug}`
+        `count=${enrichedResults.length} totalPool=${merged.length} fromCache=false durationMs=${Date.now() - startedAt}${reqDebug}${brandDebug}${stageDebug}`
     );
     return NextResponse.json(response);
   } catch (error) {
