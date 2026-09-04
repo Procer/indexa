@@ -39,6 +39,13 @@ export async function extractSlotsAndExpand(
     max_tokens: 600,
   });
 
+  // Log temporal (calibración de latencia 2026-09-04): [SEARCH] ya mide que
+  // esta llamada tarda 3.3-4.6s consistentes, la mayor parte del total — para
+  // saber si es tokens de salida (prompt de 6k tokens se cachea del lado de
+  // OpenAI, no debería pesar tanto) o latencia pura del modelo, hace falta el
+  // usage real devuelto por la API, no una estimación a ojo del prompt.
+  console.log(`[LLM] slotFilling usage=${JSON.stringify(response.usage)}`);
+
   const content = response.choices[0].message.content ?? "{}";
   const raw = JSON.parse(content) as Record<string, unknown>;
 
