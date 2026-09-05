@@ -34,6 +34,14 @@ const DOW_LABELS: Record<string, string> = {
 };
 const DOW_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+// Marcas de 2-3 letras que van todo en mayúscula (siglas), no "Hp"/"Lg"/"Tcl".
+const ACRONYM_BRANDS = new Set(["hp", "lg", "tcl", "msi", "cx"]);
+function normalizeBrandDisplay(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (ACRONYM_BRANDS.has(lower)) return lower.toUpperCase();
+  return lower.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 // GET /api/admin/analytics?days=30 — indicadores de búsquedas para el panel admin.
 export async function GET(request: NextRequest) {
   if (!(await getAdminSession(request))) {
@@ -104,7 +112,7 @@ export async function GET(request: NextRequest) {
 
   const byCategoryMap = new Map<string, number>();
   const byUseCaseMap = new Map<string, number>();
-  const byBrandMap = new Map<string, number>();
+  const byBrandMap = new Map<string, { display: string; count: number }>();
   for (const s of searchRows) {
     const slots = s.slots as Slots | null;
     const category = slots?.category ?? "sin categoría";
@@ -113,9 +121,14 @@ export async function GET(request: NextRequest) {
       byUseCaseMap.set(useCase, (byUseCaseMap.get(useCase) ?? 0) + 1);
     }
     for (const brand of slots?.preferences?.brands_preferred ?? []) {
-      const key = brand.trim();
-      if (!key) continue;
-      byBrandMap.set(key, (byBrandMap.get(key) ?? 0) + 1);
+      const trimmed = brand.trim();
+      if (!trimmed) continue;
+      // Agrupar case-insensitive ("Xiaomi" vs "xiaomi" es la misma marca,
+      // visto en datos reales) — se guarda como {display, count} por key en
+      // minúscula para no perder la marca 2 veces en el ranking.
+      const key = trimmed.toLowerCase();
+      const existing = byBrandMap.get(key);
+      byBrandMap.set(key, { display: existing?.display ?? normalizeBrandDisplay(trimmed), count: (existing?.count ?? 0) + 1 });
     }
   }
   const byCategory = Array.from(byCategoryMap.entries())
@@ -126,8 +139,8 @@ export async function GET(request: NextRequest) {
     .map(([use_case, count]) => ({ use_case, count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 8);
-  const byBrand = Array.from(byBrandMap.entries())
-    .map(([brand, count]) => ({ brand, count }))
+  const byBrand = Array.from(byBrandMap.values())
+    .map(({ display, count }) => ({ brand: display, count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 8);
 
