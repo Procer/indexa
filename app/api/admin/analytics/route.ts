@@ -17,6 +17,23 @@ interface AnalyticsClickRow {
 
 const ALLOWED_DAYS = [7, 30, 90];
 
+// Meses/días de la semana en hora de Argentina — created_at es UTC, sin
+// convertir un "lunes a la noche" puede contarse como martes.
+const AR_TZ = "America/Argentina/Buenos_Aires";
+const monthKeyFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: AR_TZ,
+  year: "numeric",
+  month: "2-digit",
+});
+const dowFormatter = new Intl.DateTimeFormat("en-US", { timeZone: AR_TZ, weekday: "short" });
+// Intl siempre devuelve el nombre en inglés con weekday:"short" pese al locale
+// "es-AR" (bug conocido de Node/ICU con esa combinación) — se mapea a mano.
+const DOW_LABELS: Record<string, string> = {
+  Mon: "Lunes", Tue: "Martes", Wed: "Miércoles", Thu: "Jueves",
+  Fri: "Viernes", Sat: "Sábado", Sun: "Domingo",
+};
+const DOW_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
 // GET /api/admin/analytics?days=30 — indicadores de búsquedas para el panel admin.
 export async function GET(request: NextRequest) {
   if (!(await getAdminSession(request))) {
@@ -27,11 +44,19 @@ export async function GET(request: NextRequest) {
   const days = ALLOWED_DAYS.includes(daysParam) ? daysParam : 30;
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
+  // Patrones (mes del año / día de la semana): ventana fija del año calendario
+  // en curso, INDEPENDIENTE del picker 7/30/90 — con 7 días no hay forma de ver
+  // un patrón semanal o estacional real, necesitan más repeticiones que las que
+  // da el rango corto de las tarjetas/gráfico diario de arriba.
+  const yearStart = new Date(new Date().getFullYear(), 0, 1).toISOString();
+
   let searchRows: AnalyticsSearchRow[];
   let clickRows: AnalyticsClickRow[];
   let buyEventRows: { recommended: boolean }[];
+  let patternRows: { created_at: string }[];
+  let storeRows: { store: string; count: number }[];
   try {
-    [searchRows, clickRows, buyEventRows] = await Promise.all([
+    [searchRows, clickRows, buyEventRows, patternRows, storeRows] = await Promise.all([
       sql<AnalyticsSearchRow[]>`
         SELECT share_token, slots, result_count, created_at
         FROM searches WHERE created_at >= ${cutoff}
@@ -46,6 +71,18 @@ export async function GET(request: NextRequest) {
         SELECT COALESCE((metadata->>'recommended')::boolean, false) AS recommended
         FROM site_events
         WHERE event_type = 'product_buy_click' AND created_at >= ${cutoff}
+      `,
+      sql<{ created_at: string }[]>`
+        SELECT created_at FROM searches WHERE created_at >= ${yearStart}
+      `,
+      sql<{ store: string; count: number }[]>`
+        SELECT p.source AS store, COUNT(*)::int AS count
+        FROM product_clicks c
+        JOIN products p ON p.id = c.product_id
+        WHERE c.created_at >= ${cutoff}
+        GROUP BY p.source
+        ORDER BY count DESC
+        LIMIT 8
       `,
     ]);
   } catch (error) {
@@ -66,15 +103,53 @@ export async function GET(request: NextRequest) {
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const byCategoryMap = new Map<string, number>();
+  const byUseCaseMap = new Map<string, number>();
+  const byBrandMap = new Map<string, number>();
   for (const s of searchRows) {
     const slots = s.slots as Slots | null;
     const category = slots?.category ?? "sin categoría";
     byCategoryMap.set(category, (byCategoryMap.get(category) ?? 0) + 1);
+    for (const useCase of slots?.use_cases ?? []) {
+      byUseCaseMap.set(useCase, (byUseCaseMap.get(useCase) ?? 0) + 1);
+    }
+    for (const brand of slots?.preferences?.brands_preferred ?? []) {
+      const key = brand.trim();
+      if (!key) continue;
+      byBrandMap.set(key, (byBrandMap.get(key) ?? 0) + 1);
+    }
   }
   const byCategory = Array.from(byCategoryMap.entries())
     .map(([category, count]) => ({ category, count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
+  const byUseCase = Array.from(byUseCaseMap.entries())
+    .map(([use_case, count]) => ({ use_case, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+  const byBrand = Array.from(byBrandMap.entries())
+    .map(([brand, count]) => ({ brand, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+
+  // Patrones del año calendario en curso — mes y día de la semana, hora AR.
+  const byMonthMap = new Map<string, number>();
+  const byDowMap = new Map<string, number>();
+  for (const row of patternRows) {
+    const date = new Date(row.created_at);
+    const monthKey = monthKeyFormatter.format(date); // "2026-09"
+    byMonthMap.set(monthKey, (byMonthMap.get(monthKey) ?? 0) + 1);
+    const dowKey = dowFormatter.format(date); // "Mon".."Sun"
+    byDowMap.set(dowKey, (byDowMap.get(dowKey) ?? 0) + 1);
+  }
+  const byMonth = Array.from(byMonthMap.entries())
+    .map(([month, count]) => ({ month, count }))
+    .sort((a, b) => a.month.localeCompare(b.month));
+  const byDayOfWeek = DOW_ORDER.map((dow) => ({
+    dow,
+    label: DOW_LABELS[dow],
+    count: byDowMap.get(dow) ?? 0,
+  }));
+  const byStore = storeRows.map((r) => ({ store: r.store, count: r.count }));
 
   const clicksByProduct = new Map<string, number>();
   for (const c of clickRows) {
@@ -126,6 +201,11 @@ export async function GET(request: NextRequest) {
     recommendedBuyShare: buyClicks > 0 ? recommendedBuyClicks / buyClicks : 0,
     byDay,
     byCategory,
+    byUseCase,
+    byBrand,
+    byStore,
+    byMonth,
+    byDayOfWeek,
     topProducts,
   };
 

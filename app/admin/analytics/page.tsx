@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { adminFetch } from "@/lib/auth/adminClient";
-import type { SearchAnalytics, SearchAnalyticsCategory, SearchAnalyticsDay } from "@/types";
+import type {
+  SearchAnalytics,
+  SearchAnalyticsCategory,
+  SearchAnalyticsDay,
+  SearchAnalyticsDow,
+  SearchAnalyticsMonth,
+} from "@/types";
 
 const RANGES = [7, 30, 90] as const;
 
@@ -14,6 +20,37 @@ const CATEGORY_LABELS: Record<string, string> = {
   phone: "Celulares",
   "sin categoría": "Sin categoría",
 };
+
+// Mismas etiquetas que USE_CASE_LABEL en lib/domain/specExplainer.ts —
+// duplicado a propósito (igual que CATEGORY_LABELS arriba): esta página ya
+// hardcodea sus propias etiquetas de UI en vez de importar del dominio.
+const USE_CASE_LABELS: Record<string, string> = {
+  casual_browsing: "Uso diario",
+  office: "Trabajo de oficina",
+  study: "Estudio",
+  multimedia: "Ver películas y series",
+  photo_editing_light: "Edición de fotos",
+  photo_editing_pro: "Edición de fotos pro",
+  video_editing_1080: "Edición de video",
+  video_editing_4k: "Edición de video 4K",
+  programming: "Programar",
+  gaming_casual: "Jugar (casual)",
+  gaming_competitive: "Gaming competitivo",
+  graphic_design: "Diseño gráfico",
+  cad_3d: "Diseño 3D",
+  portability: "Llevarla a todos lados",
+  stationary: "Uso fijo en casa",
+  photography: "Sacar fotos",
+  battery_life: "Batería que dure",
+  gaming_mobile: "Jugar desde el celular",
+  basic_use: "Uso básico",
+  social_media: "Redes sociales",
+  professional_mobile: "Trabajo y email",
+};
+
+const MONTH_LABELS = [
+  "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic",
+];
 
 function formatPct(n: number): string {
   return `${Math.round(n * 100)}%`;
@@ -67,6 +104,77 @@ function CategoryBars({ data }: { data: SearchAnalyticsCategory[] }) {
             />
           </div>
           <span className="w-8 shrink-0 text-right font-semibold text-gray-900">{d.count}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Barra de ranking genérica — misma pinta que CategoryBars, reusada para
+// uso/marca/tienda (listas de {label, count} sin tipo compartido entre sí).
+function RankBars({ data }: { data: { key: string; label: string; count: number }[] }) {
+  if (data.length === 0) {
+    return <p className="text-sm text-gray-400">Sin datos en este rango.</p>;
+  }
+  const max = Math.max(...data.map((d) => d.count), 1);
+  return (
+    <div className="space-y-2.5">
+      {data.map((d) => (
+        <div key={d.key} className="flex items-center gap-3 text-sm">
+          <span className="w-32 shrink-0 truncate text-gray-600">{d.label}</span>
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100">
+            <div
+              className="h-full rounded-full bg-blue-600"
+              style={{ width: `${(d.count / max) * 100}%` }}
+            />
+          </div>
+          <span className="w-8 shrink-0 text-right font-semibold text-gray-900">{d.count}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MonthlyChart({ data }: { data: SearchAnalyticsMonth[] }) {
+  if (data.length === 0) {
+    return <p className="py-8 text-center text-sm text-gray-400">Sin búsquedas este año.</p>;
+  }
+  const max = Math.max(...data.map((d) => d.count), 1);
+  return (
+    <div className="flex h-32 items-end gap-2 border-b border-gray-200">
+      {data.map((d) => {
+        const monthIdx = Number(d.month.slice(5, 7)) - 1;
+        return (
+          <div key={d.month} className="group flex-1">
+            <div
+              title={`${MONTH_LABELS[monthIdx] ?? d.month}: ${d.count} búsqueda${d.count === 1 ? "" : "s"}`}
+              className="w-full rounded-t bg-blue-600 transition-colors group-hover:bg-blue-700"
+              style={{ height: `${d.count > 0 ? Math.max((d.count / max) * 100, 4) : 0}%` }}
+            />
+            <p className="mt-1 text-center text-[10px] text-gray-400">{MONTH_LABELS[monthIdx] ?? d.month}</p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DayOfWeekChart({ data }: { data: SearchAnalyticsDow[] }) {
+  const max = Math.max(...data.map((d) => d.count), 1);
+  const total = data.reduce((sum, d) => sum + d.count, 0);
+  if (total === 0) {
+    return <p className="py-8 text-center text-sm text-gray-400">Sin búsquedas este año.</p>;
+  }
+  return (
+    <div className="flex h-32 items-end gap-2 border-b border-gray-200">
+      {data.map((d) => (
+        <div key={d.dow} className="group flex-1">
+          <div
+            title={`${d.label}: ${d.count} búsqueda${d.count === 1 ? "" : "s"}`}
+            className="w-full rounded-t bg-indigo-600 transition-colors group-hover:bg-indigo-700"
+            style={{ height: `${d.count > 0 ? Math.max((d.count / max) * 100, 4) : 0}%` }}
+          />
+          <p className="mt-1 text-center text-[10px] text-gray-400">{d.label.slice(0, 3)}</p>
         </div>
       ))}
     </div>
@@ -177,6 +285,56 @@ export default function AnalyticsPage() {
                       </tbody>
                     </table>
                   )}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
+              <h2 className="text-sm font-semibold text-gray-900">Patrones (año {new Date().getFullYear()})</h2>
+              <p className="mt-0.5 text-xs text-gray-400">
+                Independiente del rango de arriba — necesita todo el año para verse un patrón real.
+              </p>
+              <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
+                <div>
+                  <h3 className="text-xs font-medium text-gray-500">Búsquedas por mes</h3>
+                  <div className="mt-3">
+                    <MonthlyChart data={data.byMonth} />
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-xs font-medium text-gray-500">Búsquedas por día de la semana</h3>
+                  <div className="mt-3">
+                    <DayOfWeekChart data={data.byDayOfWeek} />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
+                <h2 className="text-sm font-semibold text-gray-900">Uso más buscado</h2>
+                <div className="mt-4">
+                  <RankBars
+                    data={data.byUseCase.map((d) => ({
+                      key: d.use_case,
+                      label: USE_CASE_LABELS[d.use_case] ?? d.use_case,
+                      count: d.count,
+                    }))}
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
+                <h2 className="text-sm font-semibold text-gray-900">Marca más pedida</h2>
+                <div className="mt-4">
+                  <RankBars data={data.byBrand.map((d) => ({ key: d.brand, label: d.brand, count: d.count }))} />
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
+                <h2 className="text-sm font-semibold text-gray-900">Tienda con más clicks</h2>
+                <div className="mt-4">
+                  <RankBars data={data.byStore.map((d) => ({ key: d.store, label: d.store, count: d.count }))} />
                 </div>
               </div>
             </div>

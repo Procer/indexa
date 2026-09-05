@@ -306,6 +306,32 @@ export interface SearchAnalyticsProduct {
   click_count: number;
 }
 
+export interface SearchAnalyticsUseCase {
+  use_case: string;
+  count: number;
+}
+
+export interface SearchAnalyticsBrand {
+  brand: string;
+  count: number;
+}
+
+export interface SearchAnalyticsStore {
+  store: string;
+  count: number;
+}
+
+export interface SearchAnalyticsMonth {
+  month: string; // "2026-09"
+  count: number;
+}
+
+export interface SearchAnalyticsDow {
+  dow: string; // "Mon".."Sun"
+  label: string; // "Lunes".."Domingo"
+  count: number;
+}
+
 export interface SearchAnalytics {
   days: number;
   totalSearches: number;
@@ -322,6 +348,15 @@ export interface SearchAnalytics {
   recommendedBuyShare: number;
   byDay: SearchAnalyticsDay[];
   byCategory: SearchAnalyticsCategory[];
+  // Uso/marca/tienda más buscados — misma ventana que el picker (days).
+  byUseCase: SearchAnalyticsUseCase[];
+  byBrand: SearchAnalyticsBrand[];
+  byStore: SearchAnalyticsStore[];
+  // Patrones de mes/día de semana — ventana fija (año calendario en curso),
+  // independiente del picker: con 7/30 días no hay suficientes repeticiones
+  // para ver un patrón semanal o estacional real.
+  byMonth: SearchAnalyticsMonth[];
+  byDayOfWeek: SearchAnalyticsDow[];
   topProducts: SearchAnalyticsProduct[];
 }
 
