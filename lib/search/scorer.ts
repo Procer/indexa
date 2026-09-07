@@ -50,8 +50,17 @@ export function scoreResults(
           p.product_ids.includes(product.id) &&
           (p.ends_at === null || new Date(p.ends_at) > now)
       );
-      if (placement && product.similarity >= placement.min_relevance) {
-        score += placement.score_boost;
+      if (placement) {
+        const applied = product.similarity >= placement.min_relevance;
+        if (applied) score += placement.score_boost;
+        // Observabilidad: sin este log no había forma de comprobar si una
+        // campaña patrocinada realmente se aplicó (no hay badge para las
+        // colocaciones — SponsoredBadge solo mira products.is_sponsored).
+        console.log(
+          `[SPONSOR] placement="${placement.advertiser}" product=${product.id} ` +
+            `similarity=${product.similarity.toFixed(3)} minRelevance=${placement.min_relevance} ` +
+            `boost=${placement.score_boost} applied=${applied}`
+        );
       }
 
       return { ...product, final_score: score };

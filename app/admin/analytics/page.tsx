@@ -66,23 +66,67 @@ function StatTile({ label, value }: { label: string; value: string }) {
   );
 }
 
-function DailyVolumeChart({ data }: { data: SearchAnalyticsDay[] }) {
-  if (data.length === 0) {
-    return <p className="py-8 text-center text-sm text-gray-400">Sin búsquedas en este rango.</p>;
+// Gráfico de barras verticales genérico. Cada columna es un flex-col de altura
+// completa (justify-end) para que el `height: %` de la barra resuelva contra la
+// altura fija del track — sin eso la barra colapsa a 0 (solo se ven los ejes).
+type VBarItem = { key: string; count: number; title?: string; label?: string; highlight?: boolean };
+function VBarChart({
+  items,
+  emptyText = "Sin datos.",
+  heightClass = "h-32",
+  gapClass = "gap-1",
+  barClass = "bg-blue-600",
+  highlightClass = "bg-emerald-600",
+}: {
+  items: VBarItem[];
+  emptyText?: string;
+  heightClass?: string;
+  gapClass?: string;
+  barClass?: string;
+  highlightClass?: string;
+}) {
+  const total = items.reduce((s, d) => s + d.count, 0);
+  if (items.length === 0 || total === 0) {
+    return <p className="py-8 text-center text-sm text-gray-400">{emptyText}</p>;
   }
-  const max = Math.max(...data.map((d) => d.count), 1);
+  const max = Math.max(...items.map((d) => d.count), 1);
+  const hasLabels = items.some((d) => d.label);
   return (
-    <div className="flex h-32 items-end gap-1 border-b border-gray-200">
-      {data.map((d) => (
-        <div key={d.date} className="group flex-1">
-          <div
-            title={`${new Date(`${d.date}T00:00:00`).toLocaleDateString("es-AR")}: ${d.count} búsqueda${d.count === 1 ? "" : "s"}`}
-            className="w-full rounded-t bg-blue-600 transition-colors group-hover:bg-blue-700"
-            style={{ height: `${d.count > 0 ? Math.max((d.count / max) * 100, 4) : 0}%` }}
-          />
+    <div>
+      <div className={`flex ${heightClass} items-stretch border-b border-gray-200 ${gapClass}`}>
+        {items.map((d) => (
+          <div key={d.key} className="group flex flex-1 flex-col justify-end">
+            <div
+              title={d.title ?? `${d.label ?? d.key}: ${d.count}`}
+              className={`w-full rounded-t transition-opacity group-hover:opacity-80 ${d.highlight ? highlightClass : barClass}`}
+              style={{ height: `${d.count > 0 ? Math.max((d.count / max) * 100, 3) : 0}%` }}
+            />
+          </div>
+        ))}
+      </div>
+      {hasLabels && (
+        <div className={`mt-1 flex ${gapClass}`}>
+          {items.map((d) => (
+            <p key={d.key} className="flex-1 truncate text-center text-[10px] text-gray-400">
+              {d.label}
+            </p>
+          ))}
         </div>
-      ))}
+      )}
     </div>
+  );
+}
+
+function DailyVolumeChart({ data }: { data: SearchAnalyticsDay[] }) {
+  return (
+    <VBarChart
+      emptyText="Sin datos en este rango."
+      items={data.map((d) => ({
+        key: d.date,
+        count: d.count,
+        title: `${new Date(`${d.date}T00:00:00`).toLocaleDateString("es-AR")}: ${d.count}`,
+      }))}
+    />
   );
 }
 
@@ -137,31 +181,20 @@ function RankBars({ data }: { data: { key: string; label: string; count: number 
 }
 
 function MonthlyChart({ data }: { data: SearchAnalyticsMonth[] }) {
-  if (data.length === 0) {
-    return <p className="py-8 text-center text-sm text-gray-400">Sin búsquedas este año.</p>;
-  }
-  const max = Math.max(...data.map((d) => d.count), 1);
   return (
-    <div className="flex h-32 items-end gap-2 border-b border-gray-200">
-      {data.map((d) => {
+    <VBarChart
+      emptyText="Sin datos este año."
+      gapClass="gap-2"
+      items={data.map((d) => {
         const monthIdx = Number(d.month.slice(5, 7)) - 1;
-        return (
-          <div key={d.month} className="group flex-1">
-            <div
-              title={`${MONTH_LABELS[monthIdx] ?? d.month}: ${d.count} búsqueda${d.count === 1 ? "" : "s"}`}
-              className="w-full rounded-t bg-blue-600 transition-colors group-hover:bg-blue-700"
-              style={{ height: `${d.count > 0 ? Math.max((d.count / max) * 100, 4) : 0}%` }}
-            />
-            <p className="mt-1 text-center text-[10px] text-gray-400">{MONTH_LABELS[monthIdx] ?? d.month}</p>
-          </div>
-        );
+        const label = MONTH_LABELS[monthIdx] ?? d.month;
+        return { key: d.month, count: d.count, label, title: `${label}: ${d.count}` };
       })}
-    </div>
+    />
   );
 }
 
 function HourChart({ data }: { data: SearchAnalyticsHour[] }) {
-  const max = Math.max(...data.map((d) => d.count), 1);
   const total = data.reduce((s, d) => s + d.count, 0);
   if (total === 0) {
     return <p className="py-8 text-center text-sm text-gray-400">Sin datos.</p>;
@@ -169,17 +202,16 @@ function HourChart({ data }: { data: SearchAnalyticsHour[] }) {
   const peak = data.reduce((a, b) => (b.count > a.count ? b : a));
   return (
     <div>
-      <div className="flex h-28 items-end gap-[3px] border-b border-gray-200">
-        {data.map((d) => (
-          <div key={d.hour} className="group flex-1">
-            <div
-              title={`${String(d.hour).padStart(2, "0")}:00 — ${d.count} visita${d.count === 1 ? "" : "s"}`}
-              className={`w-full rounded-t ${d.hour === peak.hour ? "bg-emerald-600" : "bg-blue-600"} transition-colors group-hover:opacity-80`}
-              style={{ height: `${d.count > 0 ? Math.max((d.count / max) * 100, 4) : 0}%` }}
-            />
-          </div>
-        ))}
-      </div>
+      <VBarChart
+        gapClass="gap-[3px]"
+        heightClass="h-28"
+        items={data.map((d) => ({
+          key: String(d.hour),
+          count: d.count,
+          highlight: d.hour === peak.hour,
+          title: `${String(d.hour).padStart(2, "0")}:00 — ${d.count} visita${d.count === 1 ? "" : "s"}`,
+        }))}
+      />
       <div className="mt-1 flex justify-between text-[10px] text-gray-400">
         <span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>23h</span>
       </div>
@@ -191,48 +223,31 @@ function HourChart({ data }: { data: SearchAnalyticsHour[] }) {
 }
 
 function WeekChart({ data }: { data: { week: string; count: number }[] }) {
-  if (data.length === 0) {
-    return <p className="py-8 text-center text-sm text-gray-400">Sin datos.</p>;
-  }
-  const max = Math.max(...data.map((d) => d.count), 1);
   return (
-    <div className="flex h-28 items-end gap-1.5 border-b border-gray-200">
-      {data.map((d) => {
+    <VBarChart
+      heightClass="h-28"
+      gapClass="gap-1.5"
+      items={data.map((d) => {
         const [, m, day] = d.week.split("-");
-        return (
-          <div key={d.week} className="group flex-1">
-            <div
-              title={`Semana del ${day}/${m}: ${d.count} visita${d.count === 1 ? "" : "s"}`}
-              className="w-full rounded-t bg-blue-600 transition-colors group-hover:bg-blue-700"
-              style={{ height: `${d.count > 0 ? Math.max((d.count / max) * 100, 4) : 0}%` }}
-            />
-            <p className="mt-1 text-center text-[10px] text-gray-400">{day}/{m}</p>
-          </div>
-        );
+        return { key: d.week, count: d.count, label: `${day}/${m}`, title: `Semana del ${day}/${m}: ${d.count}` };
       })}
-    </div>
+    />
   );
 }
 
 function DayOfWeekChart({ data }: { data: SearchAnalyticsDow[] }) {
-  const max = Math.max(...data.map((d) => d.count), 1);
-  const total = data.reduce((sum, d) => sum + d.count, 0);
-  if (total === 0) {
-    return <p className="py-8 text-center text-sm text-gray-400">Sin búsquedas este año.</p>;
-  }
   return (
-    <div className="flex h-32 items-end gap-2 border-b border-gray-200">
-      {data.map((d) => (
-        <div key={d.dow} className="group flex-1">
-          <div
-            title={`${d.label}: ${d.count} búsqueda${d.count === 1 ? "" : "s"}`}
-            className="w-full rounded-t bg-indigo-600 transition-colors group-hover:bg-indigo-700"
-            style={{ height: `${d.count > 0 ? Math.max((d.count / max) * 100, 4) : 0}%` }}
-          />
-          <p className="mt-1 text-center text-[10px] text-gray-400">{d.label.slice(0, 3)}</p>
-        </div>
-      ))}
-    </div>
+    <VBarChart
+      emptyText="Sin datos este año."
+      gapClass="gap-2"
+      barClass="bg-indigo-600"
+      items={data.map((d) => ({
+        key: d.dow,
+        count: d.count,
+        label: d.label.slice(0, 3),
+        title: `${d.label}: ${d.count}`,
+      }))}
+    />
   );
 }
 
