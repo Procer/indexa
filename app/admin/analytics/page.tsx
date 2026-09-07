@@ -7,6 +7,7 @@ import type {
   SearchAnalyticsCategory,
   SearchAnalyticsDay,
   SearchAnalyticsDow,
+  SearchAnalyticsHour,
   SearchAnalyticsMonth,
 } from "@/types";
 
@@ -159,6 +160,60 @@ function MonthlyChart({ data }: { data: SearchAnalyticsMonth[] }) {
   );
 }
 
+function HourChart({ data }: { data: SearchAnalyticsHour[] }) {
+  const max = Math.max(...data.map((d) => d.count), 1);
+  const total = data.reduce((s, d) => s + d.count, 0);
+  if (total === 0) {
+    return <p className="py-8 text-center text-sm text-gray-400">Sin datos.</p>;
+  }
+  const peak = data.reduce((a, b) => (b.count > a.count ? b : a));
+  return (
+    <div>
+      <div className="flex h-28 items-end gap-[3px] border-b border-gray-200">
+        {data.map((d) => (
+          <div key={d.hour} className="group flex-1">
+            <div
+              title={`${String(d.hour).padStart(2, "0")}:00 — ${d.count} visita${d.count === 1 ? "" : "s"}`}
+              className={`w-full rounded-t ${d.hour === peak.hour ? "bg-emerald-600" : "bg-blue-600"} transition-colors group-hover:opacity-80`}
+              style={{ height: `${d.count > 0 ? Math.max((d.count / max) * 100, 4) : 0}%` }}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="mt-1 flex justify-between text-[10px] text-gray-400">
+        <span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>23h</span>
+      </div>
+      <p className="mt-2 text-xs text-gray-500">
+        Pico: <span className="font-semibold text-gray-800">{String(peak.hour).padStart(2, "0")}:00 h</span> ({peak.count} visitas)
+      </p>
+    </div>
+  );
+}
+
+function WeekChart({ data }: { data: { week: string; count: number }[] }) {
+  if (data.length === 0) {
+    return <p className="py-8 text-center text-sm text-gray-400">Sin datos.</p>;
+  }
+  const max = Math.max(...data.map((d) => d.count), 1);
+  return (
+    <div className="flex h-28 items-end gap-1.5 border-b border-gray-200">
+      {data.map((d) => {
+        const [, m, day] = d.week.split("-");
+        return (
+          <div key={d.week} className="group flex-1">
+            <div
+              title={`Semana del ${day}/${m}: ${d.count} visita${d.count === 1 ? "" : "s"}`}
+              className="w-full rounded-t bg-blue-600 transition-colors group-hover:bg-blue-700"
+              style={{ height: `${d.count > 0 ? Math.max((d.count / max) * 100, 4) : 0}%` }}
+            />
+            <p className="mt-1 text-center text-[10px] text-gray-400">{day}/{m}</p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function DayOfWeekChart({ data }: { data: SearchAnalyticsDow[] }) {
   const max = Math.max(...data.map((d) => d.count), 1);
   const total = data.reduce((sum, d) => sum + d.count, 0);
@@ -246,6 +301,33 @@ export default function AnalyticsPage() {
                 label="Compras de un recomendado"
                 value={`${formatPct(data.recommendedBuyShare)} · ${data.recommendedBuyClicks}/${data.buyClicks}`}
               />
+            </div>
+
+            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
+              <div className="flex items-baseline justify-between">
+                <h2 className="text-sm font-semibold text-gray-900">Visitas al sitio</h2>
+                <span className="text-xs text-gray-400">
+                  {data.visits.total} en total · {data.visits.inRange} en los últimos {days} días
+                </span>
+              </div>
+              <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
+                <div>
+                  <h3 className="text-xs font-medium text-gray-500">Por día (últimos {days} días)</h3>
+                  <div className="mt-3"><DailyVolumeChart data={data.visits.byDay} /></div>
+                </div>
+                <div>
+                  <h3 className="text-xs font-medium text-gray-500">Por semana (últimas 12)</h3>
+                  <div className="mt-3"><WeekChart data={data.visits.byWeek} /></div>
+                </div>
+                <div>
+                  <h3 className="text-xs font-medium text-gray-500">Por mes (año {new Date().getFullYear()})</h3>
+                  <div className="mt-3"><MonthlyChart data={data.visits.byMonth} /></div>
+                </div>
+                <div>
+                  <h3 className="text-xs font-medium text-gray-500">Por hora del día (AR)</h3>
+                  <div className="mt-3"><HourChart data={data.visits.byHour} /></div>
+                </div>
+              </div>
             </div>
 
             <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">

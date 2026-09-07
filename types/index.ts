@@ -332,6 +332,20 @@ export interface SearchAnalyticsDow {
   count: number;
 }
 
+export interface SearchAnalyticsHour {
+  hour: number; // 0..23 (hora AR)
+  count: number;
+}
+
+export interface SiteVisitsAnalytics {
+  total: number; // histórico completo
+  inRange: number; // dentro de la ventana `days`
+  byDay: SearchAnalyticsDay[]; // ventana `days`
+  byMonth: SearchAnalyticsMonth[]; // año calendario
+  byWeek: { week: string; count: number }[]; // últimas 12 semanas (lunes AR)
+  byHour: SearchAnalyticsHour[]; // 0..23, ventana del año
+}
+
 export interface SearchAnalytics {
   days: number;
   totalSearches: number;
@@ -358,6 +372,7 @@ export interface SearchAnalytics {
   byMonth: SearchAnalyticsMonth[];
   byDayOfWeek: SearchAnalyticsDow[];
   topProducts: SearchAnalyticsProduct[];
+  visits: SiteVisitsAnalytics;
 }
 
 // ─── UI ───────────────────────────────────────────────────────────────────────

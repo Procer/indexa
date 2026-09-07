@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
   const data = (await res.json()) as MLTokenResponse;
   saveMLTokens(data);
 
-  return NextResponse.redirect(
-    new URL(withBasePath("/admin/connect-ml?success=true"), request.url)
-  );
+  // La página /admin/connect-ml se quitó del panel; el flujo OAuth de ML
+  // queda solo para uso desde CLI (npm run sync-ml). Redirige al panel.
+  return NextResponse.redirect(new URL(withBasePath("/admin"), request.url));
 }

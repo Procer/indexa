@@ -26,6 +26,19 @@ const monthKeyFormatter = new Intl.DateTimeFormat("en-CA", {
   month: "2-digit",
 });
 const dowFormatter = new Intl.DateTimeFormat("en-US", { timeZone: AR_TZ, weekday: "short" });
+const dayKeyFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: AR_TZ, year: "numeric", month: "2-digit", day: "2-digit" });
+const hourFormatter = new Intl.DateTimeFormat("en-GB", { timeZone: AR_TZ, hour: "2-digit", hour12: false });
+
+// Lunes (hora AR) de la semana a la que pertenece la fecha — clave de bucket
+// semanal. Toma la fecha calendario AR y retrocede al lunes; ignora el caso
+// borde de medianoche exacta (irrelevante para un panel de visitas).
+function arWeekMondayKey(d: Date): string {
+  const [y, m, day] = dayKeyFormatter.format(d).split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, day));
+  const dow = dt.getUTCDay(); // 0=Dom..6=Sáb
+  dt.setUTCDate(dt.getUTCDate() - (dow === 0 ? 6 : dow - 1));
+  return dt.toISOString().slice(0, 10);
+}
 // Intl siempre devuelve el nombre en inglés con weekday:"short" pese al locale
 // "es-AR" (bug conocido de Node/ICU con esa combinación) — se mapea a mano.
 const DOW_LABELS: Record<string, string> = {
@@ -63,36 +76,48 @@ export async function GET(request: NextRequest) {
   let buyEventRows: { recommended: boolean }[];
   let patternRows: { created_at: string }[];
   let storeRows: { store: string; count: number }[];
+  let visitTotalRow: { n: number }[];
+  let visitYearRows: { created_at: string }[];
   try {
-    [searchRows, clickRows, buyEventRows, patternRows, storeRows] = await Promise.all([
-      sql<AnalyticsSearchRow[]>`
-        SELECT share_token, slots, result_count, created_at
-        FROM searches WHERE created_at >= ${cutoff}
-      `,
-      sql<AnalyticsClickRow[]>`
-        SELECT product_id, search_share_token, created_at
-        FROM product_clicks WHERE created_at >= ${cutoff}
-      `,
-      // Jugada #17: clicks de compra con la marca de si el equipo era un
-      // recomendado del chat (metadata.recommended, ver ProductChatCard).
-      sql<{ recommended: boolean }[]>`
-        SELECT COALESCE((metadata->>'recommended')::boolean, false) AS recommended
-        FROM site_events
-        WHERE event_type = 'product_buy_click' AND created_at >= ${cutoff}
-      `,
-      sql<{ created_at: string }[]>`
-        SELECT created_at FROM searches WHERE created_at >= ${yearStart}
-      `,
-      sql<{ store: string; count: number }[]>`
-        SELECT p.source AS store, COUNT(*)::int AS count
-        FROM product_clicks c
-        JOIN products p ON p.id = c.product_id
-        WHERE c.created_at >= ${cutoff}
-        GROUP BY p.source
-        ORDER BY count DESC
-        LIMIT 8
-      `,
-    ]);
+    [searchRows, clickRows, buyEventRows, patternRows, storeRows, visitTotalRow, visitYearRows] =
+      await Promise.all([
+        sql<AnalyticsSearchRow[]>`
+          SELECT share_token, slots, result_count, created_at
+          FROM searches WHERE created_at >= ${cutoff}
+        `,
+        sql<AnalyticsClickRow[]>`
+          SELECT product_id, search_share_token, created_at
+          FROM product_clicks WHERE created_at >= ${cutoff}
+        `,
+        // Jugada #17: clicks de compra con la marca de si el equipo era un
+        // recomendado del chat (metadata.recommended, ver ProductChatCard).
+        sql<{ recommended: boolean }[]>`
+          SELECT COALESCE((metadata->>'recommended')::boolean, false) AS recommended
+          FROM site_events
+          WHERE event_type = 'product_buy_click' AND created_at >= ${cutoff}
+        `,
+        sql<{ created_at: string }[]>`
+          SELECT created_at FROM searches WHERE created_at >= ${yearStart}
+        `,
+        sql<{ store: string; count: number }[]>`
+          SELECT p.source AS store, COUNT(*)::int AS count
+          FROM product_clicks c
+          JOIN products p ON p.id = c.product_id
+          WHERE c.created_at >= ${cutoff}
+          GROUP BY p.source
+          ORDER BY count DESC
+          LIMIT 8
+        `,
+        // Visitas = evento session_start (uno por visit_id nuevo; visita =
+        // navegador con 30min de inactividad como corte, ver lib/analytics/visit.ts).
+        sql<{ n: number }[]>`
+          SELECT COUNT(*)::int AS n FROM site_events WHERE event_type = 'session_start'
+        `,
+        sql<{ created_at: string }[]>`
+          SELECT created_at FROM site_events
+          WHERE event_type = 'session_start' AND created_at >= ${yearStart}
+        `,
+      ]);
   } catch (error) {
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
@@ -164,6 +189,41 @@ export async function GET(request: NextRequest) {
   }));
   const byStore = storeRows.map((r) => ({ store: r.store, count: r.count }));
 
+  // ─── Visitas al sitio ──────────────────────────────────────────────────────
+  const visitsTotal = visitTotalRow[0]?.n ?? 0;
+  const cutoffMs = Date.parse(cutoff);
+  let visitsInRange = 0;
+  const vByDayMap = new Map<string, number>();
+  const vByMonthMap = new Map<string, number>();
+  const vByWeekMap = new Map<string, number>();
+  const vByHour = new Array(24).fill(0);
+  for (const row of visitYearRows) {
+    const date = new Date(row.created_at);
+    vByMonthMap.set(monthKeyFormatter.format(date), (vByMonthMap.get(monthKeyFormatter.format(date)) ?? 0) + 1);
+    vByWeekMap.set(arWeekMondayKey(date), (vByWeekMap.get(arWeekMondayKey(date)) ?? 0) + 1);
+    vByHour[Number(hourFormatter.format(date)) % 24]++;
+    if (date.getTime() >= cutoffMs) {
+      visitsInRange++;
+      const dk = dayKeyFormatter.format(date);
+      vByDayMap.set(dk, (vByDayMap.get(dk) ?? 0) + 1);
+    }
+  }
+  const visits = {
+    total: visitsTotal,
+    inRange: visitsInRange,
+    byDay: Array.from(vByDayMap.entries())
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => a.date.localeCompare(b.date)),
+    byMonth: Array.from(vByMonthMap.entries())
+      .map(([month, count]) => ({ month, count }))
+      .sort((a, b) => a.month.localeCompare(b.month)),
+    byWeek: Array.from(vByWeekMap.entries())
+      .map(([week, count]) => ({ week, count }))
+      .sort((a, b) => a.week.localeCompare(b.week))
+      .slice(-12),
+    byHour: vByHour.map((count, hour) => ({ hour, count })),
+  };
+
   const clicksByProduct = new Map<string, number>();
   for (const c of clickRows) {
     clicksByProduct.set(c.product_id, (clicksByProduct.get(c.product_id) ?? 0) + 1);
@@ -220,6 +280,7 @@ export async function GET(request: NextRequest) {
     byMonth,
     byDayOfWeek,
     topProducts,
+    visits,
   };
 
   return NextResponse.json(analytics);
