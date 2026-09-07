@@ -1,5 +1,33 @@
 # Validación pendiente — sesión 2026-09-04
 
+## Resultado de la validación autónoma (2026-09-07)
+
+Corrida contra `anka.ar/indexa` en vivo (API + DB + logs `[SEARCH]`/`[CHAT]`/`[LLM]`).
+Lo que **no** se puede validar sin navegador queda marcado como tal.
+
+| Ítem | Resultado |
+|---|---|
+| **#1 Ranking celulares por uso** | ✅ PASA. photography/gaming_mobile/battery_life → top 8 con 8-12GB RAM, 128GB+, cámara 48-108MP. basic_use → Moto G06 4-6GB (no sobre-penaliza). |
+| **#1 "También en X / más barato"** | ✅ Datos OK (`also_at` poblado, precios por tienda correctos). El badge verde "−$Y" solo renderiza si una tienda NO primaria es más barata — no se dio en las muestras (el primario ya era el más barato). Falta ver el render con un producto que califique. |
+| **#2 Filtro-tienda en el chat** | ✅ PASA. "en carrefour hay alguno?" → `highlightFilter:"store"`, reply apunta al filtro Tienda, `shortCircuit=true` en 10ms, sin re-búsqueda. El pulso visual del botón es client-side (no verificable por API). |
+| **#2 Saludo honesto sin marca** | ✅ PASA. "iphone hasta $250k" (iPhone 13 en el pool pero fuera de presupuesto) → *"No encontré ninguna opción de **iPhone** dentro de tu presupuesto… pero hay dos que se pasan: iPhone 13 a $1.285.000…"*. El override determinístico pisa el texto del LLM (que había dicho "Motorola G06 entra"). |
+| **#3 Rediseño tarjeta / popover / "En la práctica"** | ⚠️ NO verificable sin navegador (render puro). |
+| **#3 Login `/admin`** | ⚠️ NO verificable sin navegador + credenciales. |
+| **#3 Branding** | ✅ Assets OK: `favicon.ico` = .ico real 32+64px cuadrado RGBA (5.4KB, antes era PNG crudo 194KB). `logo-indexa.png` 1818×553 y `logo-indexa-icon.png` sirven 200. El *aspecto* visual no se juzga por API. |
+| **#4 Analítica fina** | ✅ PASA. byMonth (Jun 132 / Jul 79 / Ago 283 / Sep 45), byDayOfWeek (Jue 157, Vie 176 vs Sáb/Dom 8/7), byUseCase (office lidera), byStore (cetrogar/megatone/pardo), byBrand con merge case-insensitive OK ("Xiaomi" 6 mergeado, "HP" en mayúscula). Validado replicando la lógica desplegada contra datos reales. |
+| **#5 Latencia** | ✅ Sin regresión. 3.8-5.3s frescas. `slots` (LLM) 3.4-4s = ~75-90% del total; `pool` (SQL) 6-31ms; `embed` variable 0.3-1.8s. Coincide con el diagnóstico previo. |
+
+### Bugs encontrados y arreglados en esta corrida
+
+- **`5ffdd4d`** — "Juguete Mordillo Celular" ($6.299, changomas) rankeaba top 8 en "celular básico". `juguete` no estaba en `ACCESSORY_KEYWORDS`.
+- **`8781656`** — el filtro no matcheaba plurales: "Parlantes"/"Auriculares" pasaban `\bparlante\b`/`\bauricular\b`. Se agregó `(?:es|s)?`. Además coppel/changomas mete ropa (calza, bandolera, riñonera) y gaming (joystick, gamepad) como `category=phone` — sumados al filtro. Ambos deployados y re-verificados: las franjas baratas de celular/PC salen limpias.
+
+### Pendiente (miscategorización, requiere curación con `available=false`, no filtro de título)
+
+- "Tabla esquinera Orlandi" volvió como `desktop` (estaba apagada 2026-09-02, re-scrapeada). "Mi primer teléfono Happy Kid Toy" ($29.990, phone). "Tablet Stitch" ($18.990). Tableta gráfica de dibujo como `tablet`. → correr/extender `scripts/fixMiscategorized.ts` en el VPS.
+
+---
+
 Checklist de lo que quedó **sin validar en vivo**, de más nuevo a más viejo.
 El lote P0/P1/P2 anterior (tarjeta, chat, ranking, comparador, admin analytics,
 datos) tiene su propio checklist en `docs/VALIDACION_PLAN_MEJORAS.md` — buena
