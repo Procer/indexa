@@ -8,7 +8,10 @@ import { estimatedMonthly } from "@/lib/domain/budgetFit";
 import { specSanityPenalty } from "@/lib/domain/specSanity";
 import type { NotebookSpecs, PhoneSpecs, Product, Slots, SponsoredPlacement } from "@/types";
 
-export const ACCESSORY_KEYWORDS = /\b(mochila|funda|bolso|bolsa|mouse|teclado|auricular|parlante|cable|adaptador|hub|soporte|pad|mousepad|cargador|fuente|cuaderno|bater[ií]a externa|power\s*bank|cooler|ventilador|limpiador|kit de limpieza|escritorio|silla|mueble|biblioteca|estante|rack de|mesa|armario|cajonera|archivero|repisa|librer[ií]a|organizador|base para|kit de|reloj|smart\s*watch|smart\s*band|pulsera inteligente|vidrio templado|templado|protector de pantalla|mica|carcasa|estuche|case|manos libres|micro\s?sd|tarjeta de memoria|tr[ií]pode|gimbal|estabilizador|palo selfie|selfie stick|a(?:ro|nillo) de luz|l[aá]mpara|difusor|juguete)\b/i;
+// Nota: `(?:es|s)?` al final del grupo tolera plurales — sin eso "Parlantes"/
+// "Auriculares" no matcheaban `\bparlante\b`/`\bauricular\b` (visto en vivo:
+// "Parlantes 2.0 PC/Notebook" rankeaba como notebook).
+export const ACCESSORY_KEYWORDS = /\b(mochila|funda|bolso|bolsa|mouse|teclado|auricular|parlante|cable|adaptador|hub|soporte|pad|mousepad|cargador|fuente|cuaderno|bater[ií]a externa|power\s*bank|cooler|ventilador|limpiador|kit de limpieza|escritorio|silla|mueble|biblioteca|estante|rack de|mesa|armario|cajonera|archivero|repisa|librer[ií]a|organizador|base para|kit de|reloj|smart\s*watch|smart\s*band|pulsera inteligente|vidrio templado|templado|protector de pantalla|mica|carcasa|estuche|case|manos libres|micro\s?sd|tarjeta de memoria|tr[ií]pode|gimbal|estabilizador|palo selfie|selfie stick|a(?:ro|nillo) de luz|l[aá]mpara|difusor|juguete|joystick|gamepad|bandolera|ri[ñn]onera|calza|remera|pantal[oó]n|zapatilla)(?:es|s)?\b/i;
 
 // A pedido explícito del usuario: Celeron/Pentium/Athlon (la gama de entrada
 // más floja de Intel/AMD) nunca se recomiendan en notebook/desktop, sin
