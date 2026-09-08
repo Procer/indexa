@@ -11,9 +11,18 @@ import type {
   AlternativeProduct,
   EnrichedProduct,
   GuidingQuestion,
+  HomeSponsor,
   ProductCategory,
   UseCase,
 } from "@/types";
+
+const RUBRO_PLURAL: Record<string, string> = {
+  notebook: "notebooks",
+  desktop: "PCs de escritorio",
+  tablet: "tablets",
+  tv: "Smart TVs",
+  phone: "celulares",
+};
 
 // Chatbot único de principio a fin: arranca guiando con preguntas (categoría,
 // uso, presupuesto — mismo backend de slot-filling que ya existía, solo
@@ -249,6 +258,22 @@ export function GuidedSearchChat({
   // de la fase de guía (categoría/uso/presupuesto), que no le sirven de
   // contexto a ese prompt.
   const resultsStartIndexRef = useRef(0);
+
+  // Patrocinado de la pantalla de entrada (tienda + rubro con show_on_home).
+  // Solo se pide una vez, en la fase de guía; desaparece al haber resultados.
+  const [homeSponsor, setHomeSponsor] = useState<HomeSponsor | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(withBasePath("/api/sponsored/home"))
+      .then((r) => r.json())
+      .then((d: { sponsor: HomeSponsor | null }) => {
+        if (!cancelled) setHomeSponsor(d.sponsor);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // A diferencia de saltar siempre al fondo (lo que fuerza al usuario a
   // scrollear de nuevo con cada respuesta del bot), cuando se agrega un
@@ -582,6 +607,28 @@ export function GuidedSearchChat({
       </div>
 
       <div ref={messagesContainerRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+        {homeSponsor && products.length === 0 && !compact && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3">
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 font-brand text-[10px] font-semibold uppercase tracking-wider text-amber-700">
+              Patrocinado
+            </span>
+            <p className="mt-1.5 font-brand text-sm text-gathering-on-surface">
+              Ofertas en {homeSponsor.categories.map((c) => RUBRO_PLURAL[c] ?? c).join(", ")} de{" "}
+              <span className="font-semibold capitalize">{homeSponsor.advertiser}</span>
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                onSubmitAnswer(
+                  `${RUBRO_PLURAL[homeSponsor.categories[0]] ?? homeSponsor.categories[0]} en ${homeSponsor.advertiser}`
+                )
+              }
+              className="mt-2 rounded-full bg-amber-600 px-4 py-1.5 font-brand text-sm font-semibold text-white active:scale-95"
+            >
+              Ver
+            </button>
+          </div>
+        )}
         {messages.map((m) => (
           <div
             key={m.id}

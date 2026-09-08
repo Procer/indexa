@@ -134,9 +134,32 @@ export async function getActiveSponsoredPlacements(): Promise<
   const rows = await sql<SponsoredPlacement[]>`
     SELECT * FROM sponsored_placements
     WHERE active = true
+      AND target_source IS NOT NULL
       AND (ends_at IS NULL OR ends_at > ${now})
   `;
   return rows as unknown as SponsoredPlacement[];
+}
+
+// Colocación patrocinada para la pantalla de entrada (chat guiado). Una sola:
+// si hay varias con show_on_home, gana la de mayor boost.
+export async function getHomeSponsor(): Promise<
+  { advertiser: string; target_source: string; categories: string[] } | null
+> {
+  const now = new Date().toISOString();
+  const [row] = await sql<
+    { advertiser: string; target_source: string; categories: string[] }[]
+  >`
+    SELECT advertiser, target_source, categories
+    FROM sponsored_placements
+    WHERE active = true
+      AND show_on_home = true
+      AND target_source IS NOT NULL
+      AND (ends_at IS NULL OR ends_at > ${now})
+      AND (starts_at IS NULL OR starts_at <= ${now})
+    ORDER BY score_boost DESC, created_at DESC
+    LIMIT 1
+  `;
+  return row ?? null;
 }
 
 export async function saveSearch(params: {

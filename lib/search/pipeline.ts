@@ -72,7 +72,36 @@ export type RankedProduct = Product & {
   similarity: number;
   final_score: number;
   out_of_budget?: "above" | "below" | null;
+  sponsored?: boolean;
 };
+
+// Boost de patrocinado (modelo tienda + rubro). Un producto sube si hay una
+// colocación activa para su tienda (target_source) y su rubro (categories) y
+// además es relevante para esta búsqueda (similarity >= min_relevance). Se
+// resuelve acá y no en scoreResults porque hybrid_search no devuelve
+// source/category. Devuelve el boost a sumar (0 si no aplica) y si el producto
+// quedó marcado como patrocinado (para la etiqueta de la tarjeta).
+function sponsorBoost(
+  product: Product,
+  similarity: number,
+  placements: SponsoredPlacement[]
+): { boost: number; sponsored: boolean } {
+  const now = Date.now();
+  for (const p of placements) {
+    if (!p.active || !p.target_source) continue;
+    if (p.ends_at !== null && new Date(p.ends_at).getTime() <= now) continue;
+    if (p.target_source.toLowerCase() !== (product.source ?? "").toLowerCase()) continue;
+    if (p.categories.length > 0 && !p.categories.includes(product.category as never)) continue;
+    const applied = similarity >= p.min_relevance;
+    console.log(
+      `[SPONSOR] placement="${p.advertiser}" source=${product.source} category=${product.category} ` +
+        `product=${product.id} similarity=${similarity.toFixed(3)} minRelevance=${p.min_relevance} ` +
+        `boost=${p.score_boost} applied=${applied}`
+    );
+    if (applied) return { boost: p.score_boost, sponsored: true };
+  }
+  return { boost: 0, sponsored: false };
+}
 
 // Arma el pool ordenado y filtrado de productos para una búsqueda: SQL +
 // vectorial (200 candidatos) → scoring → recorte a RANKED_POOL_SIZE → datos
@@ -98,7 +127,7 @@ export async function buildRankedPool(params: {
     queryText,
   });
 
-  const scoredResults = scoreResults(rawResults, sponsoredPlacements);
+  const scoredResults = scoreResults(rawResults);
 
   // Con marca preferida o piso de presupuesto, el corte a RANKED_POOL_SIZE se
   // hace DESPUÉS de resolver full products (boost/filtro), no antes — si no,
@@ -121,14 +150,23 @@ export async function buildRankedPool(params: {
     // diferencia del techo, que ya lo filtra hybrid_search en SQL, esto es un
     // filtro duro en JS (no hay migración de la RPC para esto todavía).
     .filter((product) => minCash == null || (product.price_cash ?? 0) >= minCash)
-    .map((product) => ({
-      ...product,
-      similarity: scoreMap.get(product.id)!.similarity,
-      // El grado de calidad/precio recién está disponible acá (getProductsByIds
-      // trae el Product completo; hybrid_search/scoreResults no lo ven). Ajuste
-      // acotado ±0.06 — ver qualityPriceBoost en scorer.ts.
-      final_score: scoreMap.get(product.id)!.final_score + qualityPriceBoost(product.quality_price_score),
-    }));
+    .map((product) => {
+      const similarity = scoreMap.get(product.id)!.similarity;
+      const { boost, sponsored } = sponsorBoost(product, similarity, sponsoredPlacements);
+      return {
+        ...product,
+        similarity,
+        sponsored,
+        // El grado de calidad/precio recién está disponible acá (getProductsByIds
+        // trae el Product completo; hybrid_search/scoreResults no lo ven). Ajuste
+        // acotado ±0.06 — ver qualityPriceBoost en scorer.ts. + boost de
+        // patrocinado (tienda + rubro) si aplica.
+        final_score:
+          scoreMap.get(product.id)!.final_score +
+          qualityPriceBoost(product.quality_price_score) +
+          boost,
+      };
+    });
 
   // Re-ordenar con el ajuste de calidad/precio ya incorporado: en el path
   // angosto no hay otro sort garantizado antes del dedupe (los re-ranks de

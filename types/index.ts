@@ -223,6 +223,9 @@ export interface EnrichedProduct extends Product {
   // que el chat diga "no encontré ninguna" cuando en realidad sí existe, solo
   // que no entra en el presupuesto (bug reportado en vivo).
   out_of_budget?: "above" | "below" | null;
+  // Subió en el ranking por una campaña patrocinada (tienda + rubro). Muestra
+  // la etiqueta "Patrocinado" en la tarjeta.
+  sponsored?: boolean;
 }
 
 // ─── Search / Slots ───────────────────────────────────────────────────────────
@@ -392,14 +395,27 @@ export interface CompareItem {
 export interface SponsoredPlacement {
   id: string;
   advertiser: string;
-  product_ids: string[];
+  // Tienda (products.source) + rubros objetivo. La colocación empuja en el
+  // ranking a los productos de esa tienda en esos rubros que además sean
+  // relevantes para la búsqueda (similarity >= min_relevance).
+  target_source: string | null;
   categories: ProductCategory[];
+  product_ids: string[]; // legacy, sin uso
   score_boost: number;
   min_relevance: number;
+  show_on_home: boolean;
   active: boolean;
   starts_at: string | null;
   ends_at: string | null;
   created_at: string;
+}
+
+// Colocación patrocinada a mostrar en la pantalla de entrada (chat guiado),
+// resuelta por GET /api/sponsored/home. null = no hay ninguna activa.
+export interface HomeSponsor {
+  advertiser: string;
+  source: string;
+  categories: ProductCategory[];
 }
 
 // ─── API responses ────────────────────────────────────────────────────────────
@@ -550,4 +566,6 @@ export interface AlternativeProduct {
   also_at?: ProductStoreVariant[];
   // Jugada #15: veredicto de precio vs. mediana de la config (ver EnrichedProduct).
   price_verdict?: string | null;
+  // Subió por una campaña patrocinada (tienda + rubro) — muestra "Patrocinado".
+  sponsored?: boolean;
 }

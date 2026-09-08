@@ -4,23 +4,19 @@ import { useState, useEffect, useCallback } from "react";
 import { adminFetch } from "@/lib/auth/adminClient";
 import type { SponsoredPlacement, ProductCategory } from "@/types";
 
-// ─── tipos locales ────────────────────────────────────────────────────────────
-
-interface ProductHit {
-  id: string;
-  title: string;
-  brand: string | null;
-  category: string;
-  price_cash: number | null;
-  image_url: string | null;
-}
-
 const BOOST_MIN = 0.01;
 const BOOST_MAX = 0.10;
 const RELEVANCE_MIN = 0.5;
 const RELEVANCE_MAX = 0.95;
 
-const CATEGORIES: ProductCategory[] = ["notebook", "desktop", "tablet", "tv"];
+const CATEGORIES: ProductCategory[] = ["notebook", "desktop", "tablet", "tv", "phone"];
+const CATEGORY_LABEL: Record<string, string> = {
+  notebook: "Notebook",
+  desktop: "PC de escritorio",
+  tablet: "Tablet",
+  tv: "Smart TV",
+  phone: "Celular",
+};
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -29,41 +25,34 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString("es-AR");
 }
 
-function formatPrice(n: number | null): string {
-  if (n == null) return "—";
-  return `$${Math.round(n).toLocaleString("es-AR")}`;
-}
-
 // ─── componente ──────────────────────────────────────────────────────────────
 
 export default function SponsorsAdminPage() {
   const [placements, setPlacements] = useState<SponsoredPlacement[]>([]);
+  const [sources, setSources] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   // form nueva campaña
   const [showForm, setShowForm] = useState(false);
   const [formAdvertiser, setFormAdvertiser] = useState("");
+  const [formSource, setFormSource] = useState("");
   const [formBoost, setFormBoost] = useState(0.05);
   const [formMinRelevance, setFormMinRelevance] = useState(0.65);
+  const [formShowOnHome, setFormShowOnHome] = useState(false);
   const [formStartsAt, setFormStartsAt] = useState("");
   const [formEndsAt, setFormEndsAt] = useState("");
   const [formCategories, setFormCategories] = useState<ProductCategory[]>([]);
-  const [formProducts, setFormProducts] = useState<ProductHit[]>([]);
   const [formSubmitting, setFormSubmitting] = useState(false);
-
-  // buscador de productos
-  const [productQuery, setProductQuery] = useState("");
-  const [productResults, setProductResults] = useState<ProductHit[]>([]);
-  const [productSearching, setProductSearching] = useState(false);
 
   const loadPlacements = useCallback(async () => {
     setLoading(true);
     setError("");
     const res = await adminFetch("/api/admin/sponsors");
     if (res.ok) {
-      const data = (await res.json()) as { placements: SponsoredPlacement[] };
+      const data = (await res.json()) as { placements: SponsoredPlacement[]; sources?: string[] };
       setPlacements(data.placements);
+      setSources(data.sources ?? []);
     } else {
       setError("No autorizado o error al cargar campañas.");
     }
@@ -73,21 +62,6 @@ export default function SponsorsAdminPage() {
   useEffect(() => {
     loadPlacements();
   }, [loadPlacements]);
-
-  // Buscar productos con debounce
-  useEffect(() => {
-    if (productQuery.length < 2) { setProductResults([]); return; }
-    const t = setTimeout(async () => {
-      setProductSearching(true);
-      const res = await adminFetch(`/api/admin/products/search?q=${encodeURIComponent(productQuery)}`);
-      if (res.ok) {
-        const data = (await res.json()) as { products: ProductHit[] };
-        setProductResults(data.products);
-      }
-      setProductSearching(false);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [productQuery]);
 
   async function toggleActive(p: SponsoredPlacement) {
     await adminFetch(`/api/admin/sponsors/${p.id}`, {
@@ -105,17 +79,6 @@ export default function SponsorsAdminPage() {
     setPlacements((prev) => prev.filter((x) => x.id !== p.id));
   }
 
-  function addProductToForm(hit: ProductHit) {
-    if (formProducts.find((p) => p.id === hit.id)) return;
-    setFormProducts((prev) => [...prev, hit]);
-    setProductQuery("");
-    setProductResults([]);
-  }
-
-  function removeProductFromForm(id: string) {
-    setFormProducts((prev) => prev.filter((p) => p.id !== id));
-  }
-
   function toggleCategory(cat: ProductCategory) {
     setFormCategories((prev) =>
       prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
@@ -124,17 +87,18 @@ export default function SponsorsAdminPage() {
 
   async function handleCreateCampaign(e: React.FormEvent) {
     e.preventDefault();
-    if (!formAdvertiser.trim() || formProducts.length === 0) return;
+    if (!formAdvertiser.trim() || !formSource || formCategories.length === 0) return;
     setFormSubmitting(true);
 
     const res = await adminFetch("/api/admin/sponsors", {
       method: "POST",
       body: JSON.stringify({
         advertiser: formAdvertiser,
-        product_ids: formProducts.map((p) => p.id),
+        target_source: formSource,
         categories: formCategories,
         score_boost: formBoost,
         min_relevance: formMinRelevance,
+        show_on_home: formShowOnHome,
         starts_at: formStartsAt || null,
         ends_at: formEndsAt || null,
       }),
@@ -143,12 +107,13 @@ export default function SponsorsAdminPage() {
     if (res.ok) {
       setShowForm(false);
       setFormAdvertiser("");
+      setFormSource("");
       setFormBoost(0.05);
       setFormMinRelevance(0.65);
+      setFormShowOnHome(false);
       setFormStartsAt("");
       setFormEndsAt("");
       setFormCategories([]);
-      setFormProducts([]);
       await loadPlacements();
     } else {
       const data = (await res.json()) as { error?: string };
@@ -167,7 +132,7 @@ export default function SponsorsAdminPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Campañas patrocinadas</h1>
             <p className="mt-1 text-sm text-gray-500">
-              Los productos patrocinados aparecen solo si su similitud supera el umbral mínimo.
+              Empujan en el ranking a los productos de una tienda en ciertos rubros, solo si son relevantes para la búsqueda.
             </p>
           </div>
           <button
@@ -231,87 +196,55 @@ export default function SponsorsAdminPage() {
                   />
                 </div>
 
-                {/* Búsqueda de productos */}
+                {/* Tienda */}
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">
-                    Productos ({formProducts.length} seleccionados)
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={productQuery}
-                      onChange={(e) => setProductQuery(e.target.value)}
-                      placeholder="Buscar producto por título..."
-                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
-                    />
-                    {(productResults.length > 0 || productSearching) && (
-                      <div className="absolute z-10 mt-1 w-full rounded-lg border border-gray-100 bg-white shadow-lg">
-                        {productSearching ? (
-                          <p className="px-3 py-2 text-xs text-gray-400">Buscando...</p>
-                        ) : (
-                          productResults.map((hit) => (
-                            <button
-                              key={hit.id}
-                              type="button"
-                              onClick={() => addProductToForm(hit)}
-                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50"
-                            >
-                              {hit.image_url && (
-                                <img src={hit.image_url} alt="" className="h-8 w-8 rounded object-contain" />
-                              )}
-                              <div className="min-w-0">
-                                <p className="truncate font-medium text-gray-800">{hit.title}</p>
-                                <p className="text-xs text-gray-400">{hit.category} · {formatPrice(hit.price_cash)}</p>
-                              </div>
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Productos seleccionados */}
-                  {formProducts.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {formProducts.map((p) => (
-                        <span
-                          key={p.id}
-                          className="flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700"
-                        >
-                          {p.title.slice(0, 30)}…
-                          <button
-                            type="button"
-                            onClick={() => removeProductFromForm(p.id)}
-                            className="text-blue-400 hover:text-blue-600"
-                          >✕</button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Tienda</label>
+                  <select
+                    value={formSource}
+                    onChange={(e) => setFormSource(e.target.value)}
+                    required
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm capitalize outline-none focus:border-blue-400"
+                  >
+                    <option value="">Elegí una tienda…</option>
+                    {sources.map((s) => (
+                      <option key={s} value={s} className="capitalize">{s}</option>
+                    ))}
+                  </select>
                 </div>
 
-                {/* Categorías */}
+                {/* Rubros */}
                 <div>
                   <label className="mb-1 block text-xs font-medium text-gray-600">
-                    Categorías objetivo (vacío = todas)
+                    Rubros (al menos uno)
                   </label>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     {CATEGORIES.map((cat) => (
                       <button
                         key={cat}
                         type="button"
                         onClick={() => toggleCategory(cat)}
-                        className={`rounded-full px-3 py-1 text-xs font-medium capitalize transition-colors ${
+                        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                           formCategories.includes(cat)
                             ? "bg-blue-600 text-white"
                             : "border border-gray-200 text-gray-600 hover:bg-gray-50"
                         }`}
                       >
-                        {cat}
+                        {CATEGORY_LABEL[cat]}
                       </button>
                     ))}
                   </div>
                 </div>
+
+                {/* Mostrar en el inicio */}
+                <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={formShowOnHome}
+                    onChange={(e) => setFormShowOnHome(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300"
+                  />
+                  Mostrar en la pantalla de inicio
+                </label>
 
                 {/* Boost y relevancia mínima */}
                 <div className="grid grid-cols-2 gap-4">
@@ -383,7 +316,7 @@ export default function SponsorsAdminPage() {
                   </button>
                   <button
                     type="submit"
-                    disabled={formSubmitting || formProducts.length === 0}
+                    disabled={formSubmitting || !formSource || formCategories.length === 0}
                     className="flex-1 rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
                   >
                     {formSubmitting ? "Creando..." : "Crear campaña"}
@@ -413,19 +346,26 @@ function PlacementRow({
     <div className={`rounded-xl border bg-white p-4 shadow-sm ${placement.active ? "border-gray-100" : "border-gray-100 opacity-60"}`}>
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 space-y-1">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="font-semibold text-gray-900">{placement.advertiser}</span>
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium capitalize text-gray-700">
+              {placement.target_source ?? "sin tienda"}
+            </span>
             <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${placement.active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
               {placement.active ? "Activa" : "Pausada"}
             </span>
+            {placement.show_on_home && (
+              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                En el inicio
+              </span>
+            )}
           </div>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
-            <span>{placement.product_ids.length} producto{placement.product_ids.length !== 1 ? "s" : ""}</span>
+            <span>
+              Rubros: {placement.categories.map((c) => CATEGORY_LABEL[c] ?? c).join(", ") || "—"}
+            </span>
             <span>Boost: +{placement.score_boost}</span>
             <span>Relevancia mín: {placement.min_relevance}</span>
-            {placement.categories.length > 0 && (
-              <span>Categorías: {placement.categories.join(", ")}</span>
-            )}
             {(placement.starts_at || placement.ends_at) && (
               <span>
                 {formatDate(placement.starts_at)} → {formatDate(placement.ends_at)}

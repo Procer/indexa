@@ -184,18 +184,25 @@ CREATE INDEX idx_price_history_product ON price_history(product_id, recorded_at 
 -- =============================================================================
 -- sponsored_placements
 -- =============================================================================
+-- Patrocinados por tienda + rubro (ver migración 023). Una colocación apunta
+-- a target_source (tienda) + categories (rubros, >=1). product_ids queda por
+-- compatibilidad con datos viejos pero ya no se usa.
 CREATE TABLE sponsored_placements (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   advertiser    TEXT NOT NULL,
-  product_ids   UUID[] NOT NULL,
+  target_source TEXT,
+  product_ids   UUID[] DEFAULT '{}',
   categories    TEXT[] DEFAULT '{}',
   score_boost   NUMERIC(4,3) DEFAULT 0.05,
   min_relevance NUMERIC(4,3) DEFAULT 0.65,
+  show_on_home  BOOLEAN NOT NULL DEFAULT false,
   active        BOOLEAN DEFAULT true,
   starts_at     TIMESTAMPTZ,
   ends_at       TIMESTAMPTZ,
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
+CREATE INDEX idx_sponsored_placements_active
+  ON sponsored_placements (active) WHERE active = true;
 
 -- =============================================================================
 -- price_alerts  (con soporte anónimo por email + manage_token)

@@ -10,11 +10,17 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const data = await sql<SponsoredPlacement[]>`
-      SELECT * FROM sponsored_placements ORDER BY created_at DESC
-    `;
+    const [data, sources] = await Promise.all([
+      sql<SponsoredPlacement[]>`
+        SELECT * FROM sponsored_placements ORDER BY created_at DESC
+      `,
+      sql<{ source: string }[]>`
+        SELECT DISTINCT source FROM products WHERE available = true ORDER BY source
+      `,
+    ]);
     return NextResponse.json({
       placements: data as unknown as SponsoredPlacement[],
+      sources: sources.map((s) => s.source),
     });
   } catch (error) {
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
@@ -29,17 +35,18 @@ export async function POST(request: NextRequest) {
 
   const body = (await request.json()) as {
     advertiser?: string;
-    product_ids?: string[];
+    target_source?: string;
     categories?: string[];
     score_boost?: number;
     min_relevance?: number;
+    show_on_home?: boolean;
     starts_at?: string | null;
     ends_at?: string | null;
   };
 
-  if (!body.advertiser?.trim() || !body.product_ids?.length) {
+  if (!body.advertiser?.trim() || !body.target_source?.trim() || !body.categories?.length) {
     return NextResponse.json(
-      { error: "advertiser y al menos un product_id son requeridos" },
+      { error: "advertiser, target_source y al menos un rubro son requeridos" },
       { status: 400 }
     );
   }
@@ -47,13 +54,14 @@ export async function POST(request: NextRequest) {
   try {
     const [placement] = await sql`
       INSERT INTO sponsored_placements
-        (advertiser, product_ids, categories, score_boost, min_relevance, active, starts_at, ends_at)
+        (advertiser, target_source, categories, score_boost, min_relevance, show_on_home, active, starts_at, ends_at)
       VALUES (
         ${body.advertiser.trim()},
-        ${body.product_ids}::uuid[],
-        ${body.categories ?? []}::text[],
+        ${body.target_source.trim()},
+        ${body.categories}::text[],
         ${body.score_boost ?? 0.05},
         ${body.min_relevance ?? 0.65},
+        ${body.show_on_home ?? false},
         true,
         ${body.starts_at ?? null},
         ${body.ends_at ?? null}

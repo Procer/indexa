@@ -47,6 +47,7 @@ function toAlternativeProduct(p: EnrichedProduct): AlternativeProduct {
     out_of_budget: p.out_of_budget,
     also_at: p.also_at,
     price_verdict: p.price_verdict ?? null,
+    sponsored: p.sponsored ?? false,
   };
 }
 

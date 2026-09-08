@@ -9,10 +9,11 @@ const UUID_RE =
 // id / created_at u otras columnas.
 const EDITABLE = [
   "advertiser",
-  "product_ids",
+  "target_source",
   "categories",
   "score_boost",
   "min_relevance",
+  "show_on_home",
   "active",
   "starts_at",
   "ends_at",

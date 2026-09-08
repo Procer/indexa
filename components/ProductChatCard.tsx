@@ -282,7 +282,8 @@ export function ProductChatCard({
     setTimeout(() => setShared(false), 2000);
   }
   const inBudgetChip = showBudgetFit && !product.out_of_budget;
-  const hasBadge = isTopPick || !!product.quality_price_score || !!product.out_of_budget || inBudgetChip;
+  const hasBadge =
+    isTopPick || !!product.quality_price_score || !!product.out_of_budget || inBudgetChip || !!product.sponsored;
 
   return (
     <article
@@ -312,6 +313,14 @@ export function ProductChatCard({
           {product.out_of_budget && (
             <span className="flex items-center gap-1 rounded-full bg-orange-600 px-2.5 py-1 font-brand text-[10px] font-bold uppercase tracking-wider text-white shadow-sm">
               <span aria-hidden>⚠</span> Fuera de presupuesto
+            </span>
+          )}
+          {product.sponsored && (
+            <span
+              title="Esta tienda patrocina este rubro. Solo aparece más arriba si el producto es relevante para tu búsqueda."
+              className="flex cursor-help items-center rounded-full bg-amber-100 px-2.5 py-1 font-brand text-[10px] font-semibold uppercase tracking-wider text-amber-700 shadow-sm"
+            >
+              Patrocinado
             </span>
           )}
           {inBudgetChip && (

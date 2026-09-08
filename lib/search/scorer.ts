@@ -2,7 +2,6 @@ import type {
   ProductSearchResult,
   QualityPriceScore,
   ScoredProduct,
-  SponsoredPlacement,
 } from "@/types";
 
 // Boost logarítmico: crece rápido al inicio y se satura.
@@ -30,40 +29,15 @@ export function qualityPriceBoost(score: QualityPriceScore | null | undefined): 
   return score ? QUALITY_PRICE_BOOST[score] ?? 0 : 0;
 }
 
-export function scoreResults(
-  results: ProductSearchResult[],
-  sponsoredPlacements: SponsoredPlacement[]
-): ScoredProduct[] {
-  const now = new Date();
-
+// El boost de patrocinado ya NO se aplica acá: el modelo nuevo matchea por
+// tienda + rubro (products.source / products.category), datos que hybrid_search
+// no devuelve. Se resuelve en lib/search/pipeline.ts, sobre los Product
+// completos (ver sponsorBoost / applySponsor ahí).
+export function scoreResults(results: ProductSearchResult[]): ScoredProduct[] {
   return results
-    .map((product): ScoredProduct => {
-      let score = product.similarity;
-
-      // Boost de popularidad (acumulativo, pequeño)
-      score += popularityBoost(product.click_count ?? 0);
-
-      // Boost de patrocinado (solo si supera umbral de relevancia)
-      const placement = sponsoredPlacements.find(
-        (p) =>
-          p.active &&
-          p.product_ids.includes(product.id) &&
-          (p.ends_at === null || new Date(p.ends_at) > now)
-      );
-      if (placement) {
-        const applied = product.similarity >= placement.min_relevance;
-        if (applied) score += placement.score_boost;
-        // Observabilidad: sin este log no había forma de comprobar si una
-        // campaña patrocinada realmente se aplicó (no hay badge para las
-        // colocaciones — SponsoredBadge solo mira products.is_sponsored).
-        console.log(
-          `[SPONSOR] placement="${placement.advertiser}" product=${product.id} ` +
-            `similarity=${product.similarity.toFixed(3)} minRelevance=${placement.min_relevance} ` +
-            `boost=${placement.score_boost} applied=${applied}`
-        );
-      }
-
-      return { ...product, final_score: score };
-    })
+    .map((product): ScoredProduct => ({
+      ...product,
+      final_score: product.similarity + popularityBoost(product.click_count ?? 0),
+    }))
     .sort((a, b) => b.final_score - a.final_score);
 }

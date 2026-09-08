@@ -23,6 +23,7 @@ type ScoredFullProduct = Product & {
   selection_reason?: string | null;
   upgrade_note?: string | null;
   out_of_budget?: "above" | "below" | null;
+  sponsored?: boolean;
 };
 
 export async function generateProductAnalysis(
