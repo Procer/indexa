@@ -2,15 +2,9 @@ import type { RecentProduct, SavedSearch } from "@/types";
 
 const STORAGE_KEY = "techsearch_history";
 const MAX_SAVED = 10;
-const ALERT_CONTACT_KEY = "techsearch_alert_contact";
 const RECENT_PRODUCTS_KEY = "techsearch_recent_products";
 const MAX_RECENT_PRODUCTS = 8;
 const SYNC_CONTACT_KEY = "techsearch_sync_contact";
-
-export interface AlertContact {
-  email: string;
-  manage_token: string;
-}
 
 export interface SyncContact {
   email: string;
@@ -78,26 +72,8 @@ export function addRecentProducts(products: RecentProduct[]): void {
   );
 }
 
-// Recuerda el email + manage_token de alertas de precio entre visitas,
-// así el usuario no tiene que volver a escribir el email cada vez.
-export function getAlertContact(): AlertContact | null {
-  if (typeof window === "undefined") return null;
-  const raw = localStorage.getItem(ALERT_CONTACT_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as AlertContact;
-  } catch {
-    return null;
-  }
-}
-
-export function saveAlertContact(contact: AlertContact): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(ALERT_CONTACT_KEY, JSON.stringify(contact));
-}
-
 // Recuerda el email + manage_token del sync de búsquedas entre dispositivos
-// (ver components/SyncSearchesModal.tsx), mismo patrón que AlertContact.
+// (ver components/SyncSearchesModal.tsx).
 export function getSyncContact(): SyncContact | null {
   if (typeof window === "undefined") return null;
   const raw = localStorage.getItem(SYNC_CONTACT_KEY);

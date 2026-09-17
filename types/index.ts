@@ -463,24 +463,6 @@ export interface PriceHistoryPoint {
   recorded_at: string;
 }
 
-// ─── Price Alerts ─────────────────────────────────────────────────────────────
-
-export interface PriceAlert {
-  id: string;
-  user_id: string | null;
-  email: string | null;
-  manage_token: string;
-  product_id: string;
-  target_price: number;
-  is_active: boolean;
-  last_notified_at: string | null;
-  created_at: string;
-}
-
-export interface PriceAlertWithProduct extends PriceAlert {
-  product: Pick<Product, "id" | "title" | "image_url" | "price_cash" | "url">;
-}
-
 // ─── LocalStorage ─────────────────────────────────────────────────────────────
 
 export interface SavedSearch {

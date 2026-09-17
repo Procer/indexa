@@ -1,12 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { SponsoredBadge } from "./SponsoredBadge";
 import { PriceHistorySparkline } from "./PriceHistorySparkline";
 import { SpecHighlights, type SpecDisplayMode, type PracticeFact } from "./SpecHighlights";
 import { OtherStoresButton } from "./OtherStoresButton";
 import { getUpgradeNote } from "@/lib/domain/upgradeability";
-import { getAlertContact, saveAlertContact } from "@/lib/storage/localStorage";
 import { withBasePath } from "@/lib/basePath";
 import { getOrCreateVisitId } from "@/lib/analytics/visit";
 import { SOURCE_NAMES, formatPrice } from "@/lib/domain/productDisplay";
@@ -68,49 +66,9 @@ function getSpecParts(product: EnrichedProduct): string[] {
   return parts;
 }
 
-type AlertStatus = "idle" | "open" | "loading" | "saved" | "error";
-
 export function ProductCard({ product, onCompareToggle, isCompared, compareDisabled, searchShareToken, sessionId, specMode, practiceFacts }: ProductCardProps) {
   const scoreStyle = product.quality_price_score ? SCORE_STYLES[product.quality_price_score] : null;
-  const defaultTarget = product.price_cash ? Math.round(product.price_cash * 0.9) : 0;
   const upgradeNote = getUpgradeNote(product.category, product.specs, product.upgradeable);
-  const [alertStatus, setAlertStatus] = useState<AlertStatus>("idle");
-  const [targetPrice, setTargetPrice] = useState(String(defaultTarget));
-  const [alertEmail, setAlertEmail] = useState("");
-  const [alertError, setAlertError]   = useState("");
-  const [manageToken, setManageToken] = useState<string | null>(null);
-
-  useEffect(() => {
-    const contact = getAlertContact();
-    if (contact) {
-      setAlertEmail(contact.email);
-      setManageToken(contact.manage_token);
-    }
-  }, []);
-
-  async function handleAlertSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const price = Number(targetPrice);
-    const email = alertEmail.trim();
-    if (!price || price <= 0 || !email) return;
-    setAlertStatus("loading");
-    setAlertError("");
-    const res = await fetch(withBasePath("/api/alerts"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ product_id: product.id, target_price: price, email }),
-    });
-    if (res.ok) {
-      const data = (await res.json()) as { manage_token: string };
-      setManageToken(data.manage_token);
-      saveAlertContact({ email, manage_token: data.manage_token });
-      setAlertStatus("saved");
-    } else {
-      const body = (await res.json()) as { error?: string };
-      setAlertError(body.error ?? "Error al guardar la alerta");
-      setAlertStatus("error");
-    }
-  }
 
   const storeName = SOURCE_NAMES[product.source] ?? product.source;
   const specParts = getSpecParts(product);
@@ -244,52 +202,6 @@ export function ProductCard({ product, onCompareToggle, isCompared, compareDisab
           </div>
         )}
 
-        {/* Alert panel */}
-        {(alertStatus === "open" || alertStatus === "loading" || alertStatus === "error") ? (
-          <form onSubmit={handleAlertSubmit} className="space-y-2 rounded-2xl border border-amber-500/40 bg-amber-50 p-3">
-            <p className="font-brand text-xs font-medium text-amber-800">Avisame por email cuando baje de:</p>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 font-brand text-sm text-gathering-on-surface-variant">$</span>
-                <input
-                  type="number" value={targetPrice}
-                  onChange={(e) => setTargetPrice(e.target.value)}
-                  min={1} required
-                  className="w-full rounded-xl border border-amber-400/30 bg-gathering-surface pl-6 pr-3 py-2 font-brand text-sm text-gathering-on-surface outline-none focus:border-amber-400"
-                />
-              </div>
-              <button type="button" onClick={() => setAlertStatus("idle")}
-                className="shrink-0 rounded-xl border border-gathering-outline-variant px-2 font-brand text-sm text-gathering-on-surface-variant hover:bg-black/5">✕</button>
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="email" value={alertEmail}
-                onChange={(e) => setAlertEmail(e.target.value)}
-                placeholder="tu@email.com" required
-                className="w-full flex-1 rounded-xl border border-amber-400/30 bg-gathering-surface px-3 py-2 font-brand text-sm text-gathering-on-surface outline-none focus:border-amber-400"
-              />
-              <button type="submit" disabled={alertStatus === "loading"}
-                className="shrink-0 rounded-xl bg-amber-700 px-3 py-2 font-brand text-sm font-semibold text-white hover:bg-amber-800 disabled:opacity-60">
-                {alertStatus === "loading" ? "..." : "Activar"}
-              </button>
-            </div>
-            {alertStatus === "error" && <p className="font-brand text-xs text-gathering-error">{alertError}</p>}
-          </form>
-        ) : alertStatus === "saved" ? (
-          <div className="flex flex-col gap-1.5 rounded-2xl bg-emerald-600/10 px-3 py-2.5 font-brand text-sm text-emerald-700">
-            <div className="flex items-center gap-2">
-              <span>✓</span>
-              <span>Te avisamos por email cuando baje de ${Number(targetPrice).toLocaleString("es-AR")}</span>
-              <button type="button" onClick={() => setAlertStatus("idle")} className="ml-auto shrink-0 text-emerald-700">✕</button>
-            </div>
-            {manageToken && (
-              <a href={withBasePath(`/alertas/${manageToken}`)} className="font-semibold underline hover:text-emerald-800">
-                Ver mis alertas
-              </a>
-            )}
-          </div>
-        ) : null}
-
         {/* Acciones */}
         <div className="mt-auto flex items-center gap-2 pt-1">
           <a
@@ -310,21 +222,6 @@ export function ProductCard({ product, onCompareToggle, isCompared, compareDisab
               <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
             </svg>
           </a>
-          <button
-            type="button"
-            onClick={() => setAlertStatus("open")}
-            disabled={alertStatus === "saved"}
-            title="Alerta de precio"
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full border text-sm transition-all duration-150 active:scale-[0.94] disabled:cursor-not-allowed disabled:active:scale-100 ${
-              alertStatus === "saved"
-                ? "border-emerald-600/30 bg-emerald-600/10 text-emerald-700"
-                : "border-amber-600/30 bg-amber-600/10 text-amber-700 hover:bg-amber-600/20"
-            }`}
-          >
-            <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-            </svg>
-          </button>
           <a
             href={whatsappHref}
             target="_blank"
