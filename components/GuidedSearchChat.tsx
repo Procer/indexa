@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { withBasePath } from "@/lib/basePath";
+import { getOrCreateVisitId } from "@/lib/analytics/visit";
 import { detectCategoryLocally } from "@/lib/domain/detectCategory";
 import { BudgetPicker } from "@/components/BudgetPicker";
 import { LogoBrand } from "@/components/LogoBrand";
@@ -64,6 +65,17 @@ interface GuidedSearchChatProps {
   // pregunta por una tienda puntual — no hay slot de tienda, se lo mandamos al
   // filtro de la grilla).
   onHighlightFilter?: (facetKey: string) => void;
+  // El chat identificó qué tarjeta responde una pregunta puntual ("¿cuál tiene
+  // más RAM?") — se le pide a la grilla que la resalte con una animación.
+  onSpotlightProduct?: (productId: string) => void;
+  // El link "Ver los N empatados" de un mensaje factual con empate — filtra
+  // temporalmente la grilla a esos ids, con highlightId ya destacado.
+  onShowTiedResults?: (ids: string[], highlightId: string) => void;
+  // Se dispara al mandar CUALQUIER mensaje nuevo del chat — el padre lo usa
+  // para apagar el spotlight de la pregunta anterior (queda resaltado hasta
+  // la próxima consulta, no con un timer, a pedido del usuario tras probarlo
+  // en vivo 2026-09-10).
+  onNewQuery?: () => void;
 }
 
 type ChatMessage = {
@@ -78,6 +90,8 @@ type ChatMessage = {
   topPickIds?: string[];
   suggestedRefinement?: string;
   highlightFilter?: string;
+  spotlightProductId?: string;
+  tiedProductIds?: string[];
 };
 
 let idCounter = 0;
@@ -126,6 +140,8 @@ interface ChatDonePayload {
   topPickIds?: string[];
   suggestedRefinement?: string;
   highlightFilter?: string;
+  spotlightProductId?: string;
+  tiedProductIds?: string[];
 }
 
 // El endpoint responde de dos formas: JSON normal cuando el saludo ya está
@@ -166,6 +182,8 @@ async function consumeChatResponse(
       topPickIds: data.topPickIds,
       suggestedRefinement: data.suggestedRefinement,
       highlightFilter: data.highlightFilter,
+      spotlightProductId: data.spotlightProductId,
+      tiedProductIds: data.tiedProductIds,
     });
     return data;
   }
@@ -204,6 +222,8 @@ async function consumeChatResponse(
           topPickIds: event.topPickIds,
           suggestedRefinement: event.suggestedRefinement,
           highlightFilter: event.highlightFilter,
+          spotlightProductId: event.spotlightProductId,
+          tiedProductIds: event.tiedProductIds,
         });
         finalPayload = {
           reply: event.reply ?? "",
@@ -211,6 +231,8 @@ async function consumeChatResponse(
           topPickIds: event.topPickIds,
           suggestedRefinement: event.suggestedRefinement,
           highlightFilter: event.highlightFilter,
+          spotlightProductId: event.spotlightProductId,
+          tiedProductIds: event.tiedProductIds,
         };
       }
     }
@@ -235,6 +257,9 @@ export function GuidedSearchChat({
   onRecommendations,
   externalMessage,
   onHighlightFilter,
+  onSpotlightProduct,
+  onShowTiedResults,
+  onNewQuery,
 }: GuidedSearchChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -394,6 +419,7 @@ export function GuidedSearchChat({
             messages: [],
             message: "",
             greeting: true,
+            visitId: getOrCreateVisitId().id,
           }),
         });
         const greetingResult = await consumeChatResponse(res, botId, setMessages, (insertedAtIndex) => {
@@ -401,6 +427,7 @@ export function GuidedSearchChat({
           setStreamingReply(true);
         });
         if (greetingResult?.highlightFilter) onHighlightFilter?.(greetingResult.highlightFilter);
+        if (greetingResult?.spotlightProductId) onSpotlightProduct?.(greetingResult.spotlightProductId);
       } catch {
         setMessages((prev) => {
           resultsStartIndexRef.current = prev.length;
@@ -449,12 +476,13 @@ export function GuidedSearchChat({
     onSubmitAnswer(phrase);
   }
 
-  // `askAbout`: el turno viene del botón "Consultar sobre este equipo" de una
+  // `askAbout`: el turno viene del botón "Preguntar sobre este equipo" de una
   // tarjeta (jugada #11). El texto siempre nombra la marca/modelo del equipo,
   // así que hay que evitar que se lea como cambio de categoría o como pedido
   // de marca nueva — ni acá (redirección local) ni en el backend (atajo
   // determinístico) ni después (auto-disparo de suggestedRefinement).
   async function sendMessage(text: string, opts?: { askAbout?: boolean }) {
+    onNewQuery?.();
     setMessages((prev) => [...prev, { id: nextId(), role: "user", text }]);
 
     if (phaseRef.current === "gathering") {
@@ -497,10 +525,12 @@ export function GuidedSearchChat({
             .map((m) => ({ role: m.role === "bot" ? "ai" : ("user" as const), text: m.text })),
           message: text,
           askAbout: opts?.askAbout ?? false,
+          visitId: getOrCreateVisitId().id,
         }),
       });
       const result = await consumeChatResponse(res, nextId(), setMessages, () => setStreamingReply(true));
       if (result?.highlightFilter) onHighlightFilter?.(result.highlightFilter);
+      if (result?.spotlightProductId) onSpotlightProduct?.(result.spotlightProductId);
       // El usuario pidió que un mensaje de texto con intención clara de
       // búsqueda ("qué tenés de i5", "buscá con más batería") dispare la
       // búsqueda de una — sin el paso extra de tener que tocar el botón
@@ -521,10 +551,21 @@ export function GuidedSearchChat({
     }
   }
 
+  // En mobile el chat compacto (burbuja flotante, fase de resultados) es
+  // casi toda la pantalla (w-[92vw]) — pedido en vivo 2026-09-11: se quedaba
+  // ocupando la pantalla entera después de cada consulta, tapando la grilla
+  // de resultados hasta que el usuario lo minimizaba a mano. Se minimiza solo
+  // apenas se manda una consulta (mismo breakpoint lg que el resto del layout
+  // — en desktop el panel ya es angosto y no tapa nada, no hace falta).
+  function minimizeOnMobile() {
+    if (compact && onMinimize && window.innerWidth < 1024) onMinimize();
+  }
+
   function handleSend() {
     const text = input.trim();
     if (!text || waitingReply || searching) return;
     setInput("");
+    minimizeOnMobile();
     sendMessage(text);
   }
 
@@ -681,10 +722,29 @@ export function GuidedSearchChat({
             {m.suggestedRefinement && (
               <button
                 type="button"
-                onClick={() => onRefine(m.suggestedRefinement!)}
+                onClick={() => {
+                  minimizeOnMobile();
+                  onRefine(m.suggestedRefinement!);
+                }}
                 className="gathering-glass-panel mt-2 flex items-center gap-1.5 rounded-full px-3.5 py-1.5 font-brand text-xs font-semibold text-gathering-primary-fixed-dim"
               >
                 🔍 Buscar {m.suggestedRefinement}
+              </button>
+            )}
+
+            {/* Pregunta factual con varios productos relevantes — empate
+                ("¿cuál tiene más RAM?" con varias a la par) o filtro por
+                valor puntual ("cuáles son las de 1TB") — link para ver esas N
+                tarjetas solas en la grilla, con la elegida ya destacada; la
+                grilla misma ofrece "Volver a la búsqueda" para deshacerlo
+                (ver page.tsx/tiedFilter). */}
+            {m.tiedProductIds && m.tiedProductIds.length > 1 && m.spotlightProductId && (
+              <button
+                type="button"
+                onClick={() => onShowTiedResults?.(m.tiedProductIds!, m.spotlightProductId!)}
+                className="mt-2 flex items-center gap-1.5 rounded-full px-3.5 py-1.5 font-brand text-xs font-semibold text-gathering-primary-fixed-dim underline decoration-dotted underline-offset-2"
+              >
+                Ver las {m.tiedProductIds.length} opciones
               </button>
             )}
           </div>

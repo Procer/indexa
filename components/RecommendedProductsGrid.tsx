@@ -13,6 +13,9 @@ import type { AlternativeProduct } from "@/types";
 interface RecommendedProductsGridProps {
   products: AlternativeProduct[];
   topPickIds?: string[] | null;
+  // Tarjeta que el chat identificó como respuesta a una pregunta puntual
+  // ("¿cuál tiene más RAM?") — se le agrega un efecto de resaltado breve.
+  spotlightProductId?: string | null;
   onViewDetails: (product: AlternativeProduct) => void;
   onCompareToggle: (product: AlternativeProduct) => void;
   onCompareAdd?: (ids: string[], open?: boolean) => void;
@@ -28,6 +31,7 @@ interface RecommendedProductsGridProps {
 export function RecommendedProductsGrid({
   products,
   topPickIds,
+  spotlightProductId,
   onViewDetails,
   onCompareToggle,
   onCompareAdd,
@@ -56,6 +60,11 @@ export function RecommendedProductsGrid({
   const restBase = topPicks.length > 0 ? products.filter((p) => !topPickIdSet.has(p.id)) : products;
   const rest = groupVariants(restBase);
 
+  // El spotlight puede caer en un producto que quedó agrupado como variante
+  // (no como primario de su grupo) — se chequea también contra `variants`.
+  const isSpotlighted = (p: AlternativeProduct & { variants?: { id: string }[] }) =>
+    !!spotlightProductId && (p.id === spotlightProductId || !!p.variants?.some((v) => v.id === spotlightProductId));
+
   return (
     <div className="flex flex-col gap-4">
       {topPicks.length > 0 && (
@@ -66,6 +75,7 @@ export function RecommendedProductsGrid({
               product={p}
               isTopPick
               pickRank={i + 1}
+              spotlight={isSpotlighted(p)}
               onViewDetails={onViewDetails}
               onCompareToggle={onCompareToggle}
               onCompareAdd={onCompareAdd}
@@ -98,6 +108,7 @@ export function RecommendedProductsGrid({
               <ProductChatCard
                 key={p.id}
                 product={p}
+                spotlight={isSpotlighted(p)}
                 onViewDetails={onViewDetails}
                 onCompareToggle={onCompareToggle}
                 onCompareAdd={onCompareAdd}

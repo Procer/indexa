@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { OtherStoresButton } from "./OtherStoresButton";
 import { SpecTermPopover } from "./SpecTermPopover";
-import { PriceAlertControl } from "./PriceAlertControl";
 import {
   extraCardFacts,
   shortSpecValues,
@@ -77,6 +76,10 @@ interface ProductChatCardProps {
   pickRank?: number;
   isSelected?: boolean;
   justSent?: boolean;
+  // El chat identificó esta tarjeta como la respuesta a una pregunta puntual
+  // ("¿cuál tiene más RAM?") — hace scroll hasta ella y la resalta hasta que
+  // el usuario busca/pregunta otra cosa (ver page.tsx/handleSpotlightProduct).
+  spotlight?: boolean;
   onViewDetails: (product: AlternativeProduct) => void;
   searchShareToken?: string;
   sessionId?: string;
@@ -208,6 +211,7 @@ export function ProductChatCard({
   pickRank,
   isSelected,
   justSent,
+  spotlight,
   onViewDetails,
   searchShareToken,
   sessionId,
@@ -228,6 +232,11 @@ export function ProductChatCard({
     ? translationStrip(product.category, product.specs, [], product.title)
     : [];
   const [shared, setShared] = useState(false);
+  const cardRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (spotlight) cardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [spotlight]);
 
   // Selector de variante (casi-duplicados colapsados: color / SO / 256↔512GB).
   // Al elegir una cambian PRECIO y LINK DE COMPRA; las specs siguen siendo las
@@ -287,11 +296,20 @@ export function ProductChatCard({
 
   return (
     <article
+      ref={cardRef}
       className={`group relative flex h-full flex-col gathering-glass-card rounded-lg p-4 transition-colors ${justSent ? "animate-card-glow" : ""} ${
         isTopPick
           ? "border-2 border-amber-400/70 bg-amber-50/60 shadow-[0_4px_14px_rgba(180,83,9,0.15)]"
           : ""
-      } ${isSelected ? "border-gathering-primary-fixed-dim ring-2 ring-gathering-primary/20" : ""}`}
+      } ${isSelected ? "border-gathering-primary-fixed-dim ring-2 ring-gathering-primary/20" : ""} ${
+        // Índigo (el mismo acento que el botón del chat/gathering-primary),
+        // grueso (ring-4) y sólido para distinguirse del ring-2 fino al 20%
+        // de opacidad que usa isSelected — y distinto del ámbar de "Mejor
+        // opción"/badges (en una top-pick, un resaltado ámbar quedaba
+        // indistinguible, bug reportado en vivo). spotlight-pulse (ver
+        // tailwind.config) pulsa indefinidamente hasta la próxima consulta.
+        spotlight ? "z-10 animate-spotlight-pulse ring-4 ring-[#3452E1] ring-offset-2 ring-offset-gathering-background" : ""
+      }`}
     >
       {/* Badges flotando sobre la imagen, no apretados junto al título */}
       {hasBadge && (
@@ -509,6 +527,21 @@ export function ProductChatCard({
             </button>
           )}
         </div>
+        {onAskAbout && (
+          // Distinta del resto (fondo lleno en vez de outline gris) — pedido
+          // en vivo 2026-09-11: pasaba desapercibido entre "En otras
+          // tiendas"/"Compartir opción", que son acciones secundarias; esta
+          // es la puerta de entrada al chat sobre ESTE equipo puntual, va
+          // primero.
+          <button
+            type="button"
+            onClick={() => onAskAbout(product)}
+            className="flex w-full items-center justify-center gap-1 rounded-full bg-gathering-primary-fixed-dim py-1.5 font-brand text-xs font-semibold text-white transition-opacity hover:opacity-90 active:scale-[0.97]"
+          >
+            <span className="material-symbols-outlined text-[16px]">chat</span>
+            Preguntar sobre este equipo
+          </button>
+        )}
         <OtherStoresButton
           productId={eff.id}
           productTitle={product.title}
@@ -532,17 +565,6 @@ export function ProductChatCard({
           <span className="material-symbols-outlined text-[16px]">{shared ? "check" : "share"}</span>
           {shared ? "¡Copiado!" : "Compartir opción"}
         </button>
-        {onAskAbout && (
-          <button
-            type="button"
-            onClick={() => onAskAbout(product)}
-            className="flex w-full items-center justify-center gap-1 rounded-full border border-gathering-outline-variant py-1.5 font-brand text-xs font-semibold text-gathering-on-surface-variant transition-colors hover:bg-black/5 active:scale-[0.97]"
-          >
-            <span className="material-symbols-outlined text-[16px]">chat</span>
-            Consultar sobre este equipo
-          </button>
-        )}
-        <PriceAlertControl productId={eff.id} currentPrice={eff.price_cash} />
       </div>
     </article>
   );

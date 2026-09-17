@@ -22,10 +22,10 @@ import { buildSelectionShareText } from "@/lib/domain/shareSelection";
 import { formatArs } from "@/lib/domain/budgetTiers";
 import { HOME_SEED_PHRASE, HOME_SEED_QUESTION } from "@/lib/domain/homeSeed";
 import { detectCategoryLocally } from "@/lib/domain/detectCategory";
-import { detectBrandMention } from "@/lib/domain/detectBrand";
 import { withBasePath } from "@/lib/basePath";
 import { getOrCreateVisitId } from "@/lib/analytics/visit";
 import { trackEvent } from "@/lib/analytics/track";
+import { reportError } from "@/lib/analytics/reportError";
 import type {
   AlternativeProduct,
   EnrichedProduct,
@@ -283,6 +283,17 @@ export default function SearchResultsPage() {
   const [chatRecommendations, setChatRecommendations] = useState<{ products: AlternativeProduct[]; topPickIds?: string[] } | null>(null);
   // Filtro de la grilla que el chat pidió resaltar (ej. "store"). Se limpia solo.
   const [highlightFacet, setHighlightFacet] = useState<string | null>(null);
+  // Tarjeta que el chat identificó como respuesta a una pregunta puntual
+  // ("¿cuál tiene más RAM?") — se resalta con una animación que queda fija
+  // hasta que el usuario busca/pregunta otra cosa (probado en vivo: un
+  // apagado automático a los pocos segundos se sentía muy breve). Un mensaje
+  // nuevo la apaga (ver handleSpotlightProduct/handleSpotlightConsumed).
+  const [spotlightProductId, setSpotlightProductId] = useState<string | null>(null);
+  // Empate en una pregunta factual ("¿cuál tiene más RAM?" con varias a la
+  // par) — el link del chat pide ver esas N tarjetas solas en la grilla, con
+  // la elegida ya destacada. Se limpia igual que el spotlight: con el botón
+  // "Volver" del banner o solo con preguntar/buscar otra cosa.
+  const [tiedFilter, setTiedFilter] = useState<{ ids: string[]; highlightId: string } | null>(null);
   const [sortOrder, setSortOrder] = useState<"relevance" | "price_asc" | "price_desc">("relevance");
   const [chatOpen, setChatOpen] = useState(true);
   // Jugada #11: pregunta ya redactada sobre un producto puntual, inyectada al
@@ -408,10 +419,7 @@ export default function SearchResultsPage() {
     // up the candidate cache before the user finishes selecting.
     if (!opts?.skipOptimistic) {
       const category = detectCategoryLocally(input);
-      // Pedido concreto (marca + categoría) → el servidor saltea la pregunta de
-      // uso (ver isInputSufficient/hasSpecificRequest). Espejarlo acá para no
-      // mostrar la pregunta de uso optimista y que después el server la borre.
-      const hasUseCase = detectHasUseCase(input) || (!!detectBrandMention(input) && !!category);
+      const hasUseCase = detectHasUseCase(input);
       const hasBudget = detectHasBudget(input);
       const optimisticQs =
         input === HOME_SEED_PHRASE ? [HOME_SEED_QUESTION] : getOptimisticQuestions(category, hasUseCase, hasBudget);
@@ -433,7 +441,13 @@ export default function SearchResultsPage() {
         fetch(withBasePath("/api/search"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ input, refinements: [], sessionId, knownSlots: searchSlotsRef.current ?? undefined }),
+          body: JSON.stringify({
+            input,
+            refinements: [],
+            sessionId,
+            visitId: getOrCreateVisitId().id,
+            knownSlots: searchSlotsRef.current ?? undefined,
+          }),
           signal: ctrl.signal,
         })
           .then(async (res) => {
@@ -475,6 +489,7 @@ export default function SearchResultsPage() {
         input,
         refinements,
         sessionId,
+        visitId: getOrCreateVisitId().id,
         knownSlots: searchSlotsRef.current ?? undefined,
       });
       if (!res.ok) throw new Error();
@@ -501,7 +516,7 @@ export default function SearchResultsPage() {
         setInlineQuestions([]);
         window.history.pushState(null, "", withBasePath(`/search/refine`));
       }
-    } catch {
+    } catch (e) {
       // No pisar con un error una grilla que otro camino (ej. el fetch
       // optimista en background) ya llenó: si resolvedTokenRef cambió a un
       // share_token real, una búsqueda SÍ resolvió — este catch es de una
@@ -510,6 +525,13 @@ export default function SearchResultsPage() {
       if (resolvedTokenRef.current === token) {
         setError(true);
         setProducts([]);
+        // Antes este error no dejaba ningún rastro consultable — reportado en
+        // vivo 2026-09-11 ("No pudimos realizar la búsqueda") sin poder
+        // confirmar la causa. No cubre una desconexión total del cliente (este
+        // reporte también viaja por fetch), pero si el motivo fue un 5xx/429
+        // agotando los 3 reintentos de postSearchWithRetry (servidor lento o
+        // con error real), el reporte sí llega.
+        reportError("search_failed", e instanceof Error ? e.message : String(e), { input });
       }
     } finally {
       setLoading(false);
@@ -624,6 +646,12 @@ export default function SearchResultsPage() {
       handleNewSearch(phrase);
       return;
     }
+    // Igual que handleBudgetSelect/handleGuidedAnswer: mostrar el splash
+    // "Analizando" ya mismo — este camino usa skipOptimistic (ya tenemos
+    // categoría/uso/presupuesto, no hay pregunta que mostrar de una), así que
+    // sin esto quedaban los ~5-10s de /api/search con la vidriera nítida y se
+    // sentía como que no había pasado nada (reportado en vivo 2026-09-11).
+    setFinalizing(true);
     runNewSearch(rawInput, [...appliedRefinements, phrase], { skipOptimistic: true });
   };
 
@@ -641,7 +669,7 @@ export default function SearchResultsPage() {
     // vidriera nítida 3-5s y se leía como que no había pasado nada. Mismo
     // criterio local que el path optimista de runSearch (líneas ~383-386).
     const category = detectCategoryLocally(combined);
-    const hasUseCase = detectHasUseCase(combined) || (!!detectBrandMention(combined) && !!category);
+    const hasUseCase = detectHasUseCase(combined);
     const hasBudget = detectHasBudget(combined);
     if (category && hasUseCase && hasBudget) {
       setFinalizing(true);
@@ -742,6 +770,30 @@ export default function SearchResultsPage() {
   // ResultsFilterBar/onHighlightConsumed.
   const handleHighlightFilter = useCallback((facetKey: string) => {
     setHighlightFacet(facetKey);
+  }, []);
+
+  // El chat identificó qué tarjeta responde una pregunta puntual ("¿cuál
+  // tiene más RAM?"). Queda resaltada hasta que el usuario busca/pregunta
+  // otra cosa — ahí se apaga vía handleSpotlightConsumed (onNewQuery).
+  const handleSpotlightProduct = useCallback((productId: string) => {
+    setSpotlightProductId(productId);
+  }, []);
+  const handleSpotlightConsumed = useCallback(() => {
+    setSpotlightProductId(null);
+    setTiedFilter(null);
+  }, []);
+
+  // Link "Ver las N opciones empatadas" de un mensaje factual con empate —
+  // filtra la grilla a esos ids nomás (bypasea los filtros de ResultsFilterBar
+  // a propósito: son los productos exactos que respondieron la pregunta, no
+  // deberían desaparecer por un filtro de marca/tienda ya aplicado) y destaca
+  // el elegido con el mismo spotlight de siempre.
+  const handleShowTiedResults = useCallback((ids: string[], highlightId: string) => {
+    setTiedFilter({ ids, highlightId });
+    setSpotlightProductId(highlightId);
+  }, []);
+  const handleClearTiedFilter = useCallback(() => {
+    setTiedFilter(null);
   }, []);
 
   // Jugada #11: abre el chat con una consulta ya redactada sobre este equipo,
@@ -867,7 +919,7 @@ export default function SearchResultsPage() {
   // precio se pierde la distinción "mejor opción"/"también podrías
   // considerar" del chat — mezclarlas sería confuso (ej. el pick del chat
   // podría no ser ni el más barato ni el más caro).
-  const displayedProducts =
+  const sortedProducts =
     sortOrder === "relevance"
       ? facetedProducts
       : [...facetedProducts].sort((a, b) => {
@@ -875,6 +927,13 @@ export default function SearchResultsPage() {
           const priceB = b.price_cash ?? Infinity;
           return sortOrder === "price_asc" ? priceA - priceB : priceB - priceA;
         });
+
+  // "Ver las N opciones empatadas" del chat: reemplaza la grilla por esos ids
+  // nomás, bypaseando ResultsFilterBar a propósito (ver handleShowTiedResults)
+  // — vuelve un ida y vuelta corto, no cambia sortOrder ni los filtros reales.
+  const displayedProducts = tiedFilter
+    ? chatRankedProducts.filter((p) => tiedFilter.ids.includes(p.id))
+    : sortedProducts;
   const displayedTopPickIds = sortOrder === "relevance" ? chatRecommendations?.topPickIds ?? null : null;
 
   return (
@@ -937,7 +996,7 @@ export default function SearchResultsPage() {
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-brand text-xs font-semibold uppercase tracking-wide text-gathering-on-surface-variant">
               <span>
                 {totalCount} resultado{totalCount !== 1 ? "s" : ""} encontrado{totalCount !== 1 ? "s" : ""}
-                {displayedProducts.length !== products.length && (
+                {!tiedFilter && displayedProducts.length !== products.length && (
                   <span className="normal-case text-gathering-primary-fixed-dim">
                     {" "}
                     · mostrando {displayedProducts.length} con los filtros aplicados
@@ -1064,6 +1123,26 @@ export default function SearchResultsPage() {
             {inlineQuestions.length > 0 && (
               <BudgetPicker onSelect={handleBudgetSelect} startOpen category={chatCategory} />
             )}
+
+            {/* Vista temporal del link "Ver las N empatadas" del chat (ver
+                handleShowTiedResults) — bien visible arriba de la grilla para
+                que quede claro que no son TODOS los resultados, y con la
+                forma clara de volver. */}
+            {tiedFilter && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gathering-primary-fixed-dim/30 bg-gathering-primary/5 px-4 py-2.5">
+                <p className="font-brand text-xs font-semibold text-gathering-primary-fixed-dim">
+                  Mostrando {displayedProducts.length} opciones de la pregunta del chat
+                </p>
+                <button
+                  type="button"
+                  onClick={handleClearTiedFilter}
+                  className="font-brand text-xs font-semibold text-gathering-on-surface-variant underline underline-offset-2 hover:text-gathering-on-surface"
+                >
+                  ← Volver a la búsqueda
+                </button>
+              </div>
+            )}
+
             {/* Mientras el chat todavía está armando su recomendación
                 (!chatRecommendations), la grilla sin rankear queda esfumada
                 en vez de mostrarse nítida — evita el salto visible de "estos
@@ -1098,6 +1177,7 @@ export default function SearchResultsPage() {
                 <RecommendedProductsGrid
                   products={displayedProducts}
                   topPickIds={displayedTopPickIds}
+                  spotlightProductId={spotlightProductId}
                   onViewDetails={handleViewDetails}
                   onCompareToggle={handleCompareToggleAlt}
                   onCompareAdd={addSimilarToCompare}
@@ -1140,6 +1220,9 @@ export default function SearchResultsPage() {
               onRefine={handleChatRefine}
               externalMessage={askAboutMsg}
               onHighlightFilter={handleHighlightFilter}
+              onSpotlightProduct={handleSpotlightProduct}
+              onShowTiedResults={handleShowTiedResults}
+              onNewQuery={handleSpotlightConsumed}
             />
           </div>
         )}

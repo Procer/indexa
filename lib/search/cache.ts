@@ -237,6 +237,15 @@ export interface ChatGreetingPayload {
   // El chat pide resaltar un filtro de la grilla (ej. "store" cuando el usuario
   // preguntó por una tienda puntual).
   highlightFilter?: "store";
+  // Id del producto que responde una pregunta puntual sobre los resultados
+  // (ej. "¿cuál tiene más RAM?" → detectFactualQuery) — el cliente hace
+  // scroll hasta esa tarjeta y la resalta con una animación.
+  spotlightProductId?: string;
+  // Cuando detectFactualQuery encuentra un empate (varios productos con el
+  // mismo valor máximo/mínimo), todos los ids empatados — el cliente ofrece
+  // un link "Ver los N empatados" en el mensaje para mostrarlos temporalmente
+  // en la grilla (con spotlightProductId ya destacado entre ellos).
+  tiedProductIds?: string[];
 }
 
 export async function getChatGreetingCache(shareToken: string): Promise<ChatGreetingPayload | null> {

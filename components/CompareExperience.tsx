@@ -400,16 +400,22 @@ function ChatCTAButton({ onClick }: { onClick: () => void }) {
   );
 }
 
+// Efecto llamativo (mismo patrón que ChatCTAButton más abajo: anillo
+// animate-ping + glow) para que el usuario note que el botón es interactivo —
+// pedido en vivo 2026-09-10, el botón pasaba desapercibido.
 export function ChatFAB({ onClick }: { onClick: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label="Hablar con el Asistente IA"
-      className="gathering-btn-primary-gradient fixed bottom-4 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full text-white transition-all duration-150 hover:scale-105 active:scale-95"
-    >
-      <ChatIcon className="h-6 w-6" />
-    </button>
+    <div className="fixed bottom-4 right-4 z-30">
+      <span className="pointer-events-none absolute inset-0 animate-ping rounded-full bg-gathering-primary-fixed-dim opacity-30" />
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label="Hablar con el Asistente IA"
+        className="gathering-btn-primary-gradient relative flex h-14 w-14 animate-card-glow items-center justify-center rounded-full text-white transition-all duration-150 hover:scale-105 active:scale-95"
+      >
+        <ChatIcon className="h-6 w-6" />
+      </button>
+    </div>
   );
 }
 
@@ -470,7 +476,7 @@ function ChatBubble({
         const res = await fetch(withBasePath("/api/compare/chat"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ products, messages: [], message: "", useCases, budgetMax, budgetLabel, greeting: true, recentProducts }),
+          body: JSON.stringify({ products, messages: [], message: "", useCases, budgetMax, budgetLabel, greeting: true, recentProducts, visitId: getOrCreateVisitId().id }),
         });
         const data = (await res.json()) as { reply?: string; suggestedProduct?: AlternativeProduct; error?: string };
         setMessages([{
@@ -498,7 +504,7 @@ function ChatBubble({
       const res = await fetch(withBasePath("/api/compare/chat"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ products, messages, message: text, useCases, budgetMax, budgetLabel, recentProducts }),
+        body: JSON.stringify({ products, messages, message: text, useCases, budgetMax, budgetLabel, recentProducts, visitId: getOrCreateVisitId().id }),
       });
       const data = (await res.json()) as { reply?: string; suggestedProduct?: AlternativeProduct; error?: string };
       setMessages((m) => [...m, { role: "ai", text: data.reply ?? "No pude responder. Intentá de nuevo.", suggestedProduct: data.suggestedProduct }]);

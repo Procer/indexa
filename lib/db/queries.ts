@@ -169,6 +169,7 @@ export async function saveSearch(params: {
   queryEmbedding: number[];
   resultIds: string[];
   sessionId: string | null;
+  visitId?: string | null;
   shareToken?: string;
 }): Promise<Search> {
   const shareToken = params.shareToken ?? randomBytes(8).toString("hex");
@@ -176,7 +177,7 @@ export async function saveSearch(params: {
   const [row] = await sql<Search[]>`
     INSERT INTO searches (
       share_token, raw_input, slots, expanded_query,
-      query_embedding, result_ids, session_id, result_count
+      query_embedding, result_ids, session_id, visit_id, result_count
     )
     VALUES (
       ${shareToken},
@@ -186,6 +187,7 @@ export async function saveSearch(params: {
       ${toVector(params.queryEmbedding)}::vector(1536),
       ${params.resultIds}::uuid[],
       ${params.sessionId},
+      ${params.visitId ?? null},
       ${params.resultIds.length}
     )
     RETURNING ${searchCols()}

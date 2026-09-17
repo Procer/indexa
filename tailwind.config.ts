@@ -100,6 +100,25 @@ const config: Config = {
           "0%, 100%": { boxShadow: "0 0 0 0 rgba(99,102,241,0)" },
           "50%": { boxShadow: "0 0 18px 4px rgba(99,102,241,0.18)" },
         },
+        // Resaltado del chat sobre UNA tarjeta puntual (ej. "¿cuál tiene más
+        // RAM?"). card-glow (arriba) es demasiado sutil para esto —
+        // reportado en vivo 2026-09-10: sobre una tarjeta "Mejor opción" (ya
+        // con borde/fondo ámbar propio) el glow de card-glow era
+        // indistinguible del estilo de top-pick que ya tenía. Este pulso es
+        // una onda de box-shadow bien visible, con un color (sky) que no
+        // colisiona con el ámbar de "Mejor opción" ni con nada más de la UI.
+        "spotlight-pulse": {
+          "0%, 100%": { boxShadow: "0 0 0 0 rgba(52,82,225,0.55)" },
+          "50%": { boxShadow: "0 0 0 10px rgba(52,82,225,0)" },
+        },
+        // Pista sutil de que el "?" de specs (SpecTermPopover, variante chip)
+        // es tocable — mismo motivo que ChatFAB/spotlight-pulse (pasaba
+        // desapercibido) pero mucho más discreta: es un chip chico incrustado
+        // en la fila de specs, no un botón flotante solo.
+        "hint-pulse": {
+          "0%, 100%": { boxShadow: "0 0 0 0 rgba(52,82,225,0.35)", transform: "scale(1)" },
+          "50%":      { boxShadow: "0 0 0 3px rgba(52,82,225,0)", transform: "scale(1.12)" },
+        },
         blob: {
           "0%":   { transform: "translate(0px, 0px) scale(1)" },
           "33%":  { transform: "translate(28px, -45px) scale(1.08)" },
@@ -124,6 +143,8 @@ const config: Config = {
         "slide-up": "slide-up 0.55s cubic-bezier(0.22,1,0.36,1) both",
         "dot-pulse": "dot-pulse 2.4s ease-in-out infinite",
         "card-glow": "card-glow 3s ease-in-out infinite",
+        "spotlight-pulse": "spotlight-pulse 1.4s ease-out infinite",
+        "hint-pulse": "hint-pulse 2s ease-in-out infinite",
         blob: "blob 9s ease-in-out infinite",
         shimmer: "shimmer 3.5s linear infinite",
         "flow-line": "flow-line 2.2s ease-in-out infinite",

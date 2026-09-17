@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { buildCompareChatPrompt } from "@/lib/llm/prompts";
 import { findAlternativeProduct } from "@/lib/search/quickAlternative";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { sql } from "@/lib/db/sql";
 import type { AlternativeProduct, Product, UseCase } from "@/types";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -24,6 +25,7 @@ interface ChatRequest {
   budgetLabel?: string | null;
   greeting?: boolean;
   recentProducts?: { id: string; title: string }[];
+  visitId?: string;
 }
 
 interface ChatCompletionJson {
@@ -42,6 +44,7 @@ const FALLBACK_REPLY_GREETING = "Hola! Puedo ayudarte a decidir entre estos prod
 const FALLBACK_REPLY_ERROR = "No pude procesar tu pregunta. Intentá de nuevo.";
 
 export async function POST(request: NextRequest) {
+  const startedAt = Date.now();
   try {
     const { success } = await checkRateLimit("compare-chat", getClientIp(request), 20, 60);
     if (!success) {
@@ -49,7 +52,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = (await request.json()) as ChatRequest;
-    const { products, messages, message, useCases, budgetMax, budgetLabel, greeting, recentProducts } = body;
+    const { products, messages, message, useCases, budgetMax, budgetLabel, greeting, recentProducts, visitId } = body;
 
     if ((!greeting && !message?.trim()) || !products || products.length < 2) {
       return NextResponse.json({ error: "Faltan parámetros" }, { status: 400 });
@@ -100,6 +103,15 @@ export async function POST(request: NextRequest) {
         currentProducts: products,
       }).catch(() => null);
     }
+
+    sql`
+      INSERT INTO chat_messages (
+        visit_id, context, user_message, assistant_reply, greeting, duration_ms
+      ) VALUES (
+        ${visitId ?? null}, 'compare', ${greeting ? "(inicio automático)" : message}, ${reply},
+        ${!!greeting}, ${Date.now() - startedAt}
+      )
+    `.catch((e) => console.error("[POST /api/compare/chat] persist chat_messages failed", e));
 
     return NextResponse.json({ reply, suggestedProduct: suggestedProduct ?? undefined });
   } catch (error) {

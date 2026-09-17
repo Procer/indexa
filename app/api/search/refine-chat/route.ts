@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { buildSearchRefineChatPrompt, SEARCH_REFINE_CHAT_TOOLS } from "@/lib/llm/prompts";
 import { summarizePool } from "@/lib/domain/poolSummary";
 import { getProductsByIds, getSearchByShareToken } from "@/lib/db/queries";
+import { sql } from "@/lib/db/sql";
 import { enrichWithAnalysis } from "@/lib/llm/productAnalysis";
 import { getCachedConfigPriceMedians, getChatGreetingCache, setChatGreetingCache, type ChatGreetingPayload } from "@/lib/search/cache";
 import { getOrBuildPoolIds } from "@/lib/search/pipeline";
@@ -13,7 +14,7 @@ import { detectProcessorMention } from "@/lib/domain/detectProcessor";
 import { classifyBudgetFit } from "@/lib/domain/budgetFit";
 import { getUpgradeNote } from "@/lib/domain/upgradeability";
 import { buildPriceVerdicts } from "@/lib/domain/priceVerdict";
-import { describeBudgetForChat } from "@/lib/domain/budgetTiers";
+import { describeBudgetForChat, formatArs } from "@/lib/domain/budgetTiers";
 import type { AlternativeProduct, EnrichedProduct, ProductCategory, UseCase } from "@/types";
 
 // Nombres de tienda que se pueden nombrar en el chat sin ambigüedad con
@@ -79,6 +80,39 @@ interface ChatRequest {
   // "te busco esa marca" en vez de responder sobre el equipo. Con askAbout=true
   // el turno pasa derecho al LLM (el producto ya viaja en `products`).
   askAbout?: boolean;
+  // Id persistente de visita (localStorage) — para persistir el turno en
+  // chat_messages y poder unirlo después con las búsquedas/clicks de la misma
+  // persona (prueba con varias personas, 2026-09-11).
+  visitId?: string;
+}
+
+// Persiste cada turno completo de chat en chat_messages (además del log a
+// consola de siempre) — antes se perdía apenas rotaba el log, sin forma de
+// reconstruir qué preguntó cada persona. Fire-and-forget (no bloquea la
+// respuesta al usuario ni la tira abajo si la DB tiene un blip).
+function persistChatTurn(row: {
+  shareToken: string;
+  visitId?: string;
+  userMessage: string;
+  assistantReply: string;
+  greeting: boolean;
+  factualAnswer?: boolean;
+  recommendedCount?: number;
+  spotlightProductId?: string;
+  suggestedRefinement?: string | null;
+  durationMs: number;
+}): void {
+  sql`
+    INSERT INTO chat_messages (
+      share_token, visit_id, context, user_message, assistant_reply,
+      greeting, factual_answer, recommended_count, spotlight_product_id,
+      suggested_refinement, duration_ms
+    ) VALUES (
+      ${row.shareToken}, ${row.visitId ?? null}, 'results', ${row.userMessage}, ${row.assistantReply},
+      ${row.greeting}, ${row.factualAnswer ?? false}, ${row.recommendedCount ?? null},
+      ${row.spotlightProductId ?? null}, ${row.suggestedRefinement ?? null}, ${row.durationMs}
+    )
+  `.catch((e) => console.error("[POST /api/search/refine-chat] persistChatTurn failed", e));
 }
 
 // Tope de tarjetas mostradas por respuesta — el chat ahora muestra SIEMPRE
@@ -405,6 +439,303 @@ function detectDeterministicRedirect(
   return null;
 }
 
+// ── Preguntas objetivas sobre los resultados ────────────────────────────────
+// "¿Cuál tiene más RAM?" / "¿cuál es el más barato?" — antes se contestaban
+// dejando que gpt-4o-mini leyera las specs de `loadedProducts` en el prompt y
+// redactara la respuesta; el modelo podía confundirse (visto en vivo: alguna
+// vez comparó bien, pero es un cálculo objetivo, no algo que convenga
+// delegarle a un LLM). Ahora se calcula en código sobre los specs reales —
+// determinístico, siempre correcto — y el LLM queda afuera de la ecuación
+// para este tipo de pregunta. `productId` del ganador se usa para que el
+// cliente resalte esa tarjeta en la grilla (ver spotlightProductId).
+interface FactualAttr {
+  key: string;
+  match: RegExp;
+  getValue: (p: EnrichedProduct) => number | null;
+  // Recibe el producto además del valor — el procesador necesita mostrar el
+  // modelo real ("Core i7-1355U"), no el número de tier interno.
+  formatValue: (v: number, p: EnrichedProduct) => string;
+  phraseFor: (dir: "max" | "min") => string;
+  directionFromMessage?: (message: string) => "max" | "min";
+  // Si el mensaje nombra un valor puntual ("cuáles son las de 1TB", "quiero
+  // las de 8GB de RAM"), la pregunta no es superlativa (más/menos) sino un
+  // filtro por ese valor exacto — ver el branch de filtro en
+  // detectFactualQuery. Solo se define para los atributos numéricos donde el
+  // valor es inequívoco en el texto (RAM/almacenamiento/cámara/pantalla);
+  // batería queda afuera por la ambigüedad mAh/Wh, y precio/procesador/peso
+  // no tienen "el valor exacto que pediste" como forma natural de pregunta.
+  parseExplicitValue?: (message: string) => number | null;
+}
+
+function numSpec(p: EnrichedProduct, field: string): number | null {
+  const v = (p.specs as Record<string, unknown> | undefined)?.[field];
+  return typeof v === "number" && v > 0 ? v : null;
+}
+
+function parseNum(raw: string): number {
+  return parseFloat(raw.replace(",", "."));
+}
+
+const DEFAULT_MIN_RE = /\b(menos|menor|peor)\b/i;
+
+// notebook/desktop/tablet — mismo orden que TIER_RANK en usageToSpecs.ts
+// (no se importa esa constante para no acoplar refine-chat a esa lógica de
+// ranking; acá solo hace falta el orden, no el resto del módulo).
+const PROCESSOR_TIER_RANK: Record<string, number> = { low: 1, mid: 2, high: 3, enthusiast: 4 };
+const PROCESSOR_TIER_LABEL: Record<string, string> = {
+  low: "gama de entrada",
+  mid: "gama media",
+  high: "gama alta",
+  enthusiast: "tope de gama",
+};
+
+const FACTUAL_ATTRS: FactualAttr[] = [
+  {
+    key: "ram",
+    match: /\bram\b/i,
+    getValue: (p) => numSpec(p, "ram_gb"),
+    formatValue: (v) => `${v}GB de RAM`,
+    phraseFor: (dir) => (dir === "min" ? "el que tiene menos RAM" : "el que tiene más RAM"),
+    parseExplicitValue: (m) => {
+      const mm = m.match(/(\d+(?:[.,]\d+)?)\s*gb\b/i);
+      return mm ? parseNum(mm[1]) : null;
+    },
+  },
+  {
+    key: "storage",
+    // "disco" es la forma más común en Argentina de decir almacenamiento
+    // ("la que tiene más disco") — faltaba y esas preguntas se iban al LLM
+    // en vez de calcularse (reportado en vivo 2026-09-10).
+    match: /\balmacenamiento\b|\bespacio\b|\bmemoria interna\b|\bdisco\b/i,
+    getValue: (p) => numSpec(p, "storage_gb"),
+    formatValue: (v) => (v >= 1000 ? `${(v / 1000).toLocaleString("es-AR")}TB` : `${v}GB`) + " de almacenamiento",
+    phraseFor: (dir) => (dir === "min" ? "el que tiene menos almacenamiento" : "el que tiene más almacenamiento"),
+    parseExplicitValue: (m) => {
+      const mm = m.match(/(\d+(?:[.,]\d+)?)\s*(tb|gb)\b/i);
+      if (!mm) return null;
+      const n = parseNum(mm[1]);
+      return mm[2].toLowerCase() === "tb" ? n * 1000 : n;
+    },
+  },
+  {
+    key: "battery",
+    match: /\bbater[ií]a\b/i,
+    getValue: (p) => numSpec(p, "battery_mah") ?? numSpec(p, "battery_wh"),
+    formatValue: (v) => (v > 200 ? `${v}mAh` : `${v}Wh`) + " de batería",
+    phraseFor: (dir) => (dir === "min" ? "el que tiene menos batería" : "el que tiene más batería"),
+  },
+  {
+    key: "camera",
+    match: /\bc[aá]mara\b/i,
+    getValue: (p) => numSpec(p, "main_camera_mp"),
+    formatValue: (v) => `${v}MP de cámara`,
+    phraseFor: (dir) => (dir === "min" ? "el que tiene la cámara de menos megapíxeles" : "el que tiene mejor cámara"),
+    parseExplicitValue: (m) => {
+      const mm = m.match(/(\d+(?:[.,]\d+)?)\s*mp\b/i);
+      return mm ? parseNum(mm[1]) : null;
+    },
+  },
+  {
+    key: "processor",
+    match: /\bprocesador\b|\bcpu\b/i,
+    getValue: (p) => {
+      const tier = (p.specs as Record<string, unknown> | undefined)?.processor_tier;
+      return typeof tier === "string" ? PROCESSOR_TIER_RANK[tier] ?? null : null;
+    },
+    formatValue: (_v, p) => {
+      const s = p.specs as Record<string, unknown>;
+      const tier = typeof s.processor_tier === "string" ? s.processor_tier : null;
+      const model = typeof s.processor_model === "string" ? s.processor_model : null;
+      const label = tier ? PROCESSOR_TIER_LABEL[tier] : null;
+      if (model && label) return `${model} (${label})`;
+      return model ?? label ?? "sin dato de procesador";
+    },
+    phraseFor: (dir) => (dir === "min" ? "el de procesador más flojo" : "el de mejor procesador"),
+    directionFromMessage: (m) => (/\bpeor\b|\bfloj[oa]\b|\bm[aá]s d[eé]bil\b/i.test(m) ? "min" : "max"),
+  },
+  {
+    key: "price",
+    match: /\bprecio\b|\bbarat[oa]\b|\becon[oó]mic[oa]\b|\bcar[oa]\b/i,
+    getValue: (p) => (p.price_cash && p.price_cash > 0 ? p.price_cash : null),
+    formatValue: (v) => `${formatArs(v)} de contado`,
+    phraseFor: (dir) => (dir === "min" ? "el más económico" : "el más caro"),
+    directionFromMessage: (m) => (/\bcar[oa]\b/i.test(m) ? "max" : "min"),
+  },
+  {
+    key: "weight",
+    match: /\blivian[oa]\b|\bpesad[oa]\b|\bpesa\b|\bpeso\b/i,
+    getValue: (p) => numSpec(p, "weight_kg"),
+    formatValue: (v) => `${v}kg`,
+    phraseFor: (dir) => (dir === "min" ? "el más liviano" : "el más pesado"),
+    directionFromMessage: (m) => (/\bpesad[oa]\b|\bpesa\b/i.test(m) ? "max" : "min"),
+  },
+  {
+    key: "screen",
+    match: /\bpantalla\b|\bpulgadas\b/i,
+    getValue: (p) => numSpec(p, "screen_inches"),
+    formatValue: (v) => `${v}"`,
+    phraseFor: (dir) => (dir === "min" ? "el de pantalla más chica" : "el de pantalla más grande"),
+    directionFromMessage: (m) => (/\bchic[ao]\b|\bpeque[ñn]/i.test(m) ? "min" : "max"),
+    parseExplicitValue: (m) => {
+      const mm = m.match(/(\d+(?:[.,]\d+)?)\s*(pulgadas|"|'')/i);
+      return mm ? parseNum(mm[1]) : null;
+    },
+  },
+];
+
+function detectFactualQuery(
+  message: string,
+  products: EnrichedProduct[]
+): { productId: string; reply: string; tiedProductIds?: string[] } | null {
+  // "Cuál/cuáles/qué X" (superlativo o filtro) y también "quiero/dame/
+  // mostrame/tenés/hay las de X" (solo tiene sentido como filtro por valor
+  // puntual — ver más abajo, parseExplicitValue) — reportado en vivo
+  // 2026-09-11: "quiero las de 1TB" no disparaba nada y se iba al LLM.
+  if (!/\b(cu[aá]l|cu[aá]les|qu[eé]|quiero|quisiera|dame|mostrame|ten[eé]s|hay)\b/i.test(message)) return null;
+  const attrs = FACTUAL_ATTRS.filter((a) => a.match.test(message));
+  if (attrs.length === 0) return null;
+  // Dos o más atributos a la vez ("pantalla más grande y más memoria", "8GB
+  // de RAM con la mejor cámara") — pedido en vivo 2026-09-11: antes solo se
+  // tomaba el primer atributo que matcheaba y el resto del pedido se perdía
+  // silenciosamente. Lógica separada (combina filtros exactos + ranking por
+  // percentil cuando hay más de un atributo pedido), ver detectCombinedFactualQuery.
+  if (attrs.length > 1) return detectCombinedFactualQuery(message, products, attrs);
+  const attr = attrs[0];
+
+  // Filtro por valor exacto ("cuáles son las de 1TB", "quiero las de 8GB de
+  // RAM"): no es una pregunta superlativa (más/menos), es un pedido de
+  // recorte de los resultados actuales a los que matchean ese valor puntual.
+  const explicitValue = attr.parseExplicitValue?.(message) ?? null;
+  if (explicitValue != null) {
+    const matches = products.filter((p) => {
+      const v = attr.getValue(p);
+      return v != null && Math.abs(v - explicitValue) < 0.05;
+    });
+    // Sin matches: no inventar "no hay ninguna" con lógica propia — se deja
+    // caer al LLM, que tiene el resto del pool para ofrecer alternativas.
+    if (matches.length === 0) return null;
+    const valueLabel = attr.formatValue(explicitValue, matches[0]);
+    const reply =
+      matches.length === 1
+        ? `Encontré 1 opción con ${valueLabel}: la **${matches[0].title}**.`
+        : `Encontré ${matches.length} opciones con ${valueLabel}. Te marco la **${matches[0].title}**.`;
+    return {
+      productId: matches[0].id,
+      reply,
+      tiedProductIds: matches.length > 1 ? matches.map((p) => p.id) : undefined,
+    };
+  }
+
+  const direction = attr.directionFromMessage?.(message) ?? (DEFAULT_MIN_RE.test(message) ? "min" : "max");
+
+  const candidates = products
+    .map((p) => ({ p, v: attr.getValue(p) }))
+    .filter((x): x is { p: EnrichedProduct; v: number } => x.v != null);
+  if (candidates.length === 0) return null;
+
+  candidates.sort((a, b) => (direction === "max" ? b.v - a.v : a.v - b.v));
+  const best = candidates[0];
+  // Empate exacto con el segundo: no afirmar un único ganador sin aclararlo.
+  const tied = candidates.filter((c) => c.v === best.v);
+
+  const valueLabel = attr.formatValue(best.v, best.p);
+  const reply =
+    tied.length > 1
+      ? `Hay ${tied.length} opciones empatadas en esto, pero te marco **${best.p.title}**: tiene ${valueLabel}.`
+      : `${capitalize(attr.phraseFor(direction))} es **${best.p.title}**, con ${valueLabel}.`;
+
+  return {
+    productId: best.p.id,
+    reply,
+    tiedProductIds: tied.length > 1 ? tied.map((c) => c.p.id) : undefined,
+  };
+}
+
+function capitalize(s: string): string {
+  return s.length > 0 ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
+// Pregunta factual con dos o más atributos a la vez. Cada atributo pedido
+// resuelve a una de dos cosas:
+// - Valor exacto nombrado ("8GB de RAM") → filtro duro (AND entre todos).
+// - Sin valor, solo dirección ("más memoria", "pantalla más grande") →
+//   entra al ranking combinado.
+// Los valores crudos de RAM/pantalla/batería no son comparables entre sí (GB
+// vs pulgadas vs mAh), así que el ranking combinado no suma valores: suma la
+// POSICIÓN (rank) de cada producto dentro de cada atributo por separado —
+// mismo principio que RRF en hybrid_search (ver db/vps/schema.sql) — y ordena
+// por esa suma (menor = mejor en promedio en todo lo pedido).
+function detectCombinedFactualQuery(
+  message: string,
+  products: EnrichedProduct[],
+  attrs: FactualAttr[]
+): { productId: string; reply: string; tiedProductIds?: string[] } | null {
+  const requested = attrs.map((attr) => ({
+    attr,
+    explicitValue: attr.parseExplicitValue?.(message) ?? null,
+    direction: attr.directionFromMessage?.(message) ?? (DEFAULT_MIN_RE.test(message) ? "min" : ("max" as const)),
+  }));
+
+  const exact = requested.filter((r) => r.explicitValue != null);
+  const ranked = requested.filter((r) => r.explicitValue == null);
+
+  let pool = products;
+  for (const r of exact) {
+    pool = pool.filter((p) => {
+      const v = r.attr.getValue(p);
+      return v != null && Math.abs(v - r.explicitValue!) < 0.05;
+    });
+  }
+  if (exact.length > 0 && pool.length === 0) return null;
+
+  // Solo filtros exactos (ej. "las de 8GB de RAM y 256GB de almacenamiento"),
+  // sin ningún atributo superlativo — mismo formato de reply que el filtro de
+  // un solo atributo.
+  if (ranked.length === 0) {
+    const valueLabel = exact.map((r) => r.attr.formatValue(r.explicitValue!, pool[0])).join(" y ");
+    const reply =
+      pool.length === 1
+        ? `Encontré 1 opción con ${valueLabel}: la **${pool[0].title}**.`
+        : `Encontré ${pool.length} opciones con ${valueLabel}. Te marco la **${pool[0].title}**.`;
+    return { productId: pool[0].id, reply, tiedProductIds: pool.length > 1 ? pool.map((p) => p.id) : undefined };
+  }
+
+  const withValues = pool
+    .map((p) => ({ p, values: ranked.map((r) => r.attr.getValue(p)) }))
+    .filter((x): x is { p: EnrichedProduct; values: number[] } => x.values.every((v) => v != null));
+  if (withValues.length === 0) return null;
+
+  const rankSumById = new Map<string, number>();
+  ranked.forEach((r, i) => {
+    const sorted = [...withValues].sort((a, b) =>
+      r.direction === "max" ? b.values[i] - a.values[i] : a.values[i] - b.values[i]
+    );
+    sorted.forEach((x, position) => rankSumById.set(x.p.id, (rankSumById.get(x.p.id) ?? 0) + position));
+  });
+
+  const scored = withValues
+    .map((x) => ({ p: x.p, values: x.values, score: rankSumById.get(x.p.id)! }))
+    .sort((a, b) => a.score - b.score);
+  const best = scored[0];
+  const tied = scored.filter((s) => s.score === best.score);
+
+  const valueLabel = [
+    ...exact.map((r) => r.attr.formatValue(r.explicitValue!, best.p)),
+    ...ranked.map((r, i) => r.attr.formatValue(best.values[i], best.p)),
+  ].join(" y ");
+  const combinedPhrase = ranked.map((r) => r.attr.phraseFor(r.direction)).join(" y a la vez ");
+  const reply =
+    tied.length > 1
+      ? `Hay ${tied.length} opciones empatadas en esto, pero te marco **${best.p.title}**: tiene ${valueLabel}.`
+      : `${capitalize(combinedPhrase)} es **${best.p.title}**, con ${valueLabel}.`;
+
+  return {
+    productId: best.p.id,
+    reply,
+    tiedProductIds: tied.length > 1 ? tied.map((s) => s.p.id) : undefined,
+  };
+}
+
 const FALLBACK_REPLY_GREETING = "Hola! Soy tu asesor técnico — puedo recomendarte qué elegir de estos resultados o buscar de nuevo si nada te convence. ¿Qué necesitás?";
 const FALLBACK_REPLY_ERROR = "No pude procesar tu pregunta. Intentá de nuevo.";
 
@@ -422,8 +753,13 @@ function buildDeterministicPickReply(picks: EnrichedProduct[]): string {
   }
   if (picks.length === 1) {
     const p = picks[0];
-    const why = (p.spec_highlights_simple ?? [])[0] ?? p.selection_reason ?? "";
-    return `Te dejo la **${p.title}**${why ? `: ${why.replace(/\.$/, "")}.` : "."} La tenés abajo con el detalle.`;
+    const whyRaw = (p.spec_highlights_simple ?? [])[0] ?? p.selection_reason ?? "";
+    // spec_highlights_simple viene con formato "Etiqueta: texto" (ej. "Memoria:
+    // justa pero cómoda para jugar...") — pegado tras dos puntos quedaba
+    // "Te dejo la **Título**: Memoria: ..." (arranca con media frase). Se saca
+    // la etiqueta corta del principio y se usa guión como conector.
+    const why = whyRaw.replace(/^[^.:]{1,24}:\s*/, "").replace(/\s*\.$/, "").trim();
+    return `Te dejo la **${p.title}**${why ? ` — ${why}.` : "."} La tenés abajo con el detalle.`;
   }
   const names = picks.slice(0, 3).map((p) => `**${p.title}**`);
   const list =
@@ -499,7 +835,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = (await request.json()) as ChatRequest;
-    const { rawInput, useCases, budgetMax, category, products, shareToken, messages, message, greeting, refinements, askAbout } = body;
+    const { rawInput, useCases, budgetMax, category, products, shareToken, messages, message, greeting, refinements, askAbout, visitId } = body;
 
     if ((!greeting && !message?.trim()) || !products || products.length === 0) {
       return NextResponse.json({ error: "Faltan parámetros" }, { status: 400 });
@@ -557,6 +893,15 @@ export async function POST(request: NextRequest) {
           controller.close();
         },
       });
+      persistChatTurn({
+        shareToken,
+        visitId,
+        userMessage: message,
+        assistantReply: shortCircuit.reply,
+        greeting: false,
+        suggestedRefinement: shortCircuit.suggestedRefinement,
+        durationMs: Date.now() - startedAt,
+      });
       console.log(
         `[CHAT] turn shareToken=${shareToken} greeting=false shortCircuit=true durationMs=${Date.now() - startedAt} ` +
           `userMessage=${JSON.stringify(message.slice(0, 200))} recommended=0 topPicks=[] ` +
@@ -572,7 +917,22 @@ export async function POST(request: NextRequest) {
     // cargó scrolleando) — si no hay shareToken o el pool no se puede
     // recuperar, se cae de vuelta a resumir solo lo que mandó el cliente.
     const poolIds = shareToken ? await getOrBuildPoolIds(shareToken) : [];
-    const poolProducts = poolIds.length > 0 ? await getProductsByIds(poolIds) : products;
+    const rawPoolProducts = poolIds.length > 0 ? await getProductsByIds(poolIds) : products;
+
+    // Si el usuario refinó a una marca puntual, el chat solo habla de esa
+    // marca. El pool rankeado prioriza la marca pedida pero igual arrastra
+    // otras más abajo, y una pregunta agregada ("¿cuál tiene más RAM?")
+    // terminaba respondiéndose con un equipo de otra marca (visto en vivo
+    // 2026-09-10: refinó a Apple y el chat contestó "Motorola Edge 50 12GB").
+    // Se acota el pool a la(s) marca(s) preferida(s) antes de resumirlo y de
+    // cargar el detalle. Si el filtro lo deja vacío (marca ausente en las
+    // filas de la DB), se usa el pool sin tocar.
+    const chatPreferredBrands = (search?.slots.preferences.brands_preferred ?? []).map((b) => b.toLowerCase());
+    const brandScopedPool =
+      chatPreferredBrands.length > 0
+        ? rawPoolProducts.filter((p) => !!p.brand && chatPreferredBrands.includes(p.brand.toLowerCase()))
+        : rawPoolProducts;
+    const poolProducts = brandScopedPool.length > 0 ? brandScopedPool : rawPoolProducts;
     const poolSummary = summarizePool(poolProducts);
 
     // El detalle completo (con el que el modelo puede realmente recomendar,
@@ -613,6 +973,49 @@ export async function POST(request: NextRequest) {
     const chatConfigMedians = await getCachedConfigPriceMedians().catch(() => ({}));
     const chatPriceVerdicts = buildPriceVerdicts(poolProducts, chatConfigMedians);
     for (const p of loadedProducts) p.price_verdict = chatPriceVerdicts.get(p.id) ?? null;
+
+    // Pregunta objetiva sobre los resultados ya cargados ("¿cuál tiene más
+    // RAM?", "¿cuál es el más barato?") — se resuelve en código, sin llamar al
+    // LLM, y le indica al cliente qué tarjeta resaltar (spotlightProductId).
+    // Corre DESPUÉS de loadedProducts (necesita los specs reales) pero antes
+    // de armar el prompt — mismo criterio de "cortar antes de gastar" que el
+    // shortCircuit de arriba.
+    const factualAnswer = !greeting && !askAbout && message?.trim() ? detectFactualQuery(message, loadedProducts) : null;
+    if (factualAnswer) {
+      const enc = new TextEncoder();
+      const faStream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const payload: ChatGreetingPayload = {
+            reply: factualAnswer.reply,
+            recommendedProducts: undefined,
+            topPickIds: undefined,
+            suggestedRefinement: undefined,
+            spotlightProductId: factualAnswer.productId,
+            tiedProductIds: factualAnswer.tiedProductIds,
+          };
+          controller.enqueue(enc.encode(`data: ${JSON.stringify({ type: "text", value: factualAnswer.reply })}\n\n`));
+          controller.enqueue(enc.encode(`data: ${JSON.stringify({ type: "done", ...payload })}\n\n`));
+          controller.close();
+        },
+      });
+      persistChatTurn({
+        shareToken,
+        visitId,
+        userMessage: message,
+        assistantReply: factualAnswer.reply,
+        greeting: false,
+        factualAnswer: true,
+        spotlightProductId: factualAnswer.productId,
+        durationMs: Date.now() - startedAt,
+      });
+      console.log(
+        `[CHAT] turn shareToken=${shareToken} greeting=false factualAnswer=true durationMs=${Date.now() - startedAt} ` +
+          `userMessage=${JSON.stringify(message.slice(0, 200))} spotlightProductId=${factualAnswer.productId} replyChars=${factualAnswer.reply.length}`
+      );
+      return new Response(faStream, {
+        headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+      });
+    }
 
     // Picks deterministas del saludo: el pool ya viene rankeado, así que los
     // primeros N son los picks. No se delega al modelo (ver buildGreetingPrompt).
@@ -982,6 +1385,16 @@ export async function POST(request: NextRequest) {
           setChatGreetingCache(shareToken, responsePayload).catch(() => {});
         }
 
+        persistChatTurn({
+          shareToken,
+          visitId,
+          userMessage: message ?? "",
+          assistantReply: reply,
+          greeting: !!greeting,
+          recommendedCount: recommendedProducts?.length ?? 0,
+          suggestedRefinement: finalSuggestedRefinement,
+          durationMs: Date.now() - startedAt,
+        });
         console.log(
           `[CHAT] turn shareToken=${shareToken} greeting=${!!greeting} durationMs=${Date.now() - startedAt} ` +
             `userMessage=${JSON.stringify((message ?? "").slice(0, 200))} ` +

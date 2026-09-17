@@ -82,7 +82,9 @@ export function SpecTermPopover({
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
             aria-label={`Qué significa ${label}`}
-            className="ml-1 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border border-gathering-outline-variant text-[8px] font-bold leading-none text-gathering-on-surface-variant hover:border-gathering-primary-fixed-dim hover:text-gathering-primary-fixed-dim"
+            className={`ml-1 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border border-gathering-outline-variant text-[8px] font-bold leading-none text-gathering-on-surface-variant hover:border-gathering-primary-fixed-dim hover:text-gathering-primary-fixed-dim ${
+              open ? "" : "animate-hint-pulse"
+            }`}
           >
             ?
           </button>
