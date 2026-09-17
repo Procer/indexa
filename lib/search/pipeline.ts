@@ -11,7 +11,22 @@ import type { NotebookSpecs, PhoneSpecs, Product, Slots, SponsoredPlacement } fr
 // Nota: `(?:es|s)?` al final del grupo tolera plurales — sin eso "Parlantes"/
 // "Auriculares" no matcheaban `\bparlante\b`/`\bauricular\b` (visto en vivo:
 // "Parlantes 2.0 PC/Notebook" rankeaba como notebook).
-export const ACCESSORY_KEYWORDS = /\b(mochila|funda|bolso|bolsa|mouse|teclado|auricular|parlante|cable|adaptador|hub|soporte|pad|mousepad|cargador|fuente|cuaderno|bater[ií]a externa|power\s*bank|cooler|ventilador|limpiador|kit de limpieza|escritorio|silla|mueble|biblioteca|estante|rack de|mesa|armario|cajonera|archivero|repisa|librer[ií]a|organizador|base para|kit de|reloj|smart\s*watch|smart\s*band|pulsera inteligente|vidrio templado|templado|protector de pantalla|mica|carcasa|estuche|case|manos libres|micro\s?sd|tarjeta de memoria|tr[ií]pode|gimbal|estabilizador|palo selfie|selfie stick|a(?:ro|nillo) de luz|l[aá]mpara|difusor|juguete|joystick|gamepad|bandolera|ri[ñn]onera|calza|remera|pantal[oó]n|zapatilla)(?:es|s)?\b/i;
+// "tabla"/"esquinero"/"esquinera"/"ropero"/"placard" sumados tras encontrar en
+// vivo (2026-09-11) "Tabla esquinera Orlandi" (mueble de Cetrogar) colada en
+// resultados de desktop — la misma línea de muebles "Orlandi" (escritorios,
+// bibliotecas, mesas rinconeras) que ya cubrían las palabras existentes, pero
+// "tabla esquinera" no matcheaba ninguna.
+//
+// OJO con "pad" suelto: se sacó (bug real encontrado en vivo 2026-09-11) —
+// como palabra completa (`\bpad\b`) matcheaba "Pad" en "Redmi Pad 2"/"Honor
+// Pad 9" y excluía TODAS esas tablets del catálogo en cualquier búsqueda, no
+// solo pidiendo la marca (encontrado investigando "no aparece ningún Xiaomi"
+// con brandsPreferred=[Xiaomi] pero brandMatchesLoaded=[] pese a haber varios
+// en presupuesto y bien rankeados). "mousepad"/"gamepad" ya están como
+// palabras compuestas separadas más abajo — cubren el caso real sin el falso
+// positivo (un "mousepad"/"gamepad" escrito junto nunca matcheaba `\bpad\b`
+// de todos modos, por no tener espacio antes de "pad").
+export const ACCESSORY_KEYWORDS = /\b(mochila|funda|bolso|bolsa|mouse|teclado|auricular|parlante|cable|adaptador|hub|soporte|mousepad|cargador|fuente|cuaderno|bater[ií]a externa|power\s*bank|cooler|ventilador|limpiador|kit de limpieza|escritorio|silla|mueble|biblioteca|estante|rack de|mesa|tabla|esquinero|esquinera|armario|ropero|placard|cajonera|archivero|repisa|librer[ií]a|organizador|base para|kit de|reloj|smart\s*watch|smart\s*band|pulsera inteligente|vidrio templado|templado|protector de pantalla|mica|carcasa|estuche|case|manos libres|micro\s?sd|tarjeta de memoria|tr[ií]pode|gimbal|estabilizador|palo selfie|selfie stick|a(?:ro|nillo) de luz|l[aá]mpara|difusor|juguete|joystick|gamepad|bandolera|ri[ñn]onera|calza|remera|pantal[oó]n|zapatilla)(?:es|s)?\b/i;
 
 // A pedido explícito del usuario: Celeron/Pentium/Athlon (la gama de entrada
 // más floja de Intel/AMD) nunca se recomiendan en notebook/desktop, sin
@@ -364,7 +379,8 @@ export async function buildRankedPool(params: {
   // se ordena una sola vez al final, con matchPriority como criterio primario
   // siempre (no solo cuando isSpecRankable).
 
-  const requiredTierRank = TIER_RANK[getRequiredSpecs(slots.use_cases).processor_tier];
+  const requiredSpecs = getRequiredSpecs(slots.use_cases);
+  const requiredTierRank = TIER_RANK[requiredSpecs.processor_tier];
   const isSpecRankable =
     slots.use_cases.length > 0 &&
     (slots.category === "notebook" || slots.category === "desktop" || slots.category === null);
@@ -408,6 +424,13 @@ export async function buildRankedPool(params: {
     if (requiredPhone.prefer_large_battery && typeof s.battery_mah === "number" && s.battery_mah > 0 && s.battery_mah < 5000) {
       penalty += 0.08;
     }
+    // NOTA (2026-09-10): se probó un bono por pantalla AMOLED / refresco ≥120Hz
+    // para "celular juegos", pero la extracción de specs de celular llena
+    // screen_type=IPS y refresh_rate_hz=60 en ~el 100% del catálogo (defaults
+    // del normalizer cuando el título no los declara), y processor_model queda
+    // en "Snapdragon 695" alucinado para casi todo. Cualquier re-rank de phone
+    // por gama de pantalla/chip es letra muerta hasta arreglar esa extracción
+    // (scripts/analyzeProducts.ts / normalizePhoneSpecs).
     return penalty;
   };
 
@@ -447,6 +470,25 @@ export async function buildRankedPool(params: {
     return excess > 0 ? excess * 0.12 : 0;
   };
 
+  // Falta de GPU dedicada cuando el uso la EXIGE (gaming, diseño gráfico,
+  // edición de foto/video pro, CAD/3D — ver USE_CASE_SPECS.gpu en
+  // usageToSpecs.ts). Antes el re-rank de notebook solo miraba el tier de
+  // procesador: una notebook de integrados con "16gb" en el título le ganaba a
+  // una gamer real con RTX para un pedido de "gaming" (reportado en vivo
+  // 2026-09-10: Gfast Ryzen 5 / Lenovo TBook U5-225U rankeando #3-#4 sobre las
+  // Lenovo LOQ RTX 3050). Hunde —no excluye— igual que el resto de los ajustes:
+  // si TODO el pool en presupuesto es de integrados, la penalización es pareja
+  // y el orden relativo se mantiene. Sin dato de GPU extraído → no penaliza
+  // (fail open, no castigar por una extracción incompleta).
+  const notebookGpuMismatchPenalty = (p: RankedProduct): number => {
+    if (!isSpecRankable) return 0;
+    if (requiredSpecs.gpu !== "dedicated") return 0;
+    if (p.category !== "notebook" && p.category !== "desktop") return 0;
+    const gpu = (p.specs as Partial<NotebookSpecs>).gpu;
+    if (!gpu) return 0;
+    return gpu === "dedicated" ? 0 : 0.3;
+  };
+
   // Cordura de specs general (jugada #9): hunde —sin excluir— unidades con
   // specs físicamente inverosímiles en CUALQUIER categoría (RAM inflada por la
   // tienda, disco = RAM, pantalla fuera de rango).
@@ -458,6 +500,7 @@ export async function buildRankedPool(params: {
     merged.map((p) => [
       p.id,
       notebookOverSpecPenalty(p) +
+        notebookGpuMismatchPenalty(p) +
         tabletJunkPenalty(p) +
         phoneUnderSpecPenalty(p) +
         (sanityPenaltyById.get(p.id) ?? 0),

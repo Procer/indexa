@@ -128,11 +128,17 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as {
       input: string;
       sessionId?: string;
+      // Id persistente de visita (localStorage, ver lib/analytics/visit.ts)
+      // — se guarda junto a la búsqueda para poder unir después con clicks
+      // (product_clicks) y mensajes de chat (chat_messages) de la misma
+      // persona (pedido explícito del usuario, prueba con varias personas
+      // 2026-09-11).
+      visitId?: string;
       refinements?: string[];
       knownSlots?: Partial<Slots>;
     };
 
-    const { input, sessionId, refinements, knownSlots } = body;
+    const { input, sessionId, visitId, refinements, knownSlots } = body;
 
     if (!input?.trim()) {
       return NextResponse.json({ error: "Input requerido" }, { status: 400 });
@@ -293,6 +299,7 @@ export async function POST(request: NextRequest) {
         queryEmbedding,
         resultIds: cachedIds,
         sessionId: sessionId ?? null,
+        visitId,
         shareToken,
       }).catch(() => {});
 
@@ -331,16 +338,30 @@ export async function POST(request: NextRequest) {
     //    1. Background cache: candidatos pre-buscados con use_cases del usuario (sin budget)
     //    2. Prelim cache: todos los productos de esa categoría
     //    3. Sin cache: scan completo de la tabla
+    //    Con marca/procesador puntual pedido, NINGUNO de estos dos cachés vale:
+    //    se calcularon top-40/top-N por similitud cruda, SIN presupuesto y SIN
+    //    la prioridad de marca que aplica buildRankedPool más abajo — si la
+    //    marca pedida no entró en ese top-N (bien posible: compite sin filtro
+    //    de precio contra tablets/notebooks más caras), candidateIds la deja
+    //    afuera del pool para SIEMPRE, porque hybrid_search lo usa como filtro
+    //    SQL duro (WHERE id = ANY(candidate_ids)) — el re-rank de marca de
+    //    buildRankedPool no puede rescatar algo que ni siquiera está en el
+    //    pool. Bug real reportado en vivo 2026-09-11: "tablet xiaomi" con
+    //    presupuesto no encontraba ningún Xiaomi pese a haber varios en
+    //    catálogo y dentro de presupuesto. Se prefiere el scan completo (más
+    //    lento) a un resultado incorrecto cuando hay un pedido puntual.
+    const hasBrandOrProcessorPreference =
+      slots.preferences.brands_preferred.length > 0 || !!slots.preferences.processor_model_preferred;
     let candidateIds: string[] | undefined;
     if (sessionId) {
       const bgIds = await getBackgroundCache(sessionId);
       if (bgIds && bgIds.length > 0) {
-        candidateIds = bgIds;
+        if (!hasBrandOrProcessorPreference) candidateIds = bgIds;
         deleteBackgroundCache(sessionId).catch(() => {});
       } else {
         const prelim = await getPrelimCache(sessionId);
         if (prelim && prelim.length > 0) {
-          candidateIds = prelim;
+          if (!hasBrandOrProcessorPreference) candidateIds = prelim;
           deletePrelimCache(sessionId).catch(() => {});
         }
       }
@@ -402,6 +423,7 @@ export async function POST(request: NextRequest) {
       queryEmbedding,
       resultIds: enrichedResults.map((p) => p.id),
       sessionId: sessionId ?? null,
+      visitId,
       shareToken,
     }).catch(() => {});
 

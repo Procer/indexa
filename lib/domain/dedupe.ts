@@ -6,12 +6,38 @@
 
 const NOISE_WORDS = /\b(nuevo|sellado|caja abierta|garantia oficial|gtia|original|oficial)\b/gi;
 
+// Marcador de sistema operativo en el título — la MISMA notebook se lista como
+// "... W11H" y "... Sin Sistema Operativo" y quedaba como dos filas distintas
+// comiéndose dos slots del top (reportado en vivo 2026-09-10: Lenovo LOQ ×2 en
+// una búsqueda de gaming). El SO no cambia el hardware; se borra del título
+// antes de armar la clave para que esas variantes colapsen en un solo grupo
+// (la más barata queda primaria, el resto van a also_at). RAM/almacenamiento
+// siguen en la clave, así que 8GB vs 16GB NO colapsan.
+const OS_MARKERS =
+  /\b(sin sistema operativo|sin sistema|sin s\.?\s?o\.?|s\/\s?o|free\s?dos|freedos|endless\s?os|windows\s*1[01](\s*(home|pro))?|win\s*1[01]\s*(home|pro)?|w1[01]\s*(home|pro|h)?|w1[01]h)\b/gi;
+
+// Specs "reafirmadas" en el título que NO distinguen un modelo de otro: los
+// megapíxeles de la cámara ("12MP", "48 MP") y el tamaño de pantalla ("6.1
+// Pulgadas", '6.1"'). Dos listados del MISMO teléfono quedaban como filas
+// distintas solo porque uno agregaba "12MP." al final y otro no (reportado en
+// vivo 2026-09-10: iPhone 13 128GB ×3 en el top). El almacenamiento (128GB) NO
+// entra acá: sí distingue variantes reales, se conserva en la clave.
+const RESTATED_SPECS = /\b\d+([.,]\d+)?\s*(mp\b|pulgadas?\b|pulg\.?|"|''|″|”)/gi;
+// Puntuación que solo ensucia la clave (puntos finales, comas, comillas,
+// paréntesis). Se saca al final; el guión y la barra se conservan porque
+// aparecen en códigos de modelo ("SM-X133") y en combos RAM/almacenamiento
+// ("8/256gb").
+const KEY_PUNCT = /[.,;:!¡¿?()"''´`]/g;
+
 export function buildDedupeKey(product: { category: string; brand: string | null; title: string }): string {
   const brand = (product.brand ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const titleNorm = product.title
     .toLowerCase()
     .replace(new RegExp(brand, "g"), "")
     .replace(NOISE_WORDS, "")
+    .replace(OS_MARKERS, "")
+    .replace(RESTATED_SPECS, " ")
+    .replace(KEY_PUNCT, " ")
     .replace(/\s+/g, " ")
     .trim();
   return `${product.category}:${brand}:${titleNorm}`;

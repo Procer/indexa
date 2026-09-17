@@ -235,7 +235,16 @@ const CONSUMABLE_QUANTITY_SUFFIX_RE = /\b\d+(?:[.,]\d+)?\s?(?:g|gr|grs|kg|ml|cc|
 // "Pc"/"Computación" de pasada y cuela en la búsqueda de notebook/desktop.
 // Un producto real de cómputo nunca arranca el título con estas palabras
 // (sería "PC de Escritorio ...", no "Escritorio ...").
-const OFF_TOPIC_TITLE_START_RE = /^(escritorio|mesa|cartera|billetera|monedero|zapatilla|remera|campera|pantal[oó]n|buzo|silla)\b/i;
+// "biblioteca" (mueble, no "libro/estantería de libros") y "tabla esquinera"
+// (mesa rinconera) sumados tras encontrar en producción TODA la línea de
+// muebles de oficina "Orlandi" de Cetrogar colada en desktop/notebook — la
+// búsqueda `ft=pc escritorio` / `ft=notebook` de VTEX matchea por texto
+// libre, así que "Escritorio (para) Notebook", "Biblioteca ..." y "Tabla
+// esquinera ..." (todos de la misma línea de muebles) rankeaban como
+// resultado relevante. "estante"/"repisa"/"cajonera" sumados por la misma
+// línea de productos (visto: catálogo completo de Cetrogar muebles).
+const OFF_TOPIC_TITLE_START_RE =
+  /^(escritorio|mesa|tabla|biblioteca|estante|repisa|cajonera|ropero|placard|cartera|billetera|monedero|zapatilla|remera|campera|pantal[oó]n|buzo|silla)\b/i;
 
 // La búsqueda fulltext de VTEX (`ft=notebook`, `ft=laptop`, etc.) a veces trae
 // productos de OTRA categoría por relevancia de texto (ej: un Smart TV Philco

@@ -174,35 +174,22 @@ function parsePreferences(raw: unknown): SlotPreferences {
   };
 }
 
-// Pedido concreto: el usuario nombró una marca o un procesador puntual — ya
-// dio una señal fuerte de qué quiere, así que no hace falta preguntarle "para
-// qué lo vas a usar". (El presupuesto se sigue pidiendo igual.)
-export function hasSpecificRequest(slots: Slots): boolean {
-  return (
-    slots.preferences.brands_preferred.length > 0 ||
-    !!slots.preferences.processor_model_preferred
-  );
-}
-
 export function isInputSufficient(slots: Slots): boolean {
   // Sin presupuesto los resultados son irrelevantes — siempre se exige.
   const hasBudget = !!(slots.budget_monthly_ars || slots.budget_cash_ars);
   if (!hasBudget) return false;
-  // Camino normal: uso (para saber qué buscar) + presupuesto.
-  if (slots.use_cases.length > 0) return true;
-  // Camino "pedido concreto": categoría + marca/procesador puntual + presupuesto.
-  // El uso se saltea (ver hasSpecificRequest / getGuidingQuestions).
-  return !!slots.category && hasSpecificRequest(slots);
+  // Antes un pedido concreto (marca/procesador puntual + categoría, ej.
+  // "tablet Apple") saltaba directo a pedir presupuesto sin preguntar el uso
+  // — reportado en vivo 2026-09-11: se sentía raro, el usuario quiere que
+  // siempre se pregunte para qué lo va a usar aunque ya haya nombrado marca.
+  return slots.use_cases.length > 0;
 }
 
 export function getGuidingQuestions(slots: Slots): GuidingQuestion[] {
   const questions: GuidingQuestion[] = [];
 
   // ── Uso principal (siempre primero, es el dato más importante) ────────────────
-  // Se saltea si el usuario ya dio un pedido concreto (marca/procesador puntual
-  // + categoría) — ver hasSpecificRequest / isInputSufficient.
-  const skipUseQuestion = hasSpecificRequest(slots) && !!slots.category;
-  if (slots.use_cases.length === 0 && !skipUseQuestion) {
+  if (slots.use_cases.length === 0) {
     if (slots.category === "phone") {
       questions.push({
         text: "¿Para qué vas a usar el celular principalmente?",

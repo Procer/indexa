@@ -8,7 +8,11 @@ export function detectCategoryLocally(input: string): ProductCategory | null {
   const l = input.toLowerCase();
   if (/notebook|laptop/.test(l)) return "notebook";
   if (/\bpc\b|computadora|desktop|escritorio/.test(l)) return "desktop";
-  if (/\btablet\b|ipad/.test(l)) return "tablet";
+  // Sin \b de cierre a propósito: "tablet" también matchea "tablets",
+  // "tabletss" (typo, reportado en vivo: "quiero ver tabletss xiaomi" no
+  // cambiaba de categoría y la búsqueda se quedaba en notebook) y "tableta/
+  // tabletas" (variante en español, que empieza igual).
+  if (/\btablet|ipad/.test(l)) return "tablet";
   if (/celular|smartphone|iphone/.test(l)) return "phone";
   if (/\btv\b|televisor|smart tv/.test(l)) return "tv";
   return null;

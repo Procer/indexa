@@ -20,12 +20,19 @@ export function getUpgradeNote(
   upgradeable: Upgradeable
 ): string | null {
   if (category === "desktop") {
+    // OJO: ProductChatCard corta este texto en el primer ". "/": "/" — " para
+    // mostrar solo la primera frase (Opción B, una línea). "A futuro: X" con
+    // los dos puntos pegados al principio hacía que el corte se comiera TODO
+    // menos "A futuro" — la tarjeta de PC mostraba la etiqueta sola, sin
+    // contenido (reportado en vivo 2026-09-11: "no sale nada"). Se redacta
+    // como oración sin puntuación temprana, mismo criterio que notebook/tv
+    // de abajo.
     const parts: string[] = [];
-    if (upgradeable.ram) parts.push("RAM ampliable");
-    if (upgradeable.storage) parts.push("almacenamiento ampliable");
-    if (upgradeable.gpu) parts.push("GPU reemplazable");
-    if (upgradeable.processor) parts.push("procesador actualizable según socket");
-    return parts.length > 0 ? `A futuro: ${parts.join(", ")}.` : null;
+    if (upgradeable.ram) parts.push("la RAM");
+    if (upgradeable.storage) parts.push("el almacenamiento");
+    if (upgradeable.gpu) parts.push("la GPU");
+    if (upgradeable.processor) parts.push("el procesador (según socket)");
+    return parts.length > 0 ? `A futuro podés ampliar ${parts.join(", ")}.` : null;
   }
 
   if (category === "notebook") {
