@@ -96,6 +96,13 @@ CREATE TABLE searches (
   share_token     TEXT UNIQUE DEFAULT encode(gen_random_bytes(6), 'base64'),
   user_id         UUID,          -- antes REFERENCES auth.users; ahora plano
   session_id      TEXT,
+  -- Id persistente de visita (localStorage, ver lib/analytics/visit.ts) — a
+  -- diferencia de session_id (efímero, solo cachea UNA búsqueda), permite
+  -- unir todas las búsquedas + clicks (product_clicks) + mensajes de chat
+  -- (chat_messages) de la misma persona. Sumado 2026-09-11 para poder
+  -- analizar una prueba con varias personas después. Nullable: las búsquedas
+  -- viejas no lo tienen.
+  visit_id        TEXT,
   result_count    INT DEFAULT 0,
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
@@ -105,6 +112,7 @@ CREATE INDEX idx_searches_embedding
   WITH (m = 16, ef_construction = 200);
 CREATE INDEX idx_searches_share_token ON searches(share_token);
 CREATE INDEX idx_searches_created_at  ON searches(created_at DESC);
+CREATE INDEX idx_searches_visit       ON searches(visit_id);
 
 -- =============================================================================
 -- profiles  → tabla de usuarios del SITIO PÚBLICO (reemplaza el espejo de
@@ -245,10 +253,17 @@ CREATE INDEX idx_product_clicks_visit   ON product_clicks(visit_id);
 -- =============================================================================
 -- site_events
 -- =============================================================================
+-- event_type incluye 'product_ask_about'/'product_buy_click' (el código ya
+-- los emitía desde antes, pero el CHECK original no los tenía — se perdían
+-- en silencio, el fetch del cliente traga el error 500) y 'client_error'
+-- (reporte de fallos del lado del cliente, ver lib/analytics/reportError.ts
+-- — sumado 2026-09-11 para poder ver errores de una prueba con varias
+-- personas sin depender de que cada una lo reporte a mano).
 CREATE TABLE site_events (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_type TEXT NOT NULL CHECK (event_type IN (
-    'session_start', 'product_view_details', 'product_compare_add', 'time_on_page'
+    'session_start', 'product_view_details', 'product_compare_add', 'product_ask_about',
+    'product_buy_click', 'time_on_page', 'client_error', 'visitor_label'
   )),
   visit_id    TEXT NOT NULL,
   product_id  UUID REFERENCES products(id) ON DELETE SET NULL,
@@ -259,6 +274,37 @@ CREATE TABLE site_events (
 );
 CREATE INDEX idx_site_events_visit        ON site_events(visit_id);
 CREATE INDEX idx_site_events_type_created ON site_events(event_type, created_at);
+
+-- =============================================================================
+-- chat_messages
+-- =============================================================================
+-- Los turnos de chat (GuidedSearchChat sobre resultados, y el chat del
+-- comparador) antes solo se logueaban a stdout truncados a 200 caracteres —
+-- para analizar una prueba con varias personas hacía falta poder reconstruir
+-- la conversación completa desde la DB. Un row por TURNO (no por rol:
+-- user_message + assistant_reply juntos), igual que el log [CHAT] turn que
+-- reemplaza/complementa.
+CREATE TABLE chat_messages (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  share_token           TEXT,
+  visit_id              TEXT,
+  session_id            TEXT,
+  -- 'results' (GuidedSearchChat sobre una búsqueda) | 'compare' (chat del comparador)
+  context               TEXT NOT NULL DEFAULT 'results',
+  user_message          TEXT,
+  assistant_reply       TEXT,
+  greeting              BOOLEAN NOT NULL DEFAULT false,
+  factual_answer        BOOLEAN NOT NULL DEFAULT false,
+  recommended_count     INT,
+  spotlight_product_id  UUID,
+  suggested_refinement  TEXT,
+  duration_ms           INT,
+  error                 TEXT,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_chat_messages_visit       ON chat_messages(visit_id);
+CREATE INDEX idx_chat_messages_share_token ON chat_messages(share_token);
+CREATE INDEX idx_chat_messages_created     ON chat_messages(created_at);
 
 -- =============================================================================
 -- saved_search_contacts
@@ -344,19 +390,37 @@ AS $$
       AND (max_weight_kg IS NULL OR (p.specs->>'weight_kg') IS NULL OR
            (p.specs->>'weight_kg')::NUMERIC <= max_weight_kg)
   ),
+  -- El lado keyword del híbrido: query_text es el input CRUDO de la
+  -- conversación (ej. "quiero comprar algo de tecnología... tablet xiaomi...
+  -- hasta 210 mil pesos por mes en cuotas"), no un término de búsqueda corto.
+  -- plainto_tsquery/websearch_to_tsquery combinan las palabras con AND, así
+  -- que ningún título de producto matchea nunca (ninguno tiene a la vez
+  -- "tecnología" Y "cuotas" Y "xiaomi") — el kw_rank daba siempre NULL y el
+  -- híbrido quedaba en la práctica 100% vectorial (bug real: pedir una marca
+  -- explícita como Xiaomi, que sí está en catálogo, no aparecía porque el
+  -- embedding de todo el mensaje no la priorizaba). Se arma un tsquery con OR
+  -- entre los lexemas ya normalizados/sin stopwords (mismo tokenizador que
+  -- plainto_tsquery vía to_tsvector), así con que UNA palabra matchee ya
+  -- entra al ranking por keyword, y ts_rank_cd sigue premiando más matches.
+  keyword_query AS (
+    SELECT to_tsquery('spanish',
+      array_to_string(tsvector_to_array(to_tsvector('spanish', query_text)), ' | ')
+    ) AS tq
+    WHERE query_text IS NOT NULL AND btrim(query_text) <> ''
+  ),
   ranked AS (
     SELECT
-      id, similarity, is_sponsored, click_count,
-      RANK() OVER (ORDER BY similarity DESC) AS vec_rank,
+      f.id, f.similarity, f.is_sponsored, f.click_count,
+      RANK() OVER (ORDER BY f.similarity DESC) AS vec_rank,
       CASE
-        WHEN query_text IS NOT NULL
-         AND search_vector @@ plainto_tsquery('spanish', query_text)
+        WHEN kq.tq IS NOT NULL AND f.search_vector @@ kq.tq
         THEN RANK() OVER (
-          ORDER BY ts_rank_cd(search_vector, plainto_tsquery('spanish', query_text)) DESC
+          ORDER BY ts_rank_cd(f.search_vector, kq.tq) DESC
         )
         ELSE NULL
       END AS kw_rank
-    FROM filtered
+    FROM filtered f
+    LEFT JOIN keyword_query kq ON true
   )
   SELECT id, similarity, is_sponsored, click_count
   FROM ranked
