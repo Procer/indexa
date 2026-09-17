@@ -35,7 +35,7 @@ interface PriceBlock {
   sub: string | null;
 }
 
-function priceBlock(
+export function priceBlock(
   p: { price_cash: number | null; price_installment: number | null; installment_count?: number | null },
   mode: "cash" | "installments"
 ): PriceBlock | null {
@@ -61,7 +61,7 @@ function priceBlock(
   return null;
 }
 
-const QUALITY_SCORE_STYLE: Record<string, string> = {
+export const QUALITY_SCORE_STYLE: Record<string, string> = {
   EXCELENTE: "bg-emerald-600/90 text-white",
   "MUY BUENO": "bg-gathering-primary-fixed-dim text-gathering-on-primary-fixed",
   BUENO: "bg-amber-600/90 text-white",
@@ -110,7 +110,7 @@ interface ProductChatCardProps {
 // Logo de la tienda (favicon por dominio, ver lib/domain/productDisplay.ts)
 // dentro del botón de compra. Si no carga (dominio sin favicon, o servicio
 // caído) se oculta solo y queda el botón con texto, nunca un ícono roto.
-function StoreLogo({ source }: { source: string }) {
+export function StoreLogo({ source }: { source: string }) {
   const [failed, setFailed] = useState(false);
   const url = storeLogoUrl(source);
   if (!url || failed) return null;

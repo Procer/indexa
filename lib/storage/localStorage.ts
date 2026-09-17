@@ -5,6 +5,7 @@ const MAX_SAVED = 10;
 const RECENT_PRODUCTS_KEY = "techsearch_recent_products";
 const MAX_RECENT_PRODUCTS = 8;
 const SYNC_CONTACT_KEY = "techsearch_sync_contact";
+const RESULTS_VIEW_KEY = "techsearch_results_view";
 
 export interface SyncContact {
   email: string;
@@ -108,4 +109,20 @@ export function setSpecGlossaryDismissed(dismissed: boolean): void {
   } else {
     localStorage.removeItem(SPEC_GLOSSARY_DISMISSED_KEY);
   }
+}
+
+// Preferencia de vista de resultados — "ranked" (lista por valor, default
+// desde 2026-09-17) o "classic" (grilla de tarjetas de siempre). El usuario
+// pidió que se pueda cambiar y que la elección se recuerde entre búsquedas.
+export type ResultsView = "ranked" | "classic";
+
+export function getResultsViewPref(): ResultsView | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(RESULTS_VIEW_KEY);
+  return raw === "ranked" || raw === "classic" ? raw : null;
+}
+
+export function saveResultsViewPref(view: ResultsView): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(RESULTS_VIEW_KEY, view);
 }

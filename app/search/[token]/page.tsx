@@ -10,12 +10,13 @@ import { DiscoverySections } from "@/components/DiscoverySections";
 import { GuidedSearchChat } from "@/components/GuidedSearchChat";
 import { ProductDetailPanel } from "@/components/ProductDetailPanel";
 import { RecommendedProductsGrid } from "@/components/RecommendedProductsGrid";
+import { RankedResultsList } from "@/components/RankedResultsList";
 import { ResultsFilterBar } from "@/components/ResultsFilterBar";
 import { SortDropdown } from "@/components/SortDropdown";
 import { AllResultsModal } from "@/components/AllResultsModal";
 import { CompareExperience, ChatFAB } from "@/components/CompareExperience";
 import { Footer } from "@/components/Footer";
-import { saveSearch as saveSearchLocally } from "@/lib/storage/localStorage";
+import { saveSearch as saveSearchLocally, getResultsViewPref, saveResultsViewPref, type ResultsView } from "@/lib/storage/localStorage";
 import { buildQuickSelectionReason, explainProductSpecs, explainProductSpecsSimple, formatUseCasesLabel } from "@/lib/domain/specExplainer";
 import { getUpgradeNote } from "@/lib/domain/upgradeability";
 import { buildSelectionShareText } from "@/lib/domain/shareSelection";
@@ -296,6 +297,19 @@ export default function SearchResultsPage() {
   // "Volver" del banner o solo con preguntar/buscar otra cosa.
   const [tiedFilter, setTiedFilter] = useState<{ ids: string[]; highlightId: string } | null>(null);
   const [sortOrder, setSortOrder] = useState<"relevance" | "price_asc" | "price_desc">("relevance");
+  // Vista de resultados: "ranked" (lista por valor) es el default nuevo;
+  // "classic" es la grilla de tarjetas de siempre (RecommendedProductsGrid,
+  // sin tocar). Se lee la preferencia guardada recién en el cliente (evita
+  // desajuste de hidratación) y se re-guarda cada vez que el usuario cambia.
+  const [resultsView, setResultsViewState] = useState<ResultsView>("ranked");
+  useEffect(() => {
+    const saved = getResultsViewPref();
+    if (saved) setResultsViewState(saved);
+  }, []);
+  const setResultsView = useCallback((view: ResultsView) => {
+    setResultsViewState(view);
+    saveResultsViewPref(view);
+  }, []);
   const [chatOpen, setChatOpen] = useState(true);
   // Jugada #11: pregunta ya redactada sobre un producto puntual, inyectada al
   // chat desde el botón "Consultar sobre este equipo" de la tarjeta. `key`
@@ -998,6 +1012,30 @@ export default function SearchResultsPage() {
               highlightKey={highlightFacet}
               onHighlightConsumed={() => setHighlightFacet(null)}
             />
+            <div className="ml-auto flex items-center gap-1 rounded-full border border-gathering-outline-variant bg-gathering-surface-container p-1">
+              <button
+                type="button"
+                onClick={() => setResultsView("ranked")}
+                className={`rounded-full px-3 py-1.5 font-brand text-xs font-bold transition-colors ${
+                  resultsView === "ranked"
+                    ? "bg-gathering-primary-fixed-dim text-white"
+                    : "text-gathering-on-surface-variant"
+                }`}
+              >
+                Lista por valor
+              </button>
+              <button
+                type="button"
+                onClick={() => setResultsView("classic")}
+                className={`rounded-full px-3 py-1.5 font-brand text-xs font-bold transition-colors ${
+                  resultsView === "classic"
+                    ? "bg-gathering-primary-fixed-dim text-white"
+                    : "text-gathering-on-surface-variant"
+                }`}
+              >
+                Vista clásica
+              </button>
+            </div>
           </div>
         )}
 
@@ -1190,21 +1228,36 @@ export default function SearchResultsPage() {
                   !chatRecommendations ? "pointer-events-none select-none opacity-40 blur-md" : "opacity-100 blur-0"
                 }`}
               >
-                <RecommendedProductsGrid
-                  products={displayedProducts}
-                  topPickIds={displayedTopPickIds}
-                  spotlightProductId={spotlightProductId}
-                  onViewDetails={handleViewDetails}
-                  onCompareToggle={handleCompareToggleAlt}
-                  onCompareAdd={addSimilarToCompare}
-                  onAskAbout={handleAskAbout}
-                  isCompared={(id) => compareList.some((p) => p.id === id)}
-                  comparedIds={compareList.map((p) => p.id)}
-                  compareDisabled={compareList.length >= 5}
-                  searchShareToken={resolvedTokenRef.current}
-                  sessionId={sessionId}
-                  paymentMode={paymentMode}
-                />
+                {resultsView === "ranked" ? (
+                  <RankedResultsList
+                    products={displayedProducts}
+                    topPickIds={displayedTopPickIds}
+                    spotlightProductId={spotlightProductId}
+                    onViewDetails={handleViewDetails}
+                    onCompareToggle={handleCompareToggleAlt}
+                    isCompared={(id) => compareList.some((p) => p.id === id)}
+                    compareDisabled={compareList.length >= 5}
+                    searchShareToken={resolvedTokenRef.current}
+                    sessionId={sessionId}
+                    paymentMode={paymentMode}
+                  />
+                ) : (
+                  <RecommendedProductsGrid
+                    products={displayedProducts}
+                    topPickIds={displayedTopPickIds}
+                    spotlightProductId={spotlightProductId}
+                    onViewDetails={handleViewDetails}
+                    onCompareToggle={handleCompareToggleAlt}
+                    onCompareAdd={addSimilarToCompare}
+                    onAskAbout={handleAskAbout}
+                    isCompared={(id) => compareList.some((p) => p.id === id)}
+                    comparedIds={compareList.map((p) => p.id)}
+                    compareDisabled={compareList.length >= 5}
+                    searchShareToken={resolvedTokenRef.current}
+                    sessionId={sessionId}
+                    paymentMode={paymentMode}
+                  />
+                )}
               </div>
             </div>
           </div>
