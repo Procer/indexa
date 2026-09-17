@@ -49,6 +49,13 @@ export function RecommendedProductsGrid({
   // entran llevan un chip verde de contraste (ver ProductChatCard.showBudgetFit).
   const showBudgetFit = products.some((p) => p.out_of_budget);
 
+  // Índice global (top picks primero, "resto" después) para que la grilla
+  // entera se revele en una sola cadena, tarjeta por tarjeta — tope en 10
+  // para que una grilla larga no deje a las últimas esperando varios
+  // segundos de más.
+  let revealIndex = 0;
+  const nextRevealDelay = () => `${Math.min(revealIndex++, 10) * 70}ms`;
+
   const byId = new Map(products.map((p) => [p.id, p]));
   const topPicks = (topPickIds ?? [])
     .map((id) => byId.get(id))
@@ -70,24 +77,25 @@ export function RecommendedProductsGrid({
       {topPicks.length > 0 && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {topPicks.map((p, i) => (
-            <ProductChatCard
-              key={p.id}
-              product={p}
-              isTopPick
-              pickRank={i + 1}
-              spotlight={isSpotlighted(p)}
-              onViewDetails={onViewDetails}
-              onCompareToggle={onCompareToggle}
-              onCompareAdd={onCompareAdd}
-              onAskAbout={onAskAbout}
-              isCompared={isCompared(p.id)}
-              comparedIds={comparedIds}
-              compareDisabled={compareDisabled}
-              searchShareToken={searchShareToken}
-              sessionId={sessionId}
-              paymentMode={paymentMode}
-              showBudgetFit={showBudgetFit}
-            />
+            <div key={p.id} className="animate-slide-up" style={{ animationDelay: nextRevealDelay() }}>
+              <ProductChatCard
+                product={p}
+                isTopPick
+                pickRank={i + 1}
+                spotlight={isSpotlighted(p)}
+                onViewDetails={onViewDetails}
+                onCompareToggle={onCompareToggle}
+                onCompareAdd={onCompareAdd}
+                onAskAbout={onAskAbout}
+                isCompared={isCompared(p.id)}
+                comparedIds={comparedIds}
+                compareDisabled={compareDisabled}
+                searchShareToken={searchShareToken}
+                sessionId={sessionId}
+                paymentMode={paymentMode}
+                showBudgetFit={showBudgetFit}
+              />
+            </div>
           ))}
         </div>
       )}
@@ -105,22 +113,23 @@ export function RecommendedProductsGrid({
           )}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {rest.map((p) => (
-              <ProductChatCard
-                key={p.id}
-                product={p}
-                spotlight={isSpotlighted(p)}
-                onViewDetails={onViewDetails}
-                onCompareToggle={onCompareToggle}
-                onCompareAdd={onCompareAdd}
-                onAskAbout={onAskAbout}
-                isCompared={isCompared(p.id)}
-                comparedIds={comparedIds}
-                compareDisabled={compareDisabled}
-                searchShareToken={searchShareToken}
-                sessionId={sessionId}
-                paymentMode={paymentMode}
-                showBudgetFit={showBudgetFit}
-              />
+              <div key={p.id} className="animate-slide-up" style={{ animationDelay: nextRevealDelay() }}>
+                <ProductChatCard
+                  product={p}
+                  spotlight={isSpotlighted(p)}
+                  onViewDetails={onViewDetails}
+                  onCompareToggle={onCompareToggle}
+                  onCompareAdd={onCompareAdd}
+                  onAskAbout={onAskAbout}
+                  isCompared={isCompared(p.id)}
+                  comparedIds={comparedIds}
+                  compareDisabled={compareDisabled}
+                  searchShareToken={searchShareToken}
+                  sessionId={sessionId}
+                  paymentMode={paymentMode}
+                  showBudgetFit={showBudgetFit}
+                />
+              </div>
             ))}
           </div>
         </>

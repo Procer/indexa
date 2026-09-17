@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { motion } from "framer-motion";
 import { withBasePath } from "@/lib/basePath";
 import { getOrCreateVisitId } from "@/lib/analytics/visit";
 import { detectCategoryLocally } from "@/lib/domain/detectCategory";
@@ -24,6 +25,11 @@ const RUBRO_PLURAL: Record<string, string> = {
   tv: "Smart TVs",
   phone: "celulares",
 };
+
+// Leyenda de bienvenida bajo el logo, fase centrada (ver `centered`). Muy
+// breve a propósito: qué es el sitio + qué hacer a continuación.
+const WELCOME_CAPTION =
+  "Respondé estas preguntas y te mostramos las mejores notebooks, PCs, tablets o celulares para tu uso y tu presupuesto.";
 
 // Chatbot único de principio a fin: arranca guiando con preguntas (categoría,
 // uso, presupuesto — mismo backend de slot-filling que ya existía, solo
@@ -57,6 +63,13 @@ interface GuidedSearchChatProps {
   // onRecommendations y para el botón "Comparar" del header.
   compact?: boolean;
   onMinimize?: () => void;
+  // Solo tiene efecto con compact=true. Fase de bienvenida (aún sin
+  // resultados, arrancando la conversación): el panel se muestra centrado en
+  // pantalla con logo arriba y leyenda abajo (ver page.tsx), en vez de
+  // acoplado a la derecha. Es el MISMO elemento persistente animando su
+  // propia posición (motion.div layout) cuando este prop pasa a false, no un
+  // remount — así no se pierde el historial de la charla ya empezada.
+  centered?: boolean;
   onRecommendations?: (payload: { products: AlternativeProduct[]; topPickIds?: string[] }) => void;
   // Jugada #11: mensaje inyectado desde afuera (botón "Consultar sobre este
   // equipo" de una tarjeta). Cada cambio de `key` lo envía como turno del chat.
@@ -254,6 +267,7 @@ export function GuidedSearchChat({
   onRefine,
   compact,
   onMinimize,
+  centered,
   onRecommendations,
   externalMessage,
   onHighlightFilter,
@@ -558,7 +572,10 @@ export function GuidedSearchChat({
   // apenas se manda una consulta (mismo breakpoint lg que el resto del layout
   // — en desktop el panel ya es angosto y no tapa nada, no hace falta).
   function minimizeOnMobile() {
-    if (compact && onMinimize && window.innerWidth < 1024) onMinimize();
+    // Durante la fase de bienvenida (centered) no se puede minimizar — el
+    // usuario tiene que terminar de responder o hacer una consulta directa
+    // antes de que el chat se acople a la derecha (ver page.tsx).
+    if (compact && onMinimize && !centered && window.innerWidth < 1024) onMinimize();
   }
 
   function handleSend() {
@@ -598,11 +615,15 @@ export function GuidedSearchChat({
   }, [messages, products]);
   const [showCompareModal, setShowCompareModal] = useState(false);
 
-  return (
-    <div
+  const panel = (
+    <motion.div
+      layout={!!compact}
+      transition={{ type: "spring", stiffness: 300, damping: 32, mass: 0.9 }}
       className={
         compact
-          ? "gathering-glass-panel animate-fade-up fixed top-20 bottom-4 right-4 z-30 flex w-[92vw] max-w-sm flex-col overflow-hidden rounded-2xl bg-gathering-surface-container"
+          ? `gathering-glass-panel animate-fade-up pointer-events-auto flex w-[92vw] flex-col overflow-hidden rounded-2xl bg-gathering-surface-container ${
+              centered ? "max-h-[75vh] max-w-md" : "h-[calc(100vh-6rem)] max-w-sm"
+            }`
           : "gathering-glass-panel relative flex h-full flex-col overflow-hidden rounded-xl"
       }
     >
@@ -632,7 +653,7 @@ export function GuidedSearchChat({
               ⚖️ Comparar ({compareCandidates.length})
             </button>
           )}
-          {compact && onMinimize && (
+          {compact && onMinimize && !centered && (
             <button
               type="button"
               onClick={onMinimize}
@@ -802,6 +823,34 @@ export function GuidedSearchChat({
 
       {showCompareModal && (
         <CompareModal products={compareCandidates} onClose={() => setShowCompareModal(false)} />
+      )}
+    </motion.div>
+  );
+
+  if (!compact) return panel;
+
+  // Host a pantalla completa: centra logo + panel + leyenda mientras
+  // `centered`, o acopla el panel a la derecha (posición de siempre) una vez
+  // que termina la bienvenida — mismo `panel` (motion.div con `layout`)
+  // animando su propia posición/tamaño entre ambos estados, sin remount.
+  return (
+    <div
+      className={
+        centered
+          ? "pointer-events-none fixed inset-0 z-30 flex flex-col items-center justify-center gap-4 p-4"
+          : "pointer-events-none fixed inset-0 z-30 flex items-start justify-end pb-4 pr-4 pt-20"
+      }
+    >
+      {centered && (
+        <a href={withBasePath("/")} className="pointer-events-auto animate-fade-up" aria-label="Volver al inicio">
+          <LogoBrand logoClass="h-14" />
+        </a>
+      )}
+      {panel}
+      {centered && (
+        <p className="pointer-events-auto animate-fade-up max-w-sm text-center font-brand text-sm font-medium text-gathering-on-surface-variant">
+          {WELCOME_CAPTION}
+        </p>
       )}
     </div>
   );

@@ -871,6 +871,12 @@ export default function SearchResultsPage() {
   // Vidriera al azar (DiscoverySections) mientras todavía no hay resultados
   // reales — una vez que resultsEverShown queda en true, no vuelve a mostrarse.
   const showGatheringLayout = chatActive && !resultsWereEmpty && !resultsEverShown;
+  // Fase de bienvenida: preguntas del chat todavía en curso, nada finalizando
+  // ni resuelto — el panel se muestra centrado (ver GuidedSearchChat/centered)
+  // en vez de acoplado a la derecha. Se apaga apenas se responde la última
+  // pregunta (finalizing pasa a true) o llega una respuesta directa con
+  // resultados — ahí el chat anima su propia posición hacia la derecha.
+  const chatCentered = showGatheringLayout && !finalizing;
   // A diferencia de hasResults (que exige !loading), esto mantiene montada la
   // fase de resultados con los productos ya cargados mientras un refinamiento
   // está en curso, en vez de desmontarla durante el fetch — así no queda una
@@ -944,7 +950,10 @@ export default function SearchResultsPage() {
             contenido de abajo (antes tenía su propio padding chico mientras el
             grid de abajo sumaba el suyo, y quedaban desalineados). Mismo header
             en ambas fases (vidriera y resultados) — ya no hay columna lateral
-            con la que alinearse. */}
+            con la que alinearse. Oculto en la fase de bienvenida centrada
+            (chatCentered): el logo grande de esa pantalla ya cumple ese rol,
+            uno chico arriba a la vez quedaba redundante. */}
+        {!chatCentered && (
         <div className="mb-1 flex flex-wrap items-center justify-between gap-3 py-1.5">
           <a
             href={withBasePath("/")}
@@ -972,6 +981,7 @@ export default function SearchResultsPage() {
             )}
           </a>
         </div>
+        )}
 
         {/* Orden + filtros por marca/procesador/memoria/almacenamiento/pantalla
             (u otras facetas según la categoría, ver lib/domain/resultFilters.ts)
@@ -1095,13 +1105,12 @@ export default function SearchResultsPage() {
           </Portal>
         )}
 
-        {/* ── VIDRIERA: productos al azar mientras no hay resultados reales ── */}
+        {/* ── VIDRIERA: productos al azar mientras no hay resultados reales ──
+            Ahora es puro fondo decorativo detrás del chat de bienvenida
+            (centrado) — siempre difuminada y sin interacción mientras dura,
+            no solo durante el splash de "Analizando" final. */}
         {showGatheringLayout && (
-          <div
-            className={`animate-fade-up transition-all duration-300 lg:pr-[26rem] ${
-              finalizing ? "pointer-events-none select-none opacity-40 blur-md" : ""
-            }`}
-          >
+          <div className="pointer-events-none animate-fade-up select-none opacity-40 blur-md transition-all duration-300">
             <DiscoverySections
               sections={discoverySections}
               onViewDetails={handleViewDetails}
@@ -1170,6 +1179,12 @@ export default function SearchResultsPage() {
                 </Portal>
               )}
               <div
+                // key cambia UNA sola vez, justo cuando llega chatRecommendations
+                // — fuerza a remontar las tarjetas en ese momento exacto para que
+                // el stagger de RecommendedProductsGrid (animate-slide-up por
+                // tarjeta) arranque recién ahí, no en el mount inicial silencioso
+                // de más arriba (donde ya estaría dim/blureado sin que se note).
+                key={chatRecommendations ? "revealed" : "pending"}
                 className={`transition-all duration-500 ${
                   !chatRecommendations ? "pointer-events-none select-none opacity-40 blur-md" : "opacity-100 blur-0"
                 }`}
@@ -1205,6 +1220,7 @@ export default function SearchResultsPage() {
           <div className={chatOpen ? "" : "hidden"}>
             <GuidedSearchChat
               compact
+              centered={chatCentered}
               onMinimize={() => setChatOpen(false)}
               onRecommendations={handleChatRecommendations}
               questions={questions}
