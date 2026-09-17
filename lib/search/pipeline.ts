@@ -412,14 +412,24 @@ export async function buildRankedPool(params: {
     if (typeof s.storage_gb === "number" && s.storage_gb > 0 && s.storage_gb < requiredPhone.min_storage_gb) {
       penalty += Math.min(1, (requiredPhone.min_storage_gb - s.storage_gb) / requiredPhone.min_storage_gb) * 0.15;
     }
-    if (
-      requiredPhone.min_camera_mp != null &&
-      typeof s.main_camera_mp === "number" &&
-      s.main_camera_mp > 0 &&
-      s.main_camera_mp < requiredPhone.min_camera_mp
-    ) {
-      penalty +=
-        Math.min(1, (requiredPhone.min_camera_mp - s.main_camera_mp) / requiredPhone.min_camera_mp) * 0.15;
+    if (requiredPhone.min_camera_mp != null && typeof s.main_camera_mp === "number" && s.main_camera_mp > 0) {
+      if (s.main_camera_mp < requiredPhone.min_camera_mp) {
+        penalty +=
+          Math.min(1, (requiredPhone.min_camera_mp - s.main_camera_mp) / requiredPhone.min_camera_mp) * 0.15;
+      } else if (s.main_camera_mp > requiredPhone.min_camera_mp) {
+        // Bono (penalty negativo) para pedidos superlativos ("la mejor
+        // cámara"): sin esto, un celular que apenas cumple el mínimo (ej.
+        // 64MP para "photography") rankeaba igual que uno de 200MP — el
+        // resto del score (similaridad semántica, calidad/precio) decidía,
+        // no la cámara. Tope en 0.12 para no tapar del todo esas otras
+        // señales. A diferencia del intento de bono por pantalla/refresco
+        // (revertido, ver nota abajo), main_camera_mp SÍ tiene variedad real
+        // en el catálogo (auditado 2026-09-17: 50/48/32/108/12/200/64MP con
+        // conteos distintos, correlaciona con gama/precio) — no es un
+        // default uniforme como screen_type/refresh_rate/processor_model.
+        penalty -=
+          Math.min(1, (s.main_camera_mp - requiredPhone.min_camera_mp) / requiredPhone.min_camera_mp) * 0.12;
+      }
     }
     if (requiredPhone.prefer_large_battery && typeof s.battery_mah === "number" && s.battery_mah > 0 && s.battery_mah < 5000) {
       penalty += 0.08;

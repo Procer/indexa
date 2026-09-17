@@ -868,7 +868,21 @@ export function translationStrip(
         level: batt >= 5000 ? "great" : "ok",
       });
     }
-    return chips.slice(0, 3);
+    // Pedido explícito del usuario (2026-09-17): buscar "celular con la mejor
+    // cámara" mostraba resultados sin ningún dato de cámara en la tarjeta —
+    // no se podía verificar qué entendió el sistema. Antes quedaba afuera por
+    // el tope de 3 chips (Memoria/Espacio/Batería ya lo llenaban); para
+    // celular el tope sube a 4 para que entre.
+    const cam = (s as Partial<PhoneSpecs>).main_camera_mp;
+    if (category === "phone" && cam) {
+      chips.push({
+        icon: "📷",
+        label: "Cámara",
+        word: cam >= 100 ? "muy alta" : cam >= 48 ? "buena" : "básica",
+        level: cam >= 100 ? "great" : cam >= 48 ? "ok" : "warn",
+      });
+    }
+    return chips.slice(0, category === "phone" ? 4 : 3);
   }
 
   return chips;
