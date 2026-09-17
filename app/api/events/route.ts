@@ -8,6 +8,8 @@ const ALLOWED_EVENT_TYPES = new Set([
   "product_ask_about",
   "product_buy_click",
   "time_on_page",
+  "client_error",
+  "visitor_label",
 ]);
 
 // POST /api/events — tracking anónimo genérico (entrada al sitio, ver
@@ -44,6 +46,12 @@ export async function POST(request: NextRequest) {
       )
     `;
   } catch (error) {
+    // Antes fallaba en silencio (sin console.error) — el CHECK desactualizado
+    // de site_events rechazaba product_ask_about/product_buy_click y nadie lo
+    // notaba porque el cliente hace .catch(() => {}) sobre este endpoint.
+    // Con esto, un 500 real (ej. un event_type nuevo que se olvidó agregar al
+    // CHECK de la DB) sí queda en el log del servidor.
+    console.error(`[POST /api/events] eventType=${body.eventType}`, error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 

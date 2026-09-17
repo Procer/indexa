@@ -73,6 +73,7 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
 
 const NAV_LINKS: { href: string; label: string; superOnly?: boolean }[] = [
   { href: "/admin/analytics", label: "Analítica" },
+  { href: "/admin/sessions", label: "Dashboard pruebas" },
   { href: "/admin/sponsors", label: "Patrocinados" },
   { href: "/admin/users", label: "Usuarios", superOnly: true },
 ];

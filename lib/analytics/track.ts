@@ -6,7 +6,9 @@ export type SiteEventType =
   | "product_compare_add"
   | "product_ask_about"
   | "product_buy_click"
-  | "time_on_page";
+  | "time_on_page"
+  | "client_error"
+  | "visitor_label";
 
 interface TrackEventPayload {
   productId?: string;

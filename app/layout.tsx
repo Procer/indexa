@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { Josefin_Sans } from "next/font/google";
 import { SiteAnalyticsBeacon } from "@/components/SiteAnalyticsBeacon";
+import { VisitorNamePrompt } from "@/components/VisitorNamePrompt";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -57,6 +58,7 @@ export default function RootLayout({
           <div className="gathering-ambient-glow-secondary -right-20 bottom-0" />
         </div>
         <SiteAnalyticsBeacon />
+        <VisitorNamePrompt />
         <div className="relative z-10">
           {children}
         </div>
