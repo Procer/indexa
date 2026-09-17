@@ -28,6 +28,7 @@ function toAlternativeProduct(p: EnrichedProduct): AlternativeProduct {
     price_cash: p.price_cash,
     price_installment: p.price_installment,
     image_url: p.image_url,
+    images: p.images,
     source: p.source,
     url: p.url,
     affiliate_url: p.affiliate_url,

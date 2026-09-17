@@ -234,6 +234,26 @@ export function ProductChatCard({
   const [shared, setShared] = useState(false);
   const cardRef = useRef<HTMLElement>(null);
 
+  // Mini galería de la publicación — VTEX/Fravega suelen traer varias fotos
+  // reales por producto (hasta 20+), ML solo una. `images` es opcional
+  // (algunos conversores todavía no lo llenan) y puede venir vacío o repetir
+  // la de `image_url` — se arma un set único con esa como primera.
+  const gallery = Array.from(
+    new Set([product.image_url, ...(product.images ?? [])].filter((u): u is string => !!u))
+  );
+  const [imgIndex, setImgIndex] = useState(0);
+  const currentImage = gallery[imgIndex] ?? null;
+  function showPrevImage(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setImgIndex((i) => (i - 1 + gallery.length) % gallery.length);
+  }
+  function showNextImage(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setImgIndex((i) => (i + 1) % gallery.length);
+  }
+
   useEffect(() => {
     if (spotlight) cardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [spotlight]);
@@ -355,14 +375,41 @@ export function ProductChatCard({
           hasBadge ? "mt-7" : ""
         }`}
       >
-        {product.image_url ? (
+        {currentImage ? (
           <img
-            src={withBasePath(`/api/img?url=${encodeURIComponent(product.image_url)}`)}
+            key={currentImage}
+            src={withBasePath(`/api/img?url=${encodeURIComponent(currentImage)}`)}
             alt={product.title}
             className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-105"
           />
         ) : (
           <span className="material-symbols-outlined text-4xl text-gathering-outline-variant">image</span>
+        )}
+        {/* Mini galería — flechas + contador, solo si la publicación trae más
+            de una foto real. Siempre visibles (no solo al hover) para que
+            funcionen igual de bien en mobile, que no tiene hover. */}
+        {gallery.length > 1 && (
+          <>
+            <button
+              type="button"
+              onClick={showPrevImage}
+              aria-label="Foto anterior"
+              className="absolute left-1.5 top-1/2 z-10 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-gathering-on-surface shadow-sm hover:bg-white"
+            >
+              <span className="material-symbols-outlined text-sm">chevron_left</span>
+            </button>
+            <button
+              type="button"
+              onClick={showNextImage}
+              aria-label="Foto siguiente"
+              className="absolute right-1.5 top-1/2 z-10 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-gathering-on-surface shadow-sm hover:bg-white"
+            >
+              <span className="material-symbols-outlined text-sm">chevron_right</span>
+            </button>
+            <span className="absolute bottom-1.5 right-1.5 z-10 rounded-full bg-black/55 px-1.5 py-0.5 font-brand text-[10px] font-semibold text-white">
+              {imgIndex + 1}/{gallery.length}
+            </span>
+          </>
         )}
       </div>
 

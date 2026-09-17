@@ -516,6 +516,10 @@ export interface AlternativeProduct {
   price_cash: number | null;
   price_installment: number | null;
   image_url: string | null;
+  // Galería completa de la publicación (VTEX/Fravega suelen traer varias,
+  // ML solo una) — la tarjeta arma un mini carrusel cuando hay más de una.
+  // Opcional: no todos los conversores lo llenan (quickAlternative.ts sí).
+  images?: string[];
   source: ProductSource;
   url: string;
   affiliate_url: string | null;
