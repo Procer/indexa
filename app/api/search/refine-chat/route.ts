@@ -492,7 +492,11 @@ const PROCESSOR_TIER_LABEL: Record<string, string> = {
 const FACTUAL_ATTRS: FactualAttr[] = [
   {
     key: "ram",
-    match: /\bram\b/i,
+    // "memoria" a secas (sin "interna", que es storage — ver el lookahead
+    // negativo) suele referirse a RAM en el uso cotidiano argentino, faltaba
+    // y esas preguntas ("¿cuál tiene más memoria?") se iban al LLM en vez de
+    // calcularse (reportado en vivo 2026-09-17).
+    match: /\bram\b|\bmemoria\b(?!\s+interna)/i,
     getValue: (p) => numSpec(p, "ram_gb"),
     formatValue: (v) => `${v}GB de RAM`,
     phraseFor: (dir) => (dir === "min" ? "el que tiene menos RAM" : "el que tiene más RAM"),
@@ -537,7 +541,11 @@ const FACTUAL_ATTRS: FactualAttr[] = [
   },
   {
     key: "processor",
-    match: /\bprocesador\b|\bcpu\b/i,
+    // Sinónimos de velocidad ("la más rápida", "la más potente") no
+    // matcheaban — caían al LLM en vez de calcularse (reportado en vivo
+    // 2026-09-17). "veloz"/"potente"/"rendimiento" son formas comunes de
+    // pedir esto sin nombrar "procesador".
+    match: /\bprocesador\b|\bcpu\b|\br[aá]pid[oa]\b|\bveloz\b|\bpotente\b|\brendimiento\b/i,
     getValue: (p) => {
       const tier = (p.specs as Record<string, unknown> | undefined)?.processor_tier;
       return typeof tier === "string" ? PROCESSOR_TIER_RANK[tier] ?? null : null;
@@ -634,15 +642,17 @@ function detectFactualQuery(
   if (candidates.length === 0) return null;
 
   candidates.sort((a, b) => (direction === "max" ? b.v - a.v : a.v - b.v));
-  const best = candidates[0];
+  const { chosen, caveat } = pickWithinBudget(candidates);
+  const best = chosen;
   // Empate exacto con el segundo: no afirmar un único ganador sin aclararlo.
   const tied = candidates.filter((c) => c.v === best.v);
 
   const valueLabel = attr.formatValue(best.v, best.p);
-  const reply =
+  let reply =
     tied.length > 1
       ? `Hay ${tied.length} opciones empatadas en esto, pero te marco **${best.p.title}**: tiene ${valueLabel}.`
       : `${capitalize(attr.phraseFor(direction))} es **${best.p.title}**, con ${valueLabel}.`;
+  if (caveat) reply += caveat;
 
   return {
     productId: best.p.id,
@@ -653,6 +663,24 @@ function detectFactualQuery(
 
 function capitalize(s: string): string {
   return s.length > 0 ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
+// 2b (pedido 2026-09-17): ante una pregunta factual, no afirmar sin aclarar
+// un ganador que en realidad se pasa del presupuesto elegido. El pool normal
+// (sin marca/procesador puntual pedido) ya viene acotado a presupuesto —
+// ningún candidato trae out_of_budget, así que esto NO agrega fricción en el
+// caso general. Solo dispara en el caso de transparencia (wantsExactSpec,
+// más arriba en el archivo) donde el pipeline sí deja pasar opciones fuera de
+// presupuesto etiquetadas.
+function pickWithinBudget<T extends { p: EnrichedProduct }>(sortedByAttr: T[]): { chosen: T; caveat: string | null } {
+  const top = sortedByAttr[0];
+  if (!top.p.out_of_budget) return { chosen: top, caveat: null };
+  const inBudget = sortedByAttr.find((c) => !c.p.out_of_budget);
+  if (!inBudget) return { chosen: top, caveat: null };
+  return {
+    chosen: inBudget,
+    caveat: ` Ojo que **${top.p.title}** cumple mejor esto, pero se pasa de tu presupuesto — por eso te marco esta, que sí entra.`,
+  };
 }
 
 // Pregunta factual con dos o más atributos a la vez. Cada atributo pedido
@@ -716,7 +744,8 @@ function detectCombinedFactualQuery(
   const scored = withValues
     .map((x) => ({ p: x.p, values: x.values, score: rankSumById.get(x.p.id)! }))
     .sort((a, b) => a.score - b.score);
-  const best = scored[0];
+  const { chosen, caveat } = pickWithinBudget(scored);
+  const best = chosen;
   const tied = scored.filter((s) => s.score === best.score);
 
   const valueLabel = [
@@ -724,10 +753,11 @@ function detectCombinedFactualQuery(
     ...ranked.map((r, i) => r.attr.formatValue(best.values[i], best.p)),
   ].join(" y ");
   const combinedPhrase = ranked.map((r) => r.attr.phraseFor(r.direction)).join(" y a la vez ");
-  const reply =
+  let reply =
     tied.length > 1
       ? `Hay ${tied.length} opciones empatadas en esto, pero te marco **${best.p.title}**: tiene ${valueLabel}.`
       : `${capitalize(combinedPhrase)} es **${best.p.title}**, con ${valueLabel}.`;
+  if (caveat) reply += caveat;
 
   return {
     productId: best.p.id,

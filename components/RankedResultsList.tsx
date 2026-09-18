@@ -2,15 +2,17 @@
 
 import { useMemo, useRef, useState } from "react";
 import { groupVariants } from "@/lib/domain/variantGroup";
-import { rankWithValue, valueColor, type BadgeIcon } from "@/lib/domain/valueRanking";
+import { rankWithValue, valueColor, type BadgeIcon, type ValueResult } from "@/lib/domain/valueRanking";
 import { shortSpecValues } from "@/lib/domain/specExplainer";
-import { storeName } from "@/lib/domain/productDisplay";
+import { TIER_RANK } from "@/lib/domain/usageToSpecs";
+import { storeName, formatPrice } from "@/lib/domain/productDisplay";
 import { withBasePath } from "@/lib/basePath";
 import { getOrCreateVisitId } from "@/lib/analytics/visit";
 import { trackEvent } from "@/lib/analytics/track";
 import { SpecTermPopover } from "@/components/SpecTermPopover";
+import { OtherStoresButton } from "@/components/OtherStoresButton";
 import { priceBlock, StoreLogo, QUALITY_SCORE_STYLE } from "@/components/ProductChatCard";
-import type { AlternativeProduct, TvSpecs } from "@/types";
+import type { AlternativeProduct, NotebookSpecs, PhoneSpecs, TabletSpecs, TvSpecs } from "@/types";
 
 // "Vista B" — lista rankeada centrada en precio + características, pedida
 // explícitamente por el usuario como alternativa a la grilla de tarjetas
@@ -28,12 +30,68 @@ interface RankedResultsListProps {
   searchShareToken?: string;
   sessionId?: string;
   paymentMode?: "cash" | "installments";
+  onCompareAdd?: (ids: string[], open?: boolean) => void;
+  comparedIds?: string[];
 }
 
-type SortMode = "relevance" | "value" | "price";
+type SortMode = string;
 
 const RANK_COLORS = ["#D4A017", "#9AA1AC", "#B45309"];
 const DEFAULT_RANK_COLOR = "#6B7280";
+
+interface SpecSortOption {
+  key: string;
+  label: string;
+  getValue: (p: AlternativeProduct) => number | null;
+}
+
+// Chips de orden por spec puntual (pedido 2026-09-17: "más cámara", "mejor
+// procesador", "más espacio") — dinámicos según qué categorías hay en el pool
+// mostrado, conviven con los 3 botones fijos de arriba (no los reemplazan).
+function specSortOptions(products: AlternativeProduct[]): SpecSortOption[] {
+  const categories = new Set(products.map((p) => p.category));
+  const options: SpecSortOption[] = [];
+  if (categories.has("phone")) {
+    options.push({
+      key: "camera",
+      label: "Mejor cámara",
+      getValue: (p) => {
+        const v = (p.specs as Partial<PhoneSpecs> | undefined)?.main_camera_mp;
+        return typeof v === "number" && v > 0 ? v : null;
+      },
+    });
+  }
+  if (categories.has("notebook") || categories.has("desktop")) {
+    options.push({
+      key: "processor",
+      label: "Mejor procesador",
+      getValue: (p) => {
+        const tier = (p.specs as Partial<NotebookSpecs> | undefined)?.processor_tier;
+        return tier ? TIER_RANK[tier] ?? null : null;
+      },
+    });
+  }
+  const hasStorage = categories.has("notebook") || categories.has("desktop") || categories.has("phone") || categories.has("tablet");
+  if (hasStorage) {
+    options.push({
+      key: "storage",
+      label: "Más espacio",
+      getValue: (p) => {
+        const v = (p.specs as Partial<NotebookSpecs & PhoneSpecs & TabletSpecs> | undefined)?.storage_gb;
+        return typeof v === "number" && v > 0 ? v : null;
+      },
+    });
+    options.push({
+      key: "ram",
+      label: "Más memoria",
+      getValue: (p) => {
+        const v = (p.specs as Partial<NotebookSpecs & PhoneSpecs & TabletSpecs> | undefined)?.ram_gb;
+        return typeof v === "number" && v > 0 ? v : null;
+      },
+    });
+  }
+  return options;
+}
 
 function BadgeIconSvg({ icon }: { icon: BadgeIcon }) {
   const common = {
@@ -179,6 +237,8 @@ export function RankedResultsList({
   searchShareToken,
   sessionId,
   paymentMode = "cash",
+  onCompareAdd,
+  comparedIds,
 }: RankedResultsListProps) {
   const [sortMode, setSortMode] = useState<SortMode>("relevance");
 
@@ -191,6 +251,7 @@ export function RankedResultsList({
   }, [products, topPickIds]);
 
   const valueById = useMemo(() => rankWithValue(relevanceOrdered), [relevanceOrdered]);
+  const specOptions = useMemo(() => specSortOptions(products), [products]);
 
   const sorted = useMemo(() => {
     if (sortMode === "value") {
@@ -199,8 +260,12 @@ export function RankedResultsList({
     if (sortMode === "price") {
       return [...relevanceOrdered].sort((a, b) => (a.price_cash ?? Infinity) - (b.price_cash ?? Infinity));
     }
+    const specOpt = specOptions.find((o) => o.key === sortMode);
+    if (specOpt) {
+      return [...relevanceOrdered].sort((a, b) => (specOpt.getValue(b) ?? -Infinity) - (specOpt.getValue(a) ?? -Infinity));
+    }
     return relevanceOrdered;
-  }, [relevanceOrdered, sortMode, valueById]);
+  }, [relevanceOrdered, sortMode, valueById, specOptions]);
 
   if (products.length === 0) return null;
 
@@ -227,6 +292,7 @@ export function RankedResultsList({
             ["relevance", "Relevancia"],
             ["value", "Mejor valor"],
             ["price", "Precio: menor a mayor"],
+            ...specOptions.map((o): [SortMode, string] => [o.key, o.label]),
           ] as [SortMode, string][]
         ).map(([mode, label]) => (
           <button
@@ -245,50 +311,161 @@ export function RankedResultsList({
       </div>
 
       <div className="flex flex-col gap-3">
-        {sorted.map((product, idx) => {
-          const vr = valueById.get(product.id);
-          const value = vr?.value ?? 5.5;
-          const pb = priceBlock(product, paymentMode);
-          const fields = specFields(product);
-          const spotlighted =
-            !!spotlightProductId &&
-            (product.id === spotlightProductId || !!product.variants?.some((v) => v.id === spotlightProductId));
-          const compared = isCompared(product.id);
+        {sorted.map((product, idx) => (
+          <RankedResultRow
+            key={product.id}
+            product={product}
+            idx={idx}
+            vr={valueById.get(product.id)}
+            paymentMode={paymentMode}
+            spotlighted={
+              !!spotlightProductId &&
+              (product.id === spotlightProductId || !!product.variants?.some((v) => v.id === spotlightProductId))
+            }
+            compared={isCompared(product.id)}
+            compareDisabled={compareDisabled}
+            onViewDetails={onViewDetails}
+            onCompareToggle={onCompareToggle}
+            onBuyClick={handleBuyClick}
+            onCompareAdd={onCompareAdd}
+            comparedIds={comparedIds}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 
-          return (
-            <article
-              key={product.id}
-              className={`flex gap-4 rounded-2xl border p-4 transition-colors gathering-glass-card ${
-                spotlighted
-                  ? "z-10 animate-spotlight-pulse ring-4 ring-[#3452E1] ring-offset-2 ring-offset-gathering-background border-gathering-outline-variant"
-                  : "border-gathering-outline-variant"
-              }`}
-            >
-              {/* Ranking */}
-              <div className="flex w-9 shrink-0 flex-col items-center pt-1">
-                <div
-                  className="flex h-9 w-9 items-center justify-center rounded-full font-brand text-sm font-bold text-white"
-                  style={{ backgroundColor: RANK_COLORS[idx] ?? DEFAULT_RANK_COLOR }}
-                >
-                  {idx + 1}
-                </div>
-              </div>
+interface RankedResultRowProps {
+  product: AlternativeProduct;
+  idx: number;
+  vr: ValueResult | undefined;
+  paymentMode: "cash" | "installments";
+  spotlighted: boolean;
+  compared: boolean;
+  compareDisabled: boolean;
+  onViewDetails: (product: AlternativeProduct) => void;
+  onCompareToggle: (product: AlternativeProduct) => void;
+  onBuyClick: (product: AlternativeProduct, rank: number) => void;
+  onCompareAdd?: (ids: string[], open?: boolean) => void;
+  comparedIds?: string[];
+}
 
-              {/* Foto */}
-              <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gathering-surface-container-highest/40 p-2">
-                {product.image_url ? (
-                  <img
-                    src={withBasePath(`/api/img?url=${encodeURIComponent(product.image_url)}`)}
-                    alt={product.title}
-                    className="h-full w-full object-contain"
-                  />
-                ) : (
-                  <span className="material-symbols-outlined text-3xl text-gathering-outline-variant">image</span>
-                )}
-              </div>
+function RankedResultRow({
+  product,
+  idx,
+  vr,
+  paymentMode,
+  spotlighted,
+  compared,
+  compareDisabled,
+  onViewDetails,
+  onCompareToggle,
+  onBuyClick,
+  onCompareAdd,
+  comparedIds,
+}: RankedResultRowProps) {
+  const value = vr?.value ?? 5.5;
+  const pb = priceBlock(product, paymentMode);
+  const fields = specFields(product);
 
-              {/* Contenido */}
-              <div className="flex min-w-0 flex-1 flex-col gap-2">
+  // Mini galería — mismo patrón que ProductChatCard (flechas + contador),
+  // pedido de vuelta para la Vista B (2026-09-17).
+  const gallery = Array.from(
+    new Set([product.image_url, ...(product.images ?? [])].filter((u): u is string => !!u))
+  );
+  const [imgIndex, setImgIndex] = useState(0);
+  const currentImage = gallery[imgIndex] ?? null;
+  function showPrevImage(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setImgIndex((i) => (i - 1 + gallery.length) % gallery.length);
+  }
+  function showNextImage(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setImgIndex((i) => (i + 1) % gallery.length);
+  }
+
+  // "También en X" bajo la foto (jugada #10, mismo criterio que
+  // ProductChatCard) — aprovecha el espacio libre que quedaba vacío debajo de
+  // la imagen fija de 96×96 en filas más altas.
+  const cheaperElsewhere = (() => {
+    const base = product.price_cash;
+    if (!base || !product.also_at?.length) return null;
+    const hit = product.also_at.find(
+      (v) => v.price_cash != null && v.price_cash < base && v.source !== product.source
+    );
+    if (!hit || hit.price_cash == null) return null;
+    return { store: storeName(hit.source), price: hit.price_cash };
+  })();
+
+  return (
+    <article
+      className={`flex gap-4 rounded-2xl border p-4 transition-colors gathering-glass-card ${
+        spotlighted
+          ? "z-10 animate-spotlight-pulse ring-4 ring-[#3452E1] ring-offset-2 ring-offset-gathering-background border-gathering-outline-variant"
+          : "border-gathering-outline-variant"
+      }`}
+    >
+      {/* Ranking */}
+      <div className="flex w-9 shrink-0 flex-col items-center pt-1">
+        <div
+          className="flex h-9 w-9 items-center justify-center rounded-full font-brand text-sm font-bold text-white"
+          style={{ backgroundColor: RANK_COLORS[idx] ?? DEFAULT_RANK_COLOR }}
+        >
+          {idx + 1}
+        </div>
+      </div>
+
+      {/* Foto + galería + "también en X" en el espacio libre debajo */}
+      <div className="flex w-24 shrink-0 flex-col gap-1">
+        <div className="relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gathering-surface-container-highest/40 p-2">
+          {currentImage ? (
+            <img
+              key={currentImage}
+              src={withBasePath(`/api/img?url=${encodeURIComponent(currentImage)}`)}
+              alt={product.title}
+              className="h-full w-full object-contain"
+            />
+          ) : (
+            <span className="material-symbols-outlined text-3xl text-gathering-outline-variant">image</span>
+          )}
+          {gallery.length > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={showPrevImage}
+                aria-label="Foto anterior"
+                className="absolute left-0.5 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-gathering-on-surface shadow-sm hover:bg-white"
+              >
+                <span className="material-symbols-outlined text-[13px]">chevron_left</span>
+              </button>
+              <button
+                type="button"
+                onClick={showNextImage}
+                aria-label="Foto siguiente"
+                className="absolute right-0.5 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-gathering-on-surface shadow-sm hover:bg-white"
+              >
+                <span className="material-symbols-outlined text-[13px]">chevron_right</span>
+              </button>
+              <span className="absolute bottom-0.5 right-0.5 z-10 rounded-full bg-black/55 px-1 py-0.5 font-brand text-[9px] font-semibold text-white">
+                {imgIndex + 1}/{gallery.length}
+              </span>
+            </>
+          )}
+        </div>
+        {cheaperElsewhere && (
+          <p className="text-center font-brand text-[9.5px] leading-tight text-gathering-on-surface-variant">
+            También en {cheaperElsewhere.store}
+            <br />
+            <span className="font-bold text-emerald-700">{formatPrice(cheaperElsewhere.price)}</span>
+          </p>
+        )}
+      </div>
+
+      {/* Contenido */}
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="mb-0.5 flex flex-wrap items-center gap-1.5">
@@ -391,7 +568,7 @@ export function RankedResultsList({
                   href={product.affiliate_url ?? product.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={() => handleBuyClick(product, idx + 1)}
+                  onClick={() => onBuyClick(product, idx + 1)}
                   className="flex items-center justify-center gap-1.5 rounded-xl bg-gathering-primary-fixed-dim px-4 py-2.5 font-brand text-[13px] font-bold text-white transition-transform active:scale-[0.97]"
                 >
                   <StoreLogo source={product.source} />
@@ -416,14 +593,25 @@ export function RankedResultsList({
                 >
                   {compared ? "✓ Comparando" : "Comparar"}
                 </button>
+                <OtherStoresButton
+                  productId={product.id}
+                  productTitle={product.title}
+                  current={{
+                    source: product.source,
+                    price_cash: product.price_cash,
+                    price_installment: product.price_installment,
+                    installment_count: product.installment_count ?? null,
+                    url: product.url,
+                    affiliate_url: product.affiliate_url,
+                  }}
+                  onCompareAdd={onCompareAdd}
+                  comparedIds={comparedIds}
+                  triggerClassName="rounded-lg border border-gathering-outline-variant px-3 py-1.5 font-brand text-[11.5px] font-semibold text-gathering-on-surface-variant hover:bg-gathering-surface-container"
+                />
                 <span className="text-center font-brand text-[10px] text-gathering-on-surface-variant">
                   {storeName(product.source)}
                 </span>
               </div>
             </article>
-          );
-        })}
-      </div>
-    </div>
   );
 }

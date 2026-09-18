@@ -1240,6 +1240,8 @@ export default function SearchResultsPage() {
                     searchShareToken={resolvedTokenRef.current}
                     sessionId={sessionId}
                     paymentMode={paymentMode}
+                    onCompareAdd={addSimilarToCompare}
+                    comparedIds={compareList.map((p) => p.id)}
                   />
                 ) : (
                   <RecommendedProductsGrid
