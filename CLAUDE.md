@@ -21,7 +21,8 @@ El diferencial no es solo búsqueda semántica: es traducir intención de uso ("
 | LLM principal | OpenAI GPT-4o mini (slot-filling, expansión, análisis) |
 | Embeddings | OpenAI text-embedding-3-small |
 | Scraping/APIs | MercadoLibre API oficial (MVP) |
-| Deploy | VPS Dattatec por SSH — tarball → `npm install && npm run build` → `pm2 restart indexa`. Scrapers como cron (`scripts/syncFraveOnly.ts` 06:00, `scripts/analyzeProducts.ts` 07:00). |
+| Deploy | VPS Dattatec por SSH — tarball → `npm install && npm run build` → `pm2 restart indexa`. Scrapers como cron (`scripts/syncFraveOnly.ts` 06:00, `scripts/analyzeProducts.ts` 07:00). **El deploy NO pasa por git** — es manual, tarball directo al VPS. |
+| Repositorio | GitHub: `https://github.com/Procer/indexa.git` (remote `origin`, agregado 2026-09-17 — estaba vacío, sin commits). El deploy al VPS es independiente del repo (ver fila Deploy); pushear a GitHub no actualiza el VPS ni viceversa. |
 
 ---
 
