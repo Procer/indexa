@@ -39,6 +39,9 @@ interface OtherStoresButtonProps {
   // ya incluye el productId actual (para que el comparador lo tenga al lado).
   onCompareAdd?: (ids: string[], open?: boolean) => void;
   comparedIds?: string[];
+  // La Vista B (RankedResultsList) lo quiere sin ícono — la fila ya tiene
+  // varios botones y el ícono sumaba ruido visual (pedido 2026-09-17).
+  showIcon?: boolean;
 }
 
 function StoreLogo({ source }: { source: string }) {
@@ -58,7 +61,7 @@ function StoreLogo({ source }: { source: string }) {
 
 type FetchState = "idle" | "loading" | "done" | "error";
 
-export function OtherStoresButton({ productId, productTitle, current, triggerClassName, onLinkClick, onCompareAdd, comparedIds }: OtherStoresButtonProps) {
+export function OtherStoresButton({ productId, productTitle, current, triggerClassName, onLinkClick, onCompareAdd, comparedIds, showIcon = true }: OtherStoresButtonProps) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<FetchState>("idle");
   const [variants, setVariants] = useState<ProductStoreVariant[]>([]);
@@ -114,7 +117,7 @@ export function OtherStoresButton({ productId, productTitle, current, triggerCla
           "flex items-center gap-1.5 rounded-full border border-gathering-outline-variant px-3 py-1.5 font-brand text-xs font-semibold text-gathering-primary-fixed-dim transition-colors hover:bg-gathering-primary/10"
         }
       >
-        <span className="material-symbols-outlined text-[15px]">storefront</span>
+        {showIcon && <span className="material-symbols-outlined text-[15px]">storefront</span>}
         En otras tiendas
       </button>
 

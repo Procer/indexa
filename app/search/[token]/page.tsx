@@ -979,21 +979,6 @@ export default function SearchResultsPage() {
             <p className="font-brand text-xs font-medium uppercase text-gathering-on-surface-variant sm:text-sm">
               Toda la tecnología de Argentina, indexada para vos.
             </p>
-            {/* Criterios de búsqueda vigentes — pedido explícito del usuario
-                para poder verificar qué entendió el sistema (categoría/uso/
-                presupuesto/marca) de su texto libre o de los refinamientos
-                del chat. Al lado del slogan, separado por "|", en un color
-                distinto para que se distinga de un vistazo. */}
-            {hasResults && formatSearchCriteria(searchSlots) && (
-              <>
-                <span className="font-brand text-sm text-gathering-outline-variant" aria-hidden="true">
-                  |
-                </span>
-                <p className="font-brand text-xs font-semibold normal-case text-gathering-primary-fixed-dim sm:text-sm">
-                  {formatSearchCriteria(searchSlots)}
-                </p>
-              </>
-            )}
           </a>
         </div>
         )}
@@ -1039,9 +1024,19 @@ export default function SearchResultsPage() {
           </div>
         )}
 
-        {/* Contador + filtros + compartir, todo en un solo renglón (solo cuando ya hay resultados) */}
+        {/* Contador + filtros + compartir, todo en un solo renglón (solo cuando ya hay resultados).
+            El resumen de la búsqueda (categoría/uso/presupuesto) vivía antes al
+            lado del slogan del logo — se movió acá (pedido 2026-09-17), separado
+            de la identidad del sitio, junto con el resto de la info de "qué
+            estás viendo". */}
         {hasResults && (
-          <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="mb-4 flex flex-col gap-2">
+            {formatSearchCriteria(searchSlots) && (
+              <p className="font-brand text-xs font-semibold normal-case text-gathering-primary-fixed-dim sm:text-sm">
+                {formatSearchCriteria(searchSlots)}
+              </p>
+            )}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-brand text-xs font-semibold uppercase tracking-wide text-gathering-on-surface-variant">
               <span>
                 {totalCount} resultado{totalCount !== 1 ? "s" : ""} encontrado{totalCount !== 1 ? "s" : ""}
@@ -1104,6 +1099,7 @@ export default function SearchResultsPage() {
                 Ver en otro dispositivo
               </button>
             </div>
+          </div>
           </div>
         )}
 

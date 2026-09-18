@@ -5,6 +5,7 @@ import { groupVariants } from "@/lib/domain/variantGroup";
 import { rankWithValue, valueColor, type BadgeIcon, type ValueResult } from "@/lib/domain/valueRanking";
 import { shortSpecValues } from "@/lib/domain/specExplainer";
 import { TIER_RANK } from "@/lib/domain/usageToSpecs";
+import { getGlossaryForCategories } from "@/lib/domain/specGlossary";
 import { storeName, formatPrice } from "@/lib/domain/productDisplay";
 import { withBasePath } from "@/lib/basePath";
 import { getOrCreateVisitId } from "@/lib/analytics/visit";
@@ -36,22 +37,50 @@ interface RankedResultsListProps {
 
 type SortMode = string;
 
-const RANK_COLORS = ["#D4A017", "#9AA1AC", "#B45309"];
-const DEFAULT_RANK_COLOR = "#6B7280";
+interface SortTooltip {
+  title: string;
+  text: string;
+}
 
 interface SpecSortOption {
   key: string;
   label: string;
   getValue: (p: AlternativeProduct) => number | null;
+  tooltip: SortTooltip;
 }
+
+const FIXED_SORT_TOOLTIPS: Record<string, SortTooltip> = {
+  relevance: {
+    title: "Relevancia",
+    text: "El orden pensado especialmente para lo que buscaste — combina precio, características y qué tan bien encaja con el uso que nos contaste.",
+  },
+  value: {
+    title: "Mejor valor",
+    text: "Combina el precio con las características (según la categoría) en un número del 0 al 10, para ver de un vistazo qué tan conveniente es cada opción.",
+  },
+  price: {
+    title: "Precio: menor a mayor",
+    text: "Ordena directamente de más barato a más caro, sin mirar ninguna otra característica.",
+  },
+};
 
 // Chips de orden por spec puntual (pedido 2026-09-17: "más cámara", "mejor
 // procesador", "más espacio") — dinámicos según qué categorías hay en el pool
 // mostrado, conviven con los 3 botones fijos de arriba (no los reemplazan).
+// El tooltip de cada uno reusa las metáforas curadas de specGlossary.ts (ya
+// pensadas para gente sin conocimiento técnico), en vez de escribir una
+// explicación nueva y quedar inconsistente con el resto del sitio.
 function specSortOptions(products: AlternativeProduct[]): SpecSortOption[] {
-  const categories = new Set(products.map((p) => p.category));
+  const categories = Array.from(new Set(products.map((p) => p.category)));
+  const categorySet = new Set(categories);
+  const glossaryByKey = new Map(getGlossaryForCategories(categories).map((g) => [g.key, g]));
+  const tooltipFor = (key: string, fallbackLabel: string): SortTooltip => {
+    const g = glossaryByKey.get(key);
+    return g ? { title: g.label, text: `${g.metaphor} ${g.howToTell}` } : { title: fallbackLabel, text: "" };
+  };
+
   const options: SpecSortOption[] = [];
-  if (categories.has("phone")) {
+  if (categorySet.has("phone")) {
     options.push({
       key: "camera",
       label: "Mejor cámara",
@@ -59,9 +88,10 @@ function specSortOptions(products: AlternativeProduct[]): SpecSortOption[] {
         const v = (p.specs as Partial<PhoneSpecs> | undefined)?.main_camera_mp;
         return typeof v === "number" && v > 0 ? v : null;
       },
+      tooltip: tooltipFor("camera", "Mejor cámara"),
     });
   }
-  if (categories.has("notebook") || categories.has("desktop")) {
+  if (categorySet.has("notebook") || categorySet.has("desktop")) {
     options.push({
       key: "processor",
       label: "Mejor procesador",
@@ -69,9 +99,10 @@ function specSortOptions(products: AlternativeProduct[]): SpecSortOption[] {
         const tier = (p.specs as Partial<NotebookSpecs> | undefined)?.processor_tier;
         return tier ? TIER_RANK[tier] ?? null : null;
       },
+      tooltip: tooltipFor("processor", "Mejor procesador"),
     });
   }
-  const hasStorage = categories.has("notebook") || categories.has("desktop") || categories.has("phone") || categories.has("tablet");
+  const hasStorage = categorySet.has("notebook") || categorySet.has("desktop") || categorySet.has("phone") || categorySet.has("tablet");
   if (hasStorage) {
     options.push({
       key: "storage",
@@ -80,6 +111,7 @@ function specSortOptions(products: AlternativeProduct[]): SpecSortOption[] {
         const v = (p.specs as Partial<NotebookSpecs & PhoneSpecs & TabletSpecs> | undefined)?.storage_gb;
         return typeof v === "number" && v > 0 ? v : null;
       },
+      tooltip: tooltipFor("storage", "Más espacio"),
     });
     options.push({
       key: "ram",
@@ -88,9 +120,26 @@ function specSortOptions(products: AlternativeProduct[]): SpecSortOption[] {
         const v = (p.specs as Partial<NotebookSpecs & PhoneSpecs & TabletSpecs> | undefined)?.ram_gb;
         return typeof v === "number" && v > 0 ? v : null;
       },
+      tooltip: tooltipFor("ram", "Más memoria"),
     });
   }
   return options;
+}
+
+// Tooltip al pasar el mouse (no al tocar/clickear, que ya dispara el orden) —
+// pedido explícito 2026-09-17 para que alguien sin conocimiento técnico
+// entienda por qué importa cada criterio antes de elegirlo.
+function SortButtonTooltip({ tooltip }: { tooltip: SortTooltip }) {
+  if (!tooltip.text) return null;
+  return (
+    <span
+      role="tooltip"
+      className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-64 max-w-[calc(100vw-3rem)] -translate-x-1/2 rounded-lg border border-gathering-outline-variant bg-gathering-surface p-3 text-left font-brand text-[11px] font-normal normal-case leading-snug text-gathering-on-surface-variant shadow-lg group-hover:block"
+    >
+      <span className="mb-1 block font-bold text-gathering-on-surface">{tooltip.title}</span>
+      {tooltip.text}
+    </span>
+  );
 }
 
 function BadgeIconSvg({ icon }: { icon: BadgeIcon }) {
@@ -289,24 +338,26 @@ export function RankedResultsList({
         </span>
         {(
           [
-            ["relevance", "Relevancia"],
-            ["value", "Mejor valor"],
-            ["price", "Precio: menor a mayor"],
-            ...specOptions.map((o): [SortMode, string] => [o.key, o.label]),
-          ] as [SortMode, string][]
-        ).map(([mode, label]) => (
-          <button
-            key={mode}
-            type="button"
-            onClick={() => setSortMode(mode)}
-            className={`rounded-full px-3 py-1.5 font-brand text-xs font-bold transition-colors ${
-              sortMode === mode
-                ? "bg-gathering-primary-fixed-dim text-white"
-                : "border border-gathering-outline-variant bg-gathering-surface-container text-gathering-on-surface-variant hover:border-gathering-primary-fixed-dim"
-            }`}
-          >
-            {label}
-          </button>
+            ["relevance", "Relevancia", FIXED_SORT_TOOLTIPS.relevance],
+            ["value", "Mejor valor", FIXED_SORT_TOOLTIPS.value],
+            ["price", "Precio: menor a mayor", FIXED_SORT_TOOLTIPS.price],
+            ...specOptions.map((o): [SortMode, string, SortTooltip] => [o.key, o.label, o.tooltip]),
+          ] as [SortMode, string, SortTooltip][]
+        ).map(([mode, label, tooltip]) => (
+          <span key={mode} className="group relative">
+            <button
+              type="button"
+              onClick={() => setSortMode(mode)}
+              className={`rounded-full px-3 py-1.5 font-brand text-xs font-bold uppercase tracking-wide transition-all hover:-translate-y-0.5 hover:shadow-md ${
+                sortMode === mode
+                  ? "bg-gathering-primary-fixed-dim text-white"
+                  : "border border-gathering-outline-variant bg-gathering-surface-container text-gathering-on-surface-variant hover:border-gathering-primary-fixed-dim"
+              }`}
+            >
+              {label}
+            </button>
+            <SortButtonTooltip tooltip={tooltip} />
+          </span>
         ))}
       </div>
 
@@ -408,19 +459,11 @@ function RankedResultRow({
           : "border-gathering-outline-variant"
       }`}
     >
-      {/* Ranking */}
-      <div className="flex w-9 shrink-0 flex-col items-center pt-1">
-        <div
-          className="flex h-9 w-9 items-center justify-center rounded-full font-brand text-sm font-bold text-white"
-          style={{ backgroundColor: RANK_COLORS[idx] ?? DEFAULT_RANK_COLOR }}
-        >
-          {idx + 1}
-        </div>
-      </div>
-
-      {/* Foto + galería + "también en X" en el espacio libre debajo */}
-      <div className="flex w-24 shrink-0 flex-col gap-1">
-        <div className="relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gathering-surface-container-highest/40 p-2">
+      {/* Foto + galería + "también en X" en el espacio libre debajo — sin
+          numerito de ranking (pedido 2026-09-17: el orden ya lo da la
+          posición en la lista, el círculo numerado sobraba). */}
+      <div className="flex w-32 shrink-0 flex-col gap-1">
+        <div className="relative flex h-32 w-32 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gathering-surface-container-highest/40 p-2">
           {currentImage ? (
             <img
               key={currentImage}
@@ -466,8 +509,14 @@ function RankedResultRow({
 
       {/* Contenido */}
       <div className="flex min-w-0 flex-1 flex-col gap-2">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
+                {/* Sin flex-wrap a propósito: el precio tiene que quedar SIEMPRE
+                    en la misma columna a la derecha, sin importar cuán largo sea
+                    el título — antes, con flex-wrap, un título largo empujaba el
+                    precio a una línea nueva donde perdía el align-right (bug
+                    reportado 2026-09-17). El título trunca solo (line-clamp-2)
+                    en el espacio que le queda. */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
                     <div className="mb-0.5 flex flex-wrap items-center gap-1.5">
                       {product.brand && (
                         <span className="font-brand text-[11px] font-bold uppercase tracking-widest text-gathering-on-surface-variant">
@@ -480,12 +529,8 @@ function RankedResultRow({
                             QUALITY_SCORE_STYLE[product.quality_price_score] ?? QUALITY_SCORE_STYLE.REGULAR
                           }`}
                         >
-                          {product.quality_price_score.charAt(0) + product.quality_price_score.slice(1).toLowerCase()}
-                        </span>
-                      )}
-                      {product.out_of_budget && (
-                        <span className="rounded-full bg-orange-600 px-2 py-0.5 font-brand text-[9px] font-bold uppercase text-white">
-                          Fuera de presupuesto
+                          {product.quality_price_score.charAt(0) + product.quality_price_score.slice(1).toLowerCase()}{" "}
+                          calidad/precio
                         </span>
                       )}
                       {product.sponsored && (
@@ -497,10 +542,16 @@ function RankedResultRow({
                     <h3 className="line-clamp-2 font-brand text-[15px] font-bold leading-snug text-gathering-on-surface">
                       {product.title}
                     </h3>
+                    {product.out_of_budget && (
+                      <p className="mt-1 flex items-start gap-1 font-brand text-[11px] font-medium text-orange-700">
+                        <span className="material-symbols-outlined text-[13px]">info</span>
+                        Se pasa un poco de tu presupuesto — te la mostramos igual por si te sirve.
+                      </p>
+                    )}
                   </div>
                   {pb && (
                     <div className="shrink-0 text-right">
-                      <p className="font-brand text-lg font-bold text-gathering-on-surface">
+                      <p className="font-brand text-2xl font-bold text-gathering-on-surface">
                         {pb.leadAmount}
                         <span className="ml-1 text-xs font-medium text-gathering-on-surface-variant">{pb.leadUnit}</span>
                       </p>
@@ -569,7 +620,7 @@ function RankedResultRow({
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => onBuyClick(product, idx + 1)}
-                  className="flex items-center justify-center gap-1.5 rounded-xl bg-gathering-primary-fixed-dim px-4 py-2.5 font-brand text-[13px] font-bold text-white transition-transform active:scale-[0.97]"
+                  className="flex items-center justify-center gap-1.5 rounded-xl bg-gathering-primary-fixed-dim px-4 py-2.5 font-brand text-[13px] font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.97]"
                 >
                   <StoreLogo source={product.source} />
                   Comprar
@@ -577,7 +628,7 @@ function RankedResultRow({
                 <button
                   type="button"
                   onClick={() => onViewDetails(product)}
-                  className="rounded-lg border border-gathering-outline-variant px-3 py-1.5 font-brand text-[11.5px] font-semibold text-gathering-on-surface-variant hover:bg-gathering-surface-container"
+                  className="rounded-lg border border-gathering-outline-variant px-3 py-1.5 font-brand text-[11.5px] font-semibold text-gathering-on-surface-variant transition-all hover:-translate-y-0.5 hover:border-gathering-primary-fixed-dim hover:bg-gathering-surface-container hover:shadow-md"
                 >
                   Detalles
                 </button>
@@ -585,10 +636,10 @@ function RankedResultRow({
                   type="button"
                   onClick={() => onCompareToggle(product)}
                   disabled={!compared && compareDisabled}
-                  className={`rounded-lg border px-3 py-1.5 font-brand text-[11.5px] font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
+                  className={`rounded-lg border px-3 py-1.5 font-brand text-[11.5px] font-semibold transition-all hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none ${
                     compared
                       ? "border-gathering-primary-fixed-dim bg-gathering-primary-fixed-dim/10 text-gathering-primary-fixed-dim"
-                      : "border-gathering-outline-variant text-gathering-on-surface-variant hover:bg-gathering-surface-container"
+                      : "border-gathering-outline-variant text-gathering-on-surface-variant hover:border-gathering-primary-fixed-dim hover:bg-gathering-surface-container"
                   }`}
                 >
                   {compared ? "✓ Comparando" : "Comparar"}
@@ -606,7 +657,8 @@ function RankedResultRow({
                   }}
                   onCompareAdd={onCompareAdd}
                   comparedIds={comparedIds}
-                  triggerClassName="rounded-lg border border-gathering-outline-variant px-3 py-1.5 font-brand text-[11.5px] font-semibold text-gathering-on-surface-variant hover:bg-gathering-surface-container"
+                  showIcon={false}
+                  triggerClassName="rounded-lg border border-gathering-outline-variant px-3 py-1.5 font-brand text-[11.5px] font-semibold text-gathering-on-surface-variant transition-all hover:-translate-y-0.5 hover:border-gathering-primary-fixed-dim hover:bg-gathering-surface-container hover:shadow-md"
                 />
                 <span className="text-center font-brand text-[10px] text-gathering-on-surface-variant">
                   {storeName(product.source)}
