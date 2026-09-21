@@ -407,6 +407,21 @@ export default function SearchResultsPage() {
     if (questions.length > 0 || products.length > 0) setChatActive(true);
   }, [questions.length, products.length]);
 
+  // Terminó una búsqueda con resultados: en mobile el chat (92vw) tapa la
+  // grilla, así que se minimiza SIEMPRE para mostrarla (queda el botón flotante).
+  const minimizeChatOnMobile = () => {
+    if (window.innerWidth < 1024) setChatOpen(false);
+  };
+
+  // Llegó una pregunta que el usuario tiene que responder (búsqueda nueva sin
+  // resultados todavía, ej. escribió "quiero un celular iphone" en el chat).
+  // En mobile el chat se minimiza solo al enviar, así que la pregunta caía en
+  // un chat oculto sin ningún aviso — lo reabrimos para que se vea.
+  const hasPendingQuestion = questions.length > 0 && products.length === 0;
+  useEffect(() => {
+    if (hasPendingQuestion) setChatOpen(true);
+  }, [hasPendingQuestion, questions]);
+
   useEffect(() => {
     fetch(withBasePath("/api/products/discover"))
       .then((res) => (res.ok ? res.json() : Promise.reject()))
@@ -478,6 +493,7 @@ export default function SearchResultsPage() {
               sessionStorage.setItem(`search_${data.share_token}`, JSON.stringify({ ...data, rawInput: input, originalInput: currentOriginal }));
               setError(false);
               setProducts(data.products);
+              minimizeChatOnMobile();
               setInlineQuestions(data.inline_questions ?? []);
               setTotalCount(data.total_count);
               setSearchSlots(data.slots);
@@ -517,6 +533,7 @@ export default function SearchResultsPage() {
           JSON.stringify({ ...data, rawInput: input, originalInput: currentOriginal })
         );
         setProducts(data.products);
+        minimizeChatOnMobile();
         setInlineQuestions(data.inline_questions ?? []);
         setTotalCount(data.total_count);
         setSearchSlots(data.slots);
@@ -581,6 +598,7 @@ export default function SearchResultsPage() {
     if (cached) {
       const data = JSON.parse(cached) as StoredSearch;
       setProducts(data.products);
+      minimizeChatOnMobile();
       setInlineQuestions(data.inline_questions ?? []);
       setTotalCount(data.total_count);
       setSearchSlots(data.slots ?? null);
@@ -1294,7 +1312,7 @@ export default function SearchResultsPage() {
             />
           </div>
         )}
-        {chatActive && !chatOpen && <ChatFAB onClick={() => setChatOpen(true)} />}
+        {chatActive && !chatOpen && <ChatFAB onClick={() => setChatOpen(true)} pending={hasPendingQuestion} />}
 
         <ProductDetailPanel
           product={selectedProduct}

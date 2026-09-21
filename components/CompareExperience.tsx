@@ -403,7 +403,7 @@ function ChatCTAButton({ onClick }: { onClick: () => void }) {
 // Efecto llamativo (mismo patrón que ChatCTAButton más abajo: anillo
 // animate-ping + glow) para que el usuario note que el botón es interactivo —
 // pedido en vivo 2026-09-10, el botón pasaba desapercibido.
-export function ChatFAB({ onClick }: { onClick: () => void }) {
+export function ChatFAB({ onClick, pending }: { onClick: () => void; pending?: boolean }) {
   return (
     <div className="fixed bottom-4 right-4 z-30">
       <span className="pointer-events-none absolute inset-0 animate-ping rounded-full bg-gathering-primary-fixed-dim opacity-30" />
@@ -415,6 +415,14 @@ export function ChatFAB({ onClick }: { onClick: () => void }) {
       >
         <ChatIcon className="h-6 w-6" />
       </button>
+      {pending && (
+        <span
+          aria-label="Tenés una pregunta para responder"
+          className="pointer-events-none absolute -right-1 -top-1 flex h-5 w-5 animate-bounce items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white"
+        >
+          1
+        </span>
+      )}
     </div>
   );
 }
