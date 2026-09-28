@@ -11,6 +11,6 @@ import type { GuidingQuestion } from "@/types";
 export const HOME_SEED_PHRASE = "quiero comprar algo de tecnología, todavía no sé bien qué";
 
 export const HOME_SEED_QUESTION: GuidingQuestion = {
-  text: "¿Qué tipo de equipo estás buscando?",
+  text: "¿QUÉ ESTÁS BUSCANDO?",
   tags: ["💻 Notebook", "🖥️ PC de escritorio", "📱 Tablet", "📺 Smart TV", "📲 Celular"],
 };

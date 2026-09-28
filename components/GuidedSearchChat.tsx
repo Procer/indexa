@@ -635,12 +635,14 @@ export function GuidedSearchChat({
             </div>
           </a>
           <div>
-            <p className="font-brand text-sm font-bold text-gathering-on-surface">Tu asesor técnico</p>
-            <p className="font-brand text-xs text-gathering-primary-fixed">
-              {isGathering
-                ? "Te hago un par de preguntas para encontrar justo lo que necesitás"
-                : "Te digo qué conviene elegir, o busco de nuevo si nada te cierra"}
+            <p className="font-brand text-sm font-bold text-gathering-on-surface">
+              {isGathering ? "SOY TU ASESOR TÉCNICO" : "Tu asesor técnico"}
             </p>
+            {!isGathering && (
+              <p className="font-brand text-xs text-gathering-primary-fixed">
+                Te digo qué conviene elegir, o busco de nuevo si nada te cierra
+              </p>
+            )}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">

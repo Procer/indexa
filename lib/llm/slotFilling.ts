@@ -241,7 +241,7 @@ export function getGuidingQuestions(slots: Slots): GuidingQuestion[] {
   // ── Tipo de dispositivo (solo si no está definido Y tampoco hay uso) ──────────
   if (!slots.category && slots.use_cases.length === 0) {
     questions.push({
-      text: "¿Qué tipo de equipo estás buscando?",
+      text: "¿QUÉ ESTÁS BUSCANDO?",
       tags: ["💻 Notebook", "🖥️ PC de escritorio", "📱 Tablet", "📺 Smart TV", "📲 Celular"],
     });
   }
