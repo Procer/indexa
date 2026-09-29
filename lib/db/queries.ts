@@ -298,7 +298,7 @@ export interface StoreSummary {
 
 export async function getStoreSummaries(): Promise<StoreSummary[]> {
   const rows = await sql<
-    { source: string; category: string; n: number; min_price: string | null; last_update: Date | null }[]
+    { source: string; category: string; n: number; min_price: string | null; last_update: Date | string | null }[]
   >`
     SELECT source, category, COUNT(*)::int AS n,
            MIN(price_cash) FILTER (WHERE price_cash > 0) AS min_price,
@@ -316,7 +316,8 @@ export async function getStoreSummaries(): Promise<StoreSummary[]> {
     s.byCategory[r.category] = r.n;
     const min = r.min_price != null ? Number(r.min_price) : null;
     if (min != null && (s.minPrice == null || min < s.minPrice)) s.minPrice = min;
-    const upd = r.last_update ? r.last_update.toISOString() : null;
+    // Según el driver/parsers de sql.ts el timestamp llega como Date o como string.
+    const upd = r.last_update ? new Date(r.last_update).toISOString() : null;
     if (upd && (!s.lastUpdate || upd > s.lastUpdate)) s.lastUpdate = upd;
     map.set(r.source, s);
   }
