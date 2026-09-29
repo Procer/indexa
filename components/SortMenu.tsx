@@ -53,7 +53,7 @@ export function SortMenu({ options, value, onChange }: SortMenuProps) {
         <span className="material-symbols-outlined text-[18px] text-gathering-primary" aria-hidden="true">
           swap_vert
         </span>
-        <span className="text-gathering-on-surface-variant">Ordenar:</span>
+        <span className="hidden text-gathering-on-surface-variant sm:inline">Ordenar:</span>
         <span>{current.label}</span>
         <span
           className={`material-symbols-outlined text-[18px] transition-transform ${open ? "rotate-180" : ""}`}
@@ -101,7 +101,7 @@ export function SortMenu({ options, value, onChange }: SortMenuProps) {
                     {opt.label}
                   </span>
                   {opt.description && (
-                    <span className="mt-0.5 block font-brand text-xs leading-snug text-gathering-on-surface-variant">
+                    <span className="mt-0.5 line-clamp-2 block font-brand text-xs leading-snug text-gathering-on-surface-variant">
                       {opt.description}
                     </span>
                   )}
