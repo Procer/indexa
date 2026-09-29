@@ -995,7 +995,7 @@ export default function SearchResultsPage() {
             (chatCentered): el logo grande de esa pantalla ya cumple ese rol,
             uno chico arriba a la vez quedaba redundante. */}
         {!chatCentered && (
-        <div className="mb-1 flex flex-wrap items-center justify-between gap-3 py-1.5">
+        <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5">
           <a
             href={withBasePath("/")}
             className="flex flex-wrap items-center justify-center gap-3 sm:justify-start"
@@ -1006,41 +1006,23 @@ export default function SearchResultsPage() {
               Toda la tecnología de Argentina, indexada para vos.
             </p>
           </a>
+          {hasResults && formatSearchCriteria(searchSlots) && (
+            <>
+              <span className="hidden h-6 w-px bg-gathering-outline-variant sm:block" aria-hidden="true" />
+              <p className="font-brand text-xs font-semibold text-gathering-primary sm:text-sm">
+                {formatSearchCriteria(searchSlots)}
+              </p>
+            </>
+          )}
         </div>
         )}
 
-        {/* Barra de resultados: resumen de la búsqueda + una sola fila de controles
+        {/* Barra de resultados: una sola fila de controles (el resumen de la búsqueda vive junto al slogan)
             (Filtros, Ordenar, vista, Compartir). Antes eran ~14 controles sueltos
             repartidos en tres renglones (chips de filtro siempre visibles, dos
             menús de orden, tres enlaces de compartir): se agruparon en menús. */}
         {hasResults && (
           <div className={`mb-4 flex flex-col gap-3 ${chatOpen ? "lg:pr-[26rem]" : ""}`}>
-            <div>
-              {formatSearchCriteria(searchSlots) && (
-                <p className="font-brand text-sm font-semibold text-gathering-primary sm:text-base">
-                  {formatSearchCriteria(searchSlots)}
-                </p>
-              )}
-              <p className="mt-0.5 font-brand text-sm text-gathering-on-surface-variant">
-                <strong className="text-gathering-on-surface">{totalCount}</strong> resultado{totalCount !== 1 ? "s" : ""}
-                {!tiedFilter && displayedProducts.length !== products.length && (
-                  <span className="text-gathering-primary"> · mostrando {displayedProducts.length} con los filtros</span>
-                )}
-                {appliedRefinements.length > 0 && (
-                  <span> · {appliedRefinements.length} filtro{appliedRefinements.length !== 1 ? "s" : ""} del chat</span>
-                )}
-                {totalCount > products.length && (
-                  <button
-                    type="button"
-                    onClick={() => setShowAllResultsModal(true)}
-                    className="ml-2 font-semibold text-gathering-primary hover:underline"
-                  >
-                    Ver todos
-                  </button>
-                )}
-              </p>
-            </div>
-
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -1079,6 +1061,25 @@ export default function SearchResultsPage() {
                   onChange={(v) => setSortOrder(v as "relevance" | "price_asc" | "price_desc")}
                 />
               )}
+
+              <p className="min-w-0 basis-full font-brand text-sm text-gathering-on-surface-variant sm:flex-1 sm:basis-0 sm:text-center">
+                <strong className="text-gathering-on-surface">{totalCount}</strong> resultado{totalCount !== 1 ? "s" : ""}
+                {!tiedFilter && displayedProducts.length !== products.length && (
+                  <span className="text-gathering-primary"> · mostrando {displayedProducts.length} con los filtros</span>
+                )}
+                {appliedRefinements.length > 0 && (
+                  <span> · {appliedRefinements.length} filtro{appliedRefinements.length !== 1 ? "s" : ""} del chat</span>
+                )}
+                {totalCount > products.length && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllResultsModal(true)}
+                    className="ml-2 font-semibold text-gathering-primary hover:underline"
+                  >
+                    Ver todos
+                  </button>
+                )}
+              </p>
 
               <div className="ml-auto flex items-center gap-2">
                 <div
