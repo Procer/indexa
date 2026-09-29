@@ -33,9 +33,15 @@ interface RankedResultsListProps {
   paymentMode?: "cash" | "installments";
   onCompareAdd?: (ids: string[], open?: boolean) => void;
   comparedIds?: string[];
+  // Orden controlado desde afuera (la barra de herramientas de la página tiene el
+  // único menú de orden). Sin estas props, el componente maneja su propio orden.
+  sortMode?: SortMode;
+  onSortModeChange?: (mode: SortMode) => void;
+  // Oculta la fila propia de "Ordenar por" (cuando la página ya la muestra).
+  hideSortBar?: boolean;
 }
 
-type SortMode = string;
+export type SortMode = string;
 
 interface SortTooltip {
   title: string;
@@ -49,7 +55,7 @@ interface SpecSortOption {
   tooltip: SortTooltip;
 }
 
-const FIXED_SORT_TOOLTIPS: Record<string, SortTooltip> = {
+export const FIXED_SORT_TOOLTIPS: Record<string, SortTooltip> = {
   relevance: {
     title: "Relevancia",
     text: "El orden pensado especialmente para lo que buscaste — combina precio, características y qué tan bien encaja con el uso que nos contaste.",
@@ -70,7 +76,7 @@ const FIXED_SORT_TOOLTIPS: Record<string, SortTooltip> = {
 // El tooltip de cada uno reusa las metáforas curadas de specGlossary.ts (ya
 // pensadas para gente sin conocimiento técnico), en vez de escribir una
 // explicación nueva y quedar inconsistente con el resto del sitio.
-function specSortOptions(products: AlternativeProduct[]): SpecSortOption[] {
+export function specSortOptions(products: AlternativeProduct[]): SpecSortOption[] {
   const categories = Array.from(new Set(products.map((p) => p.category)));
   const categorySet = new Set(categories);
   const glossaryByKey = new Map(getGlossaryForCategories(categories).map((g) => [g.key, g]));
@@ -288,8 +294,13 @@ export function RankedResultsList({
   paymentMode = "cash",
   onCompareAdd,
   comparedIds,
+  sortMode: sortModeProp,
+  onSortModeChange,
+  hideSortBar = false,
 }: RankedResultsListProps) {
-  const [sortMode, setSortMode] = useState<SortMode>("relevance");
+  const [sortModeState, setSortModeState] = useState<SortMode>("relevance");
+  const sortMode = sortModeProp ?? sortModeState;
+  const setSortMode = onSortModeChange ?? setSortModeState;
 
   const relevanceOrdered = useMemo(() => {
     const byId = new Map(products.map((p) => [p.id, p]));
@@ -332,6 +343,7 @@ export function RankedResultsList({
 
   return (
     <div className="flex flex-col gap-3">
+      {!hideSortBar && (
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-brand text-[11px] font-bold uppercase tracking-wide text-gathering-on-surface-variant">
           Ordenar por
@@ -360,6 +372,7 @@ export function RankedResultsList({
           </span>
         ))}
       </div>
+      )}
 
       <div className="flex flex-col gap-3">
         {sorted.map((product, idx) => (
@@ -666,4 +679,16 @@ function RankedResultRow({
               </div>
             </article>
   );
+}
+
+/** Opciones del menú de orden de la vista "Lista por valor" (fijas + por spec según el pool). */
+export function getRankedSortOptions(
+  products: AlternativeProduct[]
+): { value: string; label: string; description: string }[] {
+  return [
+    { value: "relevance", label: "Relevancia", description: FIXED_SORT_TOOLTIPS.relevance.text },
+    { value: "value", label: "Mejor valor", description: FIXED_SORT_TOOLTIPS.value.text },
+    { value: "price", label: "Precio: menor a mayor", description: FIXED_SORT_TOOLTIPS.price.text },
+    ...specSortOptions(products).map((o) => ({ value: o.key, label: o.label, description: o.tooltip.text })),
+  ];
 }

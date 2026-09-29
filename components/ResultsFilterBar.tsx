@@ -13,6 +13,8 @@ interface ResultsFilterBarProps {
   // filtro — ahí se llama onHighlightConsumed para que el padre lo limpie.
   highlightKey?: string | null;
   onHighlightConsumed?: () => void;
+  // Cuántos valores de filtro hay elegidos (para el contador del botón "Filtros").
+  onActiveCountChange?: (count: number) => void;
 }
 
 export function ResultsFilterBar({
@@ -21,6 +23,7 @@ export function ResultsFilterBar({
   onFilteredChange,
   highlightKey,
   onHighlightConsumed,
+  onActiveCountChange,
 }: ResultsFilterBarProps) {
   const facets = useMemo(() => getFilterFacets(category), [category]);
   const [selected, setSelected] = useState<Record<string, Set<string>>>({});
@@ -72,6 +75,11 @@ export function ResultsFilterBar({
   }
 
   const activeCount = Object.values(selected).reduce((sum, set) => sum + set.size, 0);
+
+  useEffect(() => {
+    onActiveCountChange?.(activeCount);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCount]);
 
   return (
     <div ref={containerRef} className="flex flex-wrap items-center gap-2">

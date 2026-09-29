@@ -10,9 +10,10 @@ import { DiscoverySections } from "@/components/DiscoverySections";
 import { GuidedSearchChat } from "@/components/GuidedSearchChat";
 import { ProductDetailPanel } from "@/components/ProductDetailPanel";
 import { RecommendedProductsGrid } from "@/components/RecommendedProductsGrid";
-import { RankedResultsList } from "@/components/RankedResultsList";
+import { RankedResultsList, getRankedSortOptions } from "@/components/RankedResultsList";
 import { ResultsFilterBar } from "@/components/ResultsFilterBar";
-import { SortDropdown } from "@/components/SortDropdown";
+import { SortMenu } from "@/components/SortMenu";
+import { ShareMenu } from "@/components/ShareMenu";
 import { AllResultsModal } from "@/components/AllResultsModal";
 import { CompareExperience, ChatFAB } from "@/components/CompareExperience";
 import { Footer } from "@/components/Footer";
@@ -285,6 +286,13 @@ export default function SearchResultsPage() {
   const [chatRecommendations, setChatRecommendations] = useState<{ products: AlternativeProduct[]; topPickIds?: string[] } | null>(null);
   // Filtro de la grilla que el chat pidió resaltar (ej. "store"). Se limpia solo.
   const [highlightFacet, setHighlightFacet] = useState<string | null>(null);
+  // Panel de filtros plegado por defecto; se abre solo cuando el chat pide resaltar uno.
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [activeFacetCount, setActiveFacetCount] = useState(0);
+  const [rankedSort, setRankedSort] = useState<string>("relevance");
+  useEffect(() => {
+    if (highlightFacet) setFiltersOpen(true);
+  }, [highlightFacet]);
   // Tarjeta que el chat identificó como respuesta a una pregunta puntual
   // ("¿cuál tiene más RAM?") — se resalta con una animación que queda fija
   // hasta que el usuario busca/pregunta otra cosa (probado en vivo: un
@@ -1001,123 +1009,133 @@ export default function SearchResultsPage() {
         </div>
         )}
 
-        {/* Orden + filtros por marca/procesador/memoria/almacenamiento/pantalla
-            (u otras facetas según la categoría, ver lib/domain/resultFilters.ts)
-            juntos en el mismo renglón — pedido explícito del usuario (antes el
-            orden vivía separado arriba, en la barra del logo). */}
+        {/* Barra de resultados: resumen de la búsqueda + una sola fila de controles
+            (Filtros, Ordenar, vista, Compartir). Antes eran ~14 controles sueltos
+            repartidos en tres renglones (chips de filtro siempre visibles, dos
+            menús de orden, tres enlaces de compartir): se agruparon en menús. */}
         {hasResults && (
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <SortDropdown value={sortOrder} onChange={setSortOrder} />
-            <ResultsFilterBar
-              products={products}
-              category={chatCategory}
-              onFilteredChange={setFilteredProducts}
-              highlightKey={highlightFacet}
-              onHighlightConsumed={() => setHighlightFacet(null)}
-            />
-            <div className="ml-auto flex items-center gap-1 rounded-full border border-gathering-outline-variant bg-gathering-surface-container p-1">
-              <button
-                type="button"
-                onClick={() => setResultsView("ranked")}
-                className={`rounded-full px-3 py-1.5 font-brand text-xs font-bold transition-colors ${
-                  resultsView === "ranked"
-                    ? "bg-gathering-primary-fixed-dim text-white"
-                    : "text-gathering-on-surface-variant"
-                }`}
-              >
-                Lista por valor
-              </button>
-              <button
-                type="button"
-                onClick={() => setResultsView("classic")}
-                className={`rounded-full px-3 py-1.5 font-brand text-xs font-bold transition-colors ${
-                  resultsView === "classic"
-                    ? "bg-gathering-primary-fixed-dim text-white"
-                    : "text-gathering-on-surface-variant"
-                }`}
-              >
-                Vista clásica
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Contador + filtros + compartir, todo en un solo renglón (solo cuando ya hay resultados).
-            El resumen de la búsqueda (categoría/uso/presupuesto) vivía antes al
-            lado del slogan del logo — se movió acá (pedido 2026-09-17), separado
-            de la identidad del sitio, junto con el resto de la info de "qué
-            estás viendo". */}
-        {hasResults && (
-          <div className="mb-4 flex flex-col gap-2">
-            {formatSearchCriteria(searchSlots) && (
-              <p className="font-brand text-xs font-semibold normal-case text-gathering-primary-fixed-dim sm:text-sm">
-                {formatSearchCriteria(searchSlots)}
-              </p>
-            )}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-brand text-xs font-semibold uppercase tracking-wide text-gathering-on-surface-variant">
-              <span>
-                {totalCount} resultado{totalCount !== 1 ? "s" : ""} encontrado{totalCount !== 1 ? "s" : ""}
+          <div className="mb-4 flex flex-col gap-3">
+            <div>
+              {formatSearchCriteria(searchSlots) && (
+                <p className="font-brand text-sm font-semibold text-gathering-primary sm:text-base">
+                  {formatSearchCriteria(searchSlots)}
+                </p>
+              )}
+              <p className="mt-0.5 font-brand text-sm text-gathering-on-surface-variant">
+                <strong className="text-gathering-on-surface">{totalCount}</strong> resultado{totalCount !== 1 ? "s" : ""}
                 {!tiedFilter && displayedProducts.length !== products.length && (
-                  <span className="normal-case text-gathering-primary-fixed-dim">
-                    {" "}
-                    · mostrando {displayedProducts.length} con los filtros aplicados
-                  </span>
+                  <span className="text-gathering-primary"> · mostrando {displayedProducts.length} con los filtros</span>
                 )}
                 {appliedRefinements.length > 0 && (
-                  <span className="normal-case text-gathering-outline">
-                    {" "}
-                    · {appliedRefinements.length} filtro{appliedRefinements.length !== 1 ? "s" : ""} aplicado{appliedRefinements.length !== 1 ? "s" : ""}
+                  <span> · {appliedRefinements.length} filtro{appliedRefinements.length !== 1 ? "s" : ""} del chat</span>
+                )}
+                {totalCount > products.length && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllResultsModal(true)}
+                    className="ml-2 font-semibold text-gathering-primary hover:underline"
+                  >
+                    Ver todos
+                  </button>
+                )}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setFiltersOpen((o) => !o)}
+                aria-expanded={filtersOpen}
+                aria-controls="panel-filtros"
+                className={`flex items-center gap-2 rounded-full border px-3.5 py-2 font-brand text-sm font-semibold transition-colors ${
+                  filtersOpen || activeFacetCount > 0
+                    ? "border-gathering-primary/50 bg-gathering-primary/10 text-gathering-primary"
+                    : "border-gathering-outline-variant bg-gathering-surface-container text-gathering-on-surface hover:bg-black/5"
+                } ${highlightFacet ? "animate-[pulse_1.4s_ease-in-out_infinite] ring-2 ring-gathering-primary ring-offset-2 ring-offset-gathering-background" : ""}`}
+              >
+                <span className="material-symbols-outlined text-[18px]" aria-hidden="true">tune</span>
+                Filtros
+                {activeFacetCount > 0 && (
+                  <span className="flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-gathering-primary px-1 text-[11px] font-bold text-white">
+                    {activeFacetCount}
                   </span>
                 )}
-              </span>
-              {totalCount > products.length && (
-                <button
-                  type="button"
-                  onClick={() => setShowAllResultsModal(true)}
-                  className="uppercase text-gathering-primary-fixed-dim hover:underline"
-                >
-                  · Ver todos
-                </button>
+              </button>
+
+              {resultsView === "ranked" ? (
+                <SortMenu
+                  options={getRankedSortOptions(displayedProducts)}
+                  value={rankedSort}
+                  onChange={setRankedSort}
+                />
+              ) : (
+                <SortMenu
+                  options={[
+                    { value: "relevance", label: "Relevancia" },
+                    { value: "price_asc", label: "Precio: menor a mayor" },
+                    { value: "price_desc", label: "Precio: mayor a menor" },
+                  ]}
+                  value={sortOrder}
+                  onChange={(v) => setSortOrder(v as "relevance" | "price_asc" | "price_desc")}
+                />
               )}
+
+              <div className="ml-auto flex items-center gap-2">
+                <div
+                  className="flex items-center gap-0.5 rounded-full border border-gathering-outline-variant bg-gathering-surface-container p-0.5"
+                  role="group"
+                  aria-label="Tipo de vista"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSortOrder("relevance");
+                      setResultsView("ranked");
+                    }}
+                    aria-pressed={resultsView === "ranked"}
+                    title="Lista ordenada por valor, con explicaciones"
+                    className={`rounded-full px-3 py-1.5 font-brand text-xs font-bold transition-colors ${
+                      resultsView === "ranked" ? "bg-gathering-primary text-white" : "text-gathering-on-surface-variant"
+                    }`}
+                  >
+                    Por valor
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setResultsView("classic")}
+                    aria-pressed={resultsView === "classic"}
+                    title="Vista de tarjetas clásica"
+                    className={`rounded-full px-3 py-1.5 font-brand text-xs font-bold transition-colors ${
+                      resultsView === "classic" ? "bg-gathering-primary text-white" : "text-gathering-on-surface-variant"
+                    }`}
+                  >
+                    Clásica
+                  </button>
+                </div>
+                <ShareMenu
+                  copied={copied}
+                  onCopy={handleShare}
+                  whatsappHref={`https://wa.me/?text=${encodeURIComponent(`Mirá lo que encontré para "${rawInput}": ${typeof window !== "undefined" ? window.location.href : ""}`)}`}
+                  onOtherDevice={() => setShowSyncModal(true)}
+                />
+              </div>
             </div>
-            {/* Compartir/WhatsApp pegados al renglón de "N resultados" — antes
-                quedaban separados a la derecha del todo (justify-between),
-                pedido explícito del usuario para tenerlos juntos. */}
-            <div className="flex items-center gap-4">
-              <button
-                type="button"
-                onClick={handleShare}
-                className="flex items-center gap-1.5 font-brand text-sm font-medium text-gathering-on-surface hover:text-gathering-primary-fixed-dim"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
-                </svg>
-                {copied ? "¡Link copiado!" : "Compartir búsqueda"}
-              </button>
-              <a
-                href={`https://wa.me/?text=${encodeURIComponent(`Mirá lo que encontré para "${rawInput}": ${typeof window !== "undefined" ? window.location.href : ""}`)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 font-brand text-sm font-medium text-[#25D366] hover:text-[#128C7E]"
-              >
-                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-                  <path fillRule="evenodd" clipRule="evenodd" d="M12.004 2.003c-5.514 0-9.997 4.483-9.997 9.997 0 1.763.462 3.483 1.34 4.997L2 22l5.116-1.342a9.958 9.958 0 004.888 1.245h.004c5.514 0 9.997-4.483 9.997-9.997 0-2.67-1.04-5.18-2.928-7.069a9.937 9.937 0 00-7.073-2.834zm5.85 15.847c-.685.685-2.267 1.373-3.147 1.51-.804.125-1.756.18-2.833-.178a11.13 11.13 0 01-1.032-.383c-1.816-.78-4.056-2.5-5.72-5.163a10.25 10.25 0 01-1.16-2.24c-.303-.833-.462-1.706-.462-2.55 0-1.98.795-3.303 1.48-3.988a1.68 1.68 0 011.199-.503c.148 0 .297.001.428.008.372.017.558.04.803.628.297.716.968 2.478 1.052 2.658.083.18.14.396.014.635-.124.24-.187.388-.372.596-.186.208-.39.464-.556.622-.186.178-.38.372-.163.729.216.357.96 1.583 2.06 2.564 1.416 1.263 2.61 1.654 2.968 1.842.357.187.567.156.777-.093.21-.248.9-1.05 1.14-1.41.24-.36.48-.297.81-.178.33.119 2.1.99 2.46 1.17.36.18.6.267.687.418.087.15.087.87-.208 1.71z" />
-                </svg>
-                WhatsApp
-              </a>
-              <button
-                type="button"
-                onClick={() => setShowSyncModal(true)}
-                className="flex items-center gap-1.5 font-brand text-sm font-medium text-gathering-on-surface hover:text-gathering-primary-fixed-dim"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
-                </svg>
-                Ver en otro dispositivo
-              </button>
+
+            {/* Los filtros siguen montados aunque el panel esté cerrado: son los que calculan
+                qué productos se muestran, así que no se pierden al plegarlos. */}
+            <div
+              id="panel-filtros"
+              className={filtersOpen ? "rounded-2xl border border-gathering-outline-variant bg-gathering-surface-container p-3" : "hidden"}
+            >
+              <ResultsFilterBar
+                products={products}
+                category={chatCategory}
+                onFilteredChange={setFilteredProducts}
+                highlightKey={highlightFacet}
+                onHighlightConsumed={() => setHighlightFacet(null)}
+                onActiveCountChange={setActiveFacetCount}
+              />
             </div>
-          </div>
           </div>
         )}
 
@@ -1244,6 +1262,9 @@ export default function SearchResultsPage() {
               >
                 {resultsView === "ranked" ? (
                   <RankedResultsList
+                    sortMode={rankedSort}
+                    onSortModeChange={setRankedSort}
+                    hideSortBar
                     products={displayedProducts}
                     topPickIds={displayedTopPickIds}
                     spotlightProductId={spotlightProductId}
