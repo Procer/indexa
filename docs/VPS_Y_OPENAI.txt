@@ -1,0 +1,167 @@
+TECHSEARCH AR (INDEXA) - ESPECIFICACIONES DE VPS DEDICADO Y CREDITO OPENAI
+Fecha: 2026-09-29
+Objetivo: correr el proyecto SOLO en un VPS propio, sin compartirlo con otras apps.
+
+IMPORTANTE: los datos marcados [MEDIDO] salen del VPS actual. Los marcados
+[ESTIMADO] son calculos mios: verificalos antes de contratar.
+
+
+================================================================
+1. SITUACION ACTUAL [MEDIDO 2026-09-29]
+================================================================
+- VPS compartido: 2 vCPU, 7.9 GB RAM, 2 GB swap, disco 64 GB.
+- Disco al 89% (57 GB usados, 7 GB libres). Es el problema mas urgente.
+- Comparte PM2 con: chatbot-saas, chatbot-telegram, km-auto, motio,
+  prestamos-backend. Ademas hay crons de anka-promo y jmr.
+- RAM: 3.5 GB usada, 0.7 GB libre, 4.2 GB de cache, swap usando 721 MB.
+- Lo que ocupa indexa: app 871 MB (con node_modules y .next),
+  PostgreSQL 232 MB, backups 305 MB.
+- Proceso indexa en pm2: 25-90 MB de RAM.
+
+Conclusion: indexa es liviano. La base tiene solo 232 MB. Lo que pide
+recursos es el "npm run build" (necesita ~2 GB de RAM libre) y los scrapers
+nocturnos, no el trafico.
+
+
+================================================================
+2. VPS DEDICADO RECOMENDADO
+================================================================
+OPCION MINIMA (alcanza para lanzar y los primeros miles de usuarios):
+  - 2 vCPU
+  - 4 GB RAM
+  - 50 GB SSD/NVMe
+  - 2 GB de swap (obligatorio, para que el build no se caiga)
+  - Ubuntu Server 24.04 LTS (o 22.04 LTS)
+
+OPCION COMODA (recomendada si esperas crecer o queres margen):
+  - 4 vCPU
+  - 8 GB RAM
+  - 80 GB NVMe
+  - 2 GB de swap
+  - Ubuntu Server 24.04 LTS
+
+Que elegir: si el precio de la opcion comoda es cercano al de la minima,
+tomá la comoda. Con 4 GB alcanza, pero el build y los scrapers conviven mal
+con picos de trafico.
+
+Ancho de banda: 1 TB/mes sobra. La app sirve HTML y JSON, no archivos
+pesados (las fotos de producto vienen de las tiendas).
+IPv4 publica fija: si.
+Ubicacion: lo mas cerca posible de Argentina (Brasil o Argentina), para
+bajar la latencia del usuario final. La latencia dominante igual es OpenAI.
+
+SOFTWARE A INSTALAR
+  - Node.js 20 LTS + npm
+  - PM2 (con pm2 startup para que arranque solo)
+  - PostgreSQL 16 + extension pgvector, puerto 5433, SOLO escuchando en
+    127.0.0.1 (no exponer al exterior). Ya hay script: db/vps/install-postgres.sh
+    y afinado en db/vps/postgresql.tuning.conf.
+  - Nginx como proxy inverso hacia el puerto de Next.js
+  - Certbot / Let's Encrypt para HTTPS
+  - UFW: abrir solo 22 (SSH), 80 y 443. Cerrar todo lo demas.
+  - fail2ban para SSH; deshabilitar login por contrasena (solo llave)
+  - Swap de 2 GB
+  - cron con los 3 jobs del proyecto (ver seccion 3)
+  - logrotate (o pm2-logrotate) para no llenar el disco con logs
+
+DOMINIO
+  Hoy la app vive en anka.ar/indexa (subruta). En un VPS propio conviene un
+  dominio o subdominio propio (ej. indexa.com.ar o app.tudominio.com).
+  Ojo: hay que revisar el basePath "/indexa" de next.config, el sitemap,
+  robots y la variable NEXT_PUBLIC_SITE_URL antes de cambiar de dominio.
+  Esta tarea es de codigo y hay que hacerla si se mueve a raiz.
+
+CRONS QUE HAY QUE LLEVAR (hoy en el crontab del VPS compartido)
+  0 6 * * *  npx tsx --env-file=.env scripts/syncFraveOnly.ts   (sync de tiendas)
+  0 7 * * *  npx tsx --env-file=.env scripts/analyzeProducts.ts (analisis LLM)
+  0 3 * * *  db/vps/backup.sh                                    (backup diario)
+  + scripts/healthcheck.sh cada 5 min con aviso por Telegram.
+
+BACKUP (el punto mas debil hoy)
+  El backup diario se guarda en el mismo VPS. Si el servidor muere, se
+  pierde todo. Hay que copiarlo afuera: rclone a Google Drive / Backblaze B2
+  / otro VPS. Alcanza con retener 7 diarios + 4 semanales. La base pesa
+  ~232 MB, asi que el costo de almacenamiento es minimo.
+
+PASOS DE MIGRACION (resumen)
+  1. Contratar VPS, hardening (llave SSH, ufw, fail2ban), swap.
+  2. Instalar Node 20, PM2, Nginx, Certbot y Postgres 16 + pgvector.
+  3. pg_dump de la base actual y restaurar en el nuevo (puerto 5433).
+  4. Copiar el .env (DATABASE_URL, OPENAI_API_KEY, ML_*, SUPABASE_*, etc.).
+  5. Subir la app con el skill /deploy (ajustar host/usuario en
+     .claude/skills/deploy/scripts/deploy-vps.sh).
+  6. Levantar los crons y el backup con copia externa.
+  7. Probar con el dominio nuevo, y recien despues apuntar el DNS.
+  8. Dejar el VPS viejo unos dias como respaldo antes de apagar la app ahi.
+
+
+================================================================
+3. CREDITO OPENAI
+================================================================
+Modelos que usa el proyecto: gpt-4o-mini (chat, slot-filling, expansion,
+analisis, extraccion de specs) y text-embedding-3-small.
+Precios de referencia de gpt-4o-mini [ESTIMADO, confirmar en la pagina de
+precios de OpenAI]: ~US$0.15 por 1M tokens de entrada, ~US$0.60 por 1M de
+salida. El embedding cuesta una fraccion despreciable.
+
+COSTO UNITARIO [ESTIMADO]
+  - Una busqueda (slot-filling + expansion + embedding): ~US$0.0007
+  - Un mensaje de chat de refinamiento:                  ~US$0.0004
+  - Una sesion tipica (1 busqueda + 3-4 mensajes):       ~US$0.002 - 0.003
+  - Analisis calidad/precio de un producto (se hace UNA vez y queda
+    cacheado en DB): ~US$0.0003 por producto.
+  - Las respuestas cacheadas en cache_kv no gastan nada.
+
+PROYECCION MENSUAL DE USUARIOS
+  Sesiones por dia | Costo aproximado por mes
+  -----------------|--------------------------
+        100        |  US$6 - 9
+        200        |  US$12 - 18
+        500        |  US$30 - 45
+      1.000        |  US$60 - 90
+      5.000        |  US$150 - 300  (tope duro del codigo, ver abajo)
+
+COSTO DE LOS CRONS (no depende de usuarios)
+  - Analisis de productos: ~US$3 cada 10.000 productos NUEVOS. Solo
+    procesa los que no tienen analisis, o cuyo analisis venció.
+  - Extraccion de specs con LLM en el sync: se paga por producto nuevo.
+  - El primer analisis completo del catalogo es el pico. Despues baja mucho.
+
+RECOMENDACION
+  - Cargar US$30 a US$50 al lanzar. Alcanza para el primer mes con margen.
+  - DESACTIVAR la recarga automatica.
+  - Poner un limite mensual duro en el panel de OpenAI (por ejemplo US$50)
+    ademas del tope diario del codigo.
+  - Crear una API key exclusiva para este proyecto (no reutilizar la de
+    otras apps: chatbot-saas y otros del VPS actual tambien gastan).
+  - Revisar el panel de uso de OpenAI todos los dias de la primera semana.
+  - Reevaluar el credito despues del primer mes con datos reales.
+
+PROTECCIONES YA EN EL CODIGO (deployadas 2026-09-29)
+  - LLM_DAILY_REQUEST_CAP: tope global de llamadas LLM por dia. Por defecto
+    5000. Se puede bajar en el .env (ej. LLM_DAILY_REQUEST_CAP=1500) si
+    queres un techo de gasto mas bajo al arrancar.
+  - Rate limit por IP: 10 busquedas/min, 20 mensajes de chat/min.
+  - Limitacion: el rate limit vive en memoria. Se reinicia con cada
+    "pm2 restart". Si el VPS pasa a ser dedicado, esto deja de ser un
+    problema por reinicios ajenos.
+
+
+================================================================
+4. ANALYTICS (PUNTO 5) - LO QUE SE AGREGO
+================================================================
+Ya existia en /admin/analytics: visitas, busquedas, categorias, usos,
+marcas, tienda con mas clicks, productos mas clickeados, patrones por mes,
+dia y hora, clicks de compra y "compras de un recomendado".
+Se agrego el bloque "Embudo y permanencia":
+  - Visitas con actividad en la ventana (7/30/90 dias)
+  - Visitas que interactuaron con productos (ver detalle, comparar,
+    consultar, comprar)
+  - Visitas que llegaron a un click de compra
+  - Tasa de rebote (visitas sin ninguna interaccion con productos)
+  - Tiempo promedio y mediano por visita
+  - Errores del navegador (evento client_error)
+Nota: el tiempo se mide con el evento time_on_page al cerrar u ocultar la
+pestaña; una visita que nunca lo dispara no cuenta en el promedio.
+Estos cambios estan hechos y pasan el typecheck, pero NO estan deployados
+todavia.

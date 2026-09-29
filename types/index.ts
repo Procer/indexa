@@ -349,6 +349,17 @@ export interface SiteVisitsAnalytics {
   byHour: SearchAnalyticsHour[]; // 0..23, ventana del año
 }
 
+// Permanencia y embudo por visita (visit_id) dentro de la ventana `days`.
+export interface SiteEngagementAnalytics {
+  visits: number; // visit_id distintos con algún evento en la ventana
+  avgDurationSec: number; // promedio de tiempo total por visita con time_on_page
+  medianDurationSec: number;
+  bouncedShare: number; // fracción de visitas sin ninguna interacción con productos
+  engagedVisits: number; // visitas con ver detalle / comparar / consultar / comprar
+  buyVisits: number; // visitas con al menos un click de compra
+  clientErrors: number; // eventos client_error en la ventana
+}
+
 export interface SearchAnalytics {
   days: number;
   totalSearches: number;
@@ -376,6 +387,7 @@ export interface SearchAnalytics {
   byDayOfWeek: SearchAnalyticsDow[];
   topProducts: SearchAnalyticsProduct[];
   visits: SiteVisitsAnalytics;
+  engagement: SiteEngagementAnalytics;
 }
 
 // ─── UI ───────────────────────────────────────────────────────────────────────

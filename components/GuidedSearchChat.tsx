@@ -621,8 +621,10 @@ export function GuidedSearchChat({
       transition={{ type: "spring", stiffness: 300, damping: 32, mass: 0.9 }}
       className={
         compact
-          ? `gathering-glass-panel animate-fade-up pointer-events-auto flex w-[92vw] flex-col overflow-hidden rounded-2xl bg-gathering-surface-container ${
-              centered ? "max-h-[75vh] max-w-md" : "h-[calc(100vh-6rem)] max-w-sm"
+          ? `gathering-glass-panel animate-fade-up pointer-events-auto flex flex-col overflow-hidden bg-gathering-surface-container ${
+              centered
+                ? "gathering-welcome-panel max-h-[80dvh] w-[calc(100vw-2rem)] max-w-md rounded-3xl"
+                : "h-[calc(100vh-6rem)] w-[92vw] max-w-sm rounded-2xl"
             }`
           : "gathering-glass-panel relative flex h-full flex-col overflow-hidden rounded-xl"
       }
@@ -638,6 +640,15 @@ export function GuidedSearchChat({
             <p className="font-brand text-sm font-bold text-gathering-on-surface">
               {isGathering ? "SOY TU ASESOR TÉCNICO" : "Tu asesor técnico"}
             </p>
+            {centered && (
+              <p className="flex items-center gap-1.5 font-brand text-xs text-gathering-on-surface-variant">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                </span>
+                En línea · te respondo al toque
+              </p>
+            )}
             {!isGathering && (
               <p className="font-brand text-xs text-gathering-primary-fixed">
                 Te digo qué conviene elegir, o busco de nuevo si nada te cierra
@@ -670,7 +681,10 @@ export function GuidedSearchChat({
         </div>
       </div>
 
-      <div ref={messagesContainerRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+      <div ref={messagesContainerRef} className={`min-h-0 flex-1 space-y-3 overflow-y-auto p-4 ${centered ? "sm:p-5" : ""}`}>
+        {centered && (
+          <p className="font-brand text-[15px] leading-snug text-gathering-on-surface-variant">{WELCOME_CAPTION}</p>
+        )}
         {homeSponsor && products.length === 0 && !compact && (
           <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3">
             <span className="rounded-full bg-amber-100 px-2 py-0.5 font-brand text-[11px] font-semibold uppercase tracking-wider text-amber-700">
@@ -703,7 +717,9 @@ export function GuidedSearchChat({
             className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}
           >
             <div
-              className={`max-w-[95%] whitespace-pre-line px-4 py-3 text-sm leading-relaxed font-brand shadow-sm ${
+              className={`max-w-[95%] whitespace-pre-line px-4 py-3 leading-relaxed font-brand shadow-sm ${
+                centered && m.role !== "user" ? "text-lg font-semibold text-gathering-on-surface" : "text-sm"
+              } ${
                 m.role === "user"
                   ? "gathering-btn-primary-gradient rounded-l-lg rounded-br-lg text-white"
                   : "rounded-r-lg rounded-bl-lg border-l-2 border-gathering-primary-fixed-dim bg-gathering-surface-container text-gathering-on-surface/90"
@@ -716,18 +732,45 @@ export function GuidedSearchChat({
             )}
 
             {m.choices && !m.answered && (
-              <div className="mt-2 flex max-w-[95%] flex-wrap gap-2">
-                {m.choices.map((tag) => (
-                  <button
-                    key={tag}
-                    type="button"
-                    onClick={() => handleChoice(tag)}
-                    className="gathering-interactive-card rounded-full px-3.5 py-1.5 font-brand text-sm font-medium text-gathering-on-surface active:scale-95"
-                  >
-                    {tag}
-                  </button>
-                ))}
-              </div>
+              centered ? (
+                <div className="mt-3 grid w-full grid-cols-2 gap-2.5">
+                  {m.choices.map((tag, i) => {
+                    // Los tags curados vienen como "💻 Notebook": el emoji va
+                    // grande arriba y la etiqueta debajo, en una tarjeta táctil.
+                    const sep = tag.indexOf(" ");
+                    const hasIcon = sep > 0 && sep <= 4;
+                    const icon = hasIcon ? tag.slice(0, sep) : "";
+                    const label = hasIcon ? tag.slice(sep + 1) : tag;
+                    const lastOdd = m.choices!.length % 2 === 1 && i === m.choices!.length - 1;
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => handleChoice(tag)}
+                        className={`gathering-choice-card flex min-h-[76px] flex-col items-center justify-center gap-1 rounded-2xl px-3 py-3 font-brand text-[15px] font-semibold text-gathering-on-surface active:scale-95 ${
+                          lastOdd ? "col-span-2" : ""
+                        }`}
+                      >
+                        {icon && <span className="text-2xl leading-none">{icon}</span>}
+                        <span className="text-center leading-tight">{label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="mt-2 flex max-w-[95%] flex-wrap gap-2">
+                  {m.choices.map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => handleChoice(tag)}
+                      className="gathering-interactive-card rounded-full px-3.5 py-1.5 font-brand text-sm font-medium text-gathering-on-surface active:scale-95"
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+              )
             )}
 
             {m.budgetPicker && !m.answered && (
@@ -808,7 +851,7 @@ export function GuidedSearchChat({
                   ? "O escribí tu respuesta acá..."
                   : "Ej: ¿cuál me conviene si uso más para trabajar que para jugar?"
             }
-            className="flex-1 border-none bg-transparent px-3 py-2 font-brand text-sm text-gathering-on-surface placeholder:font-brand placeholder:text-gathering-on-surface-variant/50 focus:outline-none focus:ring-0 disabled:opacity-50"
+            className="flex-1 border-none bg-transparent px-3 py-2.5 font-brand text-base text-gathering-on-surface sm:text-sm placeholder:font-brand placeholder:text-gathering-on-surface-variant/50 focus:outline-none focus:ring-0 disabled:opacity-50"
           />
           <button
             type="submit"
@@ -841,21 +884,16 @@ export function GuidedSearchChat({
     <div
       className={
         centered
-          ? "pointer-events-none fixed inset-0 z-30 flex flex-col items-center justify-center gap-4 p-4"
+          ? "gathering-welcome-scrim pointer-events-none fixed inset-0 z-30 flex flex-col items-center justify-center gap-4 p-4"
           : "pointer-events-none fixed inset-0 z-30 flex items-start justify-end pb-4 pr-4 pt-20"
       }
     >
       {centered && (
         <a href={withBasePath("/")} className="pointer-events-auto animate-fade-up" aria-label="Volver al inicio">
-          <LogoBrand logoClass="h-14" />
+          <LogoBrand logoClass="h-12 sm:h-14" />
         </a>
       )}
       {panel}
-      {centered && (
-        <p className="pointer-events-auto animate-fade-up max-w-sm text-center font-brand text-sm font-medium text-gathering-on-surface-variant">
-          {WELCOME_CAPTION}
-        </p>
-      )}
     </div>
   );
 }

@@ -320,6 +320,22 @@ export default function AnalyticsPage() {
 
             <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
               <div className="flex items-baseline justify-between">
+                <h2 className="text-sm font-semibold text-gray-900">Embudo y permanencia</h2>
+                <span className="text-xs text-gray-400">últimos {days} días, por visita</span>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <StatTile label="Visitas" value={String(data.engagement.visits)} />
+                <StatTile label="Interactuaron con productos" value={`${data.engagement.engagedVisits} · ${formatPct(1 - data.engagement.bouncedShare)}`} />
+                <StatTile label="Llegaron a comprar" value={String(data.engagement.buyVisits)} />
+                <StatTile label="Rebote" value={formatPct(data.engagement.bouncedShare)} />
+                <StatTile label="Tiempo promedio" value={`${data.engagement.avgDurationSec}s`} />
+                <StatTile label="Tiempo mediano" value={`${data.engagement.medianDurationSec}s`} />
+                <StatTile label="Errores en el navegador" value={String(data.engagement.clientErrors)} />
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
+              <div className="flex items-baseline justify-between">
                 <h2 className="text-sm font-semibold text-gray-900">Visitas al sitio</h2>
                 <span className="text-xs text-gray-400">
                   {data.visits.total} en total · {data.visits.inRange} en los últimos {days} días

@@ -78,8 +78,10 @@ export async function GET(request: NextRequest) {
   let storeRows: { store: string; count: number }[];
   let visitTotalRow: { n: number }[];
   let visitYearRows: { created_at: string }[];
+  let engagementRows: { dur: number | null; engaged: boolean; bought: boolean }[];
+  let clientErrorRow: { n: number }[];
   try {
-    [searchRows, clickRows, buyEventRows, patternRows, storeRows, visitTotalRow, visitYearRows] =
+    [searchRows, clickRows, buyEventRows, patternRows, storeRows, visitTotalRow, visitYearRows, engagementRows, clientErrorRow] =
       await Promise.all([
         sql<AnalyticsSearchRow[]>`
           SELECT share_token, slots, result_count, created_at
@@ -116,6 +118,21 @@ export async function GET(request: NextRequest) {
         sql<{ created_at: string }[]>`
           SELECT created_at FROM site_events
           WHERE event_type = 'session_start' AND created_at >= ${yearStart}
+        `,
+        // Una fila por visita: tiempo total (suma de time_on_page), si hubo
+        // interacción con productos y si terminó en click de compra.
+        sql<{ dur: number | null; engaged: boolean; bought: boolean }[]>`
+          SELECT
+            SUM(duration_ms) FILTER (WHERE event_type = 'time_on_page')::float AS dur,
+            BOOL_OR(event_type IN ('product_view_details', 'product_compare_add', 'product_ask_about', 'product_buy_click')) AS engaged,
+            BOOL_OR(event_type = 'product_buy_click') AS bought
+          FROM site_events
+          WHERE visit_id IS NOT NULL AND created_at >= ${cutoff}
+          GROUP BY visit_id
+        `,
+        sql<{ n: number }[]>`
+          SELECT COUNT(*)::int AS n FROM site_events
+          WHERE event_type = 'client_error' AND created_at >= ${cutoff}
         `,
       ]);
   } catch (error) {
@@ -262,6 +279,24 @@ export async function GET(request: NextRequest) {
   const buyClicks = buyEventRows.length;
   const recommendedBuyClicks = buyEventRows.filter((e) => e.recommended).length;
 
+  // Permanencia: solo visitas con time_on_page (las que cerraron/ocultaron la
+  // pestaña); las que nunca dispararon el beacon no tienen duración medible.
+  const durationsSec = engagementRows
+    .map((r) => r.dur)
+    .filter((d): d is number => d !== null && d > 0)
+    .map((d) => d / 1000)
+    .sort((a, b) => a - b);
+  const engagedVisits = engagementRows.filter((r) => r.engaged).length;
+  const engagement = {
+    visits: engagementRows.length,
+    avgDurationSec: durationsSec.length ? Math.round(durationsSec.reduce((a, b) => a + b, 0) / durationsSec.length) : 0,
+    medianDurationSec: durationsSec.length ? Math.round(durationsSec[Math.floor(durationsSec.length / 2)]) : 0,
+    bouncedShare: engagementRows.length ? 1 - engagedVisits / engagementRows.length : 0,
+    engagedVisits,
+    buyVisits: engagementRows.filter((r) => r.bought).length,
+    clientErrors: clientErrorRow[0]?.n ?? 0,
+  };
+
   const analytics: SearchAnalytics = {
     days,
     totalSearches,
@@ -281,6 +316,7 @@ export async function GET(request: NextRequest) {
     byDayOfWeek,
     topProducts,
     visits,
+    engagement,
   };
 
   return NextResponse.json(analytics);
