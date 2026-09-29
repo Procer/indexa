@@ -188,7 +188,15 @@ export function isInputSufficient(slots: Slots): boolean {
 export function getGuidingQuestions(slots: Slots): GuidingQuestion[] {
   const questions: GuidingQuestion[] = [];
 
-  // ── Uso principal (siempre primero, es el dato más importante) ────────────────
+  // ── Tipo de dispositivo (primero: define qué pregunta de uso corresponde) ─────
+  if (!slots.category && slots.use_cases.length === 0) {
+    questions.push({
+      text: "¿QUÉ ESTÁS BUSCANDO?",
+      tags: ["💻 Notebook", "🖥️ PC de escritorio", "📱 Tablet", "📺 Smart TV", "📲 Celular"],
+    });
+  }
+
+  // ── Uso principal ─────────────────────────────────────────────────────────────
   if (slots.use_cases.length === 0) {
     if (slots.category === "phone") {
       questions.push({
@@ -236,14 +244,6 @@ export function getGuidingQuestions(slots: Slots): GuidingQuestion[] {
         ],
       });
     }
-  }
-
-  // ── Tipo de dispositivo (solo si no está definido Y tampoco hay uso) ──────────
-  if (!slots.category && slots.use_cases.length === 0) {
-    questions.push({
-      text: "¿QUÉ ESTÁS BUSCANDO?",
-      tags: ["💻 Notebook", "🖥️ PC de escritorio", "📱 Tablet", "📺 Smart TV", "📲 Celular"],
-    });
   }
 
   // ── Presupuesto ───────────────────────────────────────────────────────────────

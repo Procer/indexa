@@ -127,7 +127,7 @@ function isBudgetQuestion(q: GuidingQuestion): boolean {
 // Copy curada — refuerza el tono de "asesor experto que traduce lo técnico",
 // sin llamar al LLM en cada turno (las preguntas y opciones son un guion fijo).
 function getQuestionHint(q: GuidingQuestion): string | null {
-  if (/qué tipo de equipo/i.test(q.text)) {
+  if (/qué estás buscando/i.test(q.text)) {
     return "Así te muestro solo lo relevante para ese tipo de equipo.";
   }
   if (/para qué vas a usar/i.test(q.text)) {
@@ -144,7 +144,7 @@ function getQuestionHint(q: GuidingQuestion): string | null {
 
 function pickNextQuestion(questions: GuidingQuestion[]): GuidingQuestion | null {
   if (questions.length === 0) return null;
-  return questions.find((q) => /qué tipo de equipo/i.test(q.text)) ?? questions[0];
+  return questions.find((q) => /qué estás buscando/i.test(q.text)) ?? questions[0];
 }
 
 interface ChatDonePayload {
