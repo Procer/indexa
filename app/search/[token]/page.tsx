@@ -244,15 +244,20 @@ function SkeletonLoader({ hint, hintIndex }: { hint: string; hintIndex: number }
 // usuario responda las preguntas del chat (ej. pasó de notebook a iPhone), no
 // está "analizando" nada todavía: se lo dice y le señala el chat con una flecha
 // (el chat va acoplado a la derecha en desktop y el splash deja lugar con
-// lg:pr-[26rem]; en celular el splash se oculta si el chat está abierto).
+// lg:pr-[26rem]). El fondo es opaco a pantalla completa; en celular con el chat
+// abierto se oculta solo la tarjeta (el chat ya dice lo mismo).
 function AnalyzingSplash({ waitingForAnswers, chatOpen }: { waitingForAnswers: boolean; chatOpen: boolean }) {
   return (
     <div
-      className={`pointer-events-none fixed inset-0 z-20 flex-col items-center justify-center gap-3 ${
-        chatOpen ? "hidden lg:flex lg:pr-[26rem]" : "flex"
+      className={`fixed inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-gathering-background ${
+        chatOpen ? "lg:pr-[26rem]" : ""
       }`}
     >
-      <div className="gathering-solid-splash flex items-center gap-5 rounded-3xl px-8 py-7">
+      <div
+        className={`gathering-solid-splash items-center gap-5 rounded-3xl px-8 py-7 ${
+          chatOpen ? "hidden lg:flex" : "flex"
+        }`}
+      >
         <div className="flex flex-col items-center gap-3">
           <LogoBrand logoClass={waitingForAnswers ? "h-16" : "h-20 animate-dot-pulse"} />
           <p className="max-w-[16rem] text-center font-brand text-sm font-bold uppercase tracking-wide text-gathering-on-surface">
