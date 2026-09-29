@@ -675,7 +675,7 @@ function SimilarInCompare({
             {s.differences.length > 0 && (
               <div className="flex flex-wrap gap-1">
                 {s.differences.map((d) => (
-                  <span key={d} className="rounded-full bg-gathering-surface-container-high px-2 py-0.5 font-brand text-[10px] text-gathering-on-surface-variant">
+                  <span key={d} className="rounded-full bg-gathering-surface-container-high px-2 py-0.5 font-brand text-[11px] text-gathering-on-surface-variant">
                     {d}
                   </span>
                 ))}
@@ -768,7 +768,7 @@ function MultiCompareView({
       )}
       {!showChat && <ChatFAB onClick={openChat} />}
 
-      <main className="mx-auto max-w-6xl px-4 py-6">
+      <main id="contenido" className="mx-auto max-w-6xl px-4 py-6">
         <SpecGlossary categories={Array.from(new Set(items.map((i) => i.product.category)))} />
 
         <SpecDisplayModeToggle mode={specMode} onChange={setSpecMode} />

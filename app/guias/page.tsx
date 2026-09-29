@@ -16,7 +16,7 @@ export default function GuiasPage() {
   return (
     <>
       <Navbar />
-      <main className="mx-auto max-w-5xl px-4 pb-10 pt-8">
+      <main id="contenido" className="mx-auto max-w-5xl px-4 pb-10 pt-8">
         <header className="max-w-2xl">
           <p className="font-brand text-sm font-bold uppercase tracking-wide text-gathering-primary">
             Guías de compra

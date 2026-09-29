@@ -49,7 +49,7 @@ function AuthCallbackContent() {
 
   return (
     <div className="flex min-h-screen items-center justify-center">
-      <p className="text-sm text-gray-400">Iniciando sesión...</p>
+      <p className="text-sm text-gathering-on-surface-variant">Iniciando sesión...</p>
     </div>
   );
 }
@@ -59,7 +59,7 @@ export default function AuthCallbackPage() {
     <Suspense
       fallback={
         <div className="flex min-h-screen items-center justify-center">
-          <p className="text-sm text-gray-400">Iniciando sesión...</p>
+          <p className="text-sm text-gathering-on-surface-variant">Iniciando sesión...</p>
         </div>
       }
     >

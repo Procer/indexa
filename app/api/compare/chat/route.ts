@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { buildCompareChatPrompt } from "@/lib/llm/prompts";
 import { findAlternativeProduct } from "@/lib/search/quickAlternative";
-import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { checkGlobalLlmBudget, checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { sql } from "@/lib/db/sql";
 import type { AlternativeProduct, Product, UseCase } from "@/types";
 
@@ -49,6 +49,13 @@ export async function POST(request: NextRequest) {
     const { success } = await checkRateLimit("compare-chat", getClientIp(request), 20, 60);
     if (!success) {
       return NextResponse.json({ error: "Demasiadas consultas, esperá un momento" }, { status: 429 });
+    }
+
+    if (!(await checkGlobalLlmBudget()).success) {
+      return NextResponse.json(
+        { error: "El servicio está con mucha demanda, probá de nuevo en un rato" },
+        { status: 503 }
+      );
     }
 
     const body = (await request.json()) as ChatRequest;

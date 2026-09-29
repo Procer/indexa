@@ -19,7 +19,7 @@ export function InfoPage({
   return (
     <>
       <Navbar />
-      <main className="mx-auto max-w-3xl px-4 pb-10 pt-8">
+      <main id="contenido" className="mx-auto max-w-3xl px-4 pb-10 pt-8">
         <header className="flex items-start gap-4">
           <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gathering-primary text-gathering-on-primary">
             <span className="material-symbols-outlined text-[26px]" aria-hidden="true">{icon}</span>

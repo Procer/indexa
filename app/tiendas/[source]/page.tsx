@@ -38,7 +38,7 @@ export default async function StorePage({ params }: { params: { source: string }
   return (
     <>
       <Navbar />
-      <main className="mx-auto max-w-4xl px-4 py-8">
+      <main id="contenido" className="mx-auto max-w-4xl px-4 py-8">
         <Link href="/tiendas" className="font-brand text-sm text-gathering-primary hover:underline">
           ← Todas las tiendas
         </Link>

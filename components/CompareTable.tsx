@@ -120,7 +120,7 @@ export function CompareTable({ items, onRemove }: CompareTableProps) {
     <table className="w-full table-fixed border-collapse font-brand text-xs sm:text-sm">
       <thead>
         <tr className="border-b border-gathering-outline-variant bg-gathering-surface-container-low">
-          <th className="w-[76px] bg-gathering-surface-container-low py-3 pr-2 text-left text-[10px] font-medium uppercase tracking-wide text-gathering-on-surface-variant sm:w-[120px] sm:pr-4 sm:text-xs">
+          <th className="w-[76px] bg-gathering-surface-container-low py-3 pr-2 text-left text-[11px] font-medium uppercase tracking-wide text-gathering-on-surface-variant sm:w-[120px] sm:pr-4 sm:text-xs">
             Característica
           </th>
           {items.map((item) => (
@@ -137,13 +137,13 @@ export function CompareTable({ items, onRemove }: CompareTableProps) {
                     }}
                   />
                 )}
-                <p className="line-clamp-2 text-[10px] font-semibold text-gathering-on-surface sm:text-xs">
+                <p className="line-clamp-2 text-[11px] font-semibold text-gathering-on-surface sm:text-xs">
                   {item.product.title}
                 </p>
                 <button
                   type="button"
                   onClick={() => onRemove(item.product.id)}
-                  className="text-[10px] text-gathering-on-surface-variant hover:text-gathering-error sm:text-xs"
+                  className="text-[11px] text-gathering-on-surface-variant hover:text-gathering-error sm:text-xs"
                 >
                   Quitar
                 </button>
@@ -155,7 +155,7 @@ export function CompareTable({ items, onRemove }: CompareTableProps) {
       <tbody>
         {ROWS.map((row) => (
           <tr key={row.label} className="border-b border-gathering-outline-variant/50 last:border-0">
-            <td className="bg-gathering-surface-container py-3 pr-2 text-[10px] font-medium text-gathering-on-surface-variant sm:pr-4 sm:text-xs">
+            <td className="bg-gathering-surface-container py-3 pr-2 text-[11px] font-medium text-gathering-on-surface-variant sm:pr-4 sm:text-xs">
               {row.label}
             </td>
             {items.map((item) => (

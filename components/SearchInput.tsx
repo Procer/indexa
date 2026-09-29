@@ -112,7 +112,7 @@ export function SearchInput({
             className="pointer-events-none absolute left-4 top-4 right-14 select-none"
             aria-hidden
           >
-            <span className="text-base leading-relaxed text-gray-400">
+            <span className="text-base leading-relaxed text-gathering-on-surface-variant">
               {typewriterText}
             </span>
             <span className="ml-px inline-block h-[18px] w-[2px] animate-blink bg-gray-400 align-middle" />
@@ -161,7 +161,7 @@ export function SearchInput({
       </div>
 
       {!compact && (
-        <p className="mt-2 text-center text-xs text-gray-400">
+        <p className="mt-2 text-center text-xs text-gathering-on-surface-variant">
           Enter para buscar · Shift+Enter para nueva línea
         </p>
       )}

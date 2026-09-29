@@ -21,7 +21,7 @@ export default async function TiendasPage() {
   return (
     <>
       <Navbar />
-      <main className="mx-auto max-w-6xl px-4 py-8">
+      <main id="contenido" className="mx-auto max-w-6xl px-4 py-8">
         <header className="max-w-2xl">
           <p className="font-brand text-sm font-bold uppercase tracking-wide text-gathering-primary">Tiendas</p>
           <h1 className="mt-1 font-brand text-3xl font-bold leading-tight text-gathering-on-surface sm:text-4xl">

@@ -492,7 +492,7 @@ function RankedResultRow({
               >
                 <span className="material-symbols-outlined text-[13px]">chevron_right</span>
               </button>
-              <span className="absolute bottom-0.5 right-0.5 z-10 rounded-full bg-black/55 px-1 py-0.5 font-brand text-[9px] font-semibold text-white">
+              <span className="absolute bottom-0.5 right-0.5 z-10 rounded-full bg-black/55 px-1 py-0.5 font-brand text-[11px] font-semibold text-white">
                 {imgIndex + 1}/{gallery.length}
               </span>
             </>
@@ -525,7 +525,7 @@ function RankedResultRow({
                       )}
                       {product.quality_price_score && (
                         <span
-                          className={`rounded-full px-2 py-0.5 font-brand text-[9px] font-semibold ${
+                          className={`rounded-full px-2 py-0.5 font-brand text-[11px] font-semibold ${
                             QUALITY_SCORE_STYLE[product.quality_price_score] ?? QUALITY_SCORE_STYLE.REGULAR
                           }`}
                         >
@@ -534,7 +534,7 @@ function RankedResultRow({
                         </span>
                       )}
                       {product.sponsored && (
-                        <span className="rounded-full bg-amber-100 px-2 py-0.5 font-brand text-[9px] font-semibold uppercase text-amber-700">
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 font-brand text-[11px] font-semibold uppercase text-amber-700">
                           Patrocinado
                         </span>
                       )}
@@ -562,7 +562,7 @@ function RankedResultRow({
 
                 {/* Barra de valor */}
                 <div className="flex items-center gap-2.5">
-                  <span className="flex w-14 shrink-0 items-center font-brand text-[10px] font-bold uppercase tracking-wide text-gathering-on-surface-variant">
+                  <span className="flex w-14 shrink-0 items-center font-brand text-[11px] font-bold uppercase tracking-wide text-gathering-on-surface-variant">
                     Valor
                     <ValueTooltip />
                   </span>
@@ -660,7 +660,7 @@ function RankedResultRow({
                   showIcon={false}
                   triggerClassName="rounded-lg border border-gathering-outline-variant px-3 py-1.5 font-brand text-[11.5px] font-semibold text-gathering-on-surface-variant transition-all hover:-translate-y-0.5 hover:border-gathering-primary-fixed-dim hover:bg-gathering-surface-container hover:shadow-md"
                 />
-                <span className="text-center font-brand text-[10px] text-gathering-on-surface-variant">
+                <span className="text-center font-brand text-[11px] text-gathering-on-surface-variant">
                   {storeName(product.source)}
                 </span>
               </div>

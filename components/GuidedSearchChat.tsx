@@ -673,7 +673,7 @@ export function GuidedSearchChat({
       <div ref={messagesContainerRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
         {homeSponsor && products.length === 0 && !compact && (
           <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3">
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 font-brand text-[10px] font-semibold uppercase tracking-wider text-amber-700">
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 font-brand text-[11px] font-semibold uppercase tracking-wider text-amber-700">
               Patrocinado
             </span>
             <p className="mt-1.5 font-brand text-sm text-gathering-on-surface">
@@ -797,6 +797,7 @@ export function GuidedSearchChat({
       >
         <div className="gathering-chat-input-focus flex items-center gap-1 rounded-lg border border-gathering-outline-variant bg-gathering-surface p-1 pr-2 transition-all duration-300">
           <input
+            aria-label="Escribí tu mensaje al asesor"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={busy}
@@ -811,6 +812,7 @@ export function GuidedSearchChat({
           />
           <button
             type="submit"
+            aria-label="Enviar mensaje"
             disabled={!input.trim() || busy}
             className="flex items-center justify-center rounded-md bg-gathering-primary/20 p-2 text-gathering-primary-fixed-dim transition-colors hover:bg-gathering-primary/40 disabled:opacity-40"
           >

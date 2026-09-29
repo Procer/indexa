@@ -67,7 +67,7 @@ export function PriceHistorySparkline({ productId }: PriceHistorySparklineProps)
       ? "text-green-700"
       : trend.direction === "up"
       ? "text-red-600"
-      : "text-gray-400";
+      : "text-gathering-on-surface-variant";
   const arrow = trend.direction === "down" ? "▼" : trend.direction === "up" ? "▲" : "–";
 
   const verdictClass =
@@ -101,7 +101,7 @@ export function PriceHistorySparkline({ productId }: PriceHistorySparklineProps)
           {arrow} {trend.direction === "flat" ? "Sin cambios" : `${trend.pct}% en ${trend.days === 1 ? "el último día" : `los últimos ${trend.days} días`}`}
         </span>
         {trend.direction !== "flat" && (
-          <span className="text-[11px] text-gray-400">
+          <span className="text-[11px] text-gathering-on-surface-variant">
             <span className="line-through">${Math.round(trend.firstPrice).toLocaleString("es-AR")}</span>
             {" → "}
             <span className={trend.direction === "down" ? "text-green-700" : "text-red-600"}>

@@ -23,7 +23,7 @@ export function SavedSearches() {
 
   return (
     <div>
-      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gathering-on-surface-variant">
         Búsquedas recientes
       </p>
       <div className="space-y-1">
@@ -38,7 +38,7 @@ export function SavedSearches() {
             <button
               type="button"
               onClick={() => handleRemove(s.search_id)}
-              className="shrink-0 text-gray-300 hover:text-red-400"
+              className="shrink-0 text-gathering-on-surface-variant hover:text-red-400"
               aria-label="Eliminar"
             >
               ×

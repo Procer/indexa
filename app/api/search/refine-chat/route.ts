@@ -7,7 +7,7 @@ import { sql } from "@/lib/db/sql";
 import { enrichWithAnalysis } from "@/lib/llm/productAnalysis";
 import { getCachedConfigPriceMedians, getChatGreetingCache, setChatGreetingCache, type ChatGreetingPayload } from "@/lib/search/cache";
 import { getOrBuildPoolIds } from "@/lib/search/pipeline";
-import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { checkGlobalLlmBudget, checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { detectCategoryLocally } from "@/lib/domain/detectCategory";
 import { detectBrandMentions } from "@/lib/domain/detectBrand";
 import { detectProcessorMention } from "@/lib/domain/detectProcessor";
@@ -863,6 +863,13 @@ export async function POST(request: NextRequest) {
     const { success } = await checkRateLimit("refine-chat", getClientIp(request), 20, 60);
     if (!success) {
       return NextResponse.json({ error: "Demasiadas consultas, esperá un momento" }, { status: 429 });
+    }
+
+    if (!(await checkGlobalLlmBudget()).success) {
+      return NextResponse.json(
+        { error: "El servicio está con mucha demanda, probá de nuevo en un rato" },
+        { status: 503 }
+      );
     }
 
     const body = (await request.json()) as ChatRequest;

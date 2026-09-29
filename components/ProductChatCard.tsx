@@ -192,7 +192,7 @@ function SpecRows({
                 />
               </span>
               {r.value && (
-                <span className="rounded bg-gathering-surface-container-highest px-1.5 py-px text-[10px] font-bold text-gathering-on-surface">
+                <span className="rounded bg-gathering-surface-container-highest px-1.5 py-px text-[11px] font-bold text-gathering-on-surface">
                   {r.value}
                 </span>
               )}
@@ -335,13 +335,13 @@ export function ProductChatCard({
       {hasBadge && (
         <div className="absolute left-3 right-3 top-3 z-10 flex flex-wrap gap-1.5">
           {isTopPick && (
-            <span className="flex items-center gap-1 rounded-full bg-amber-500 px-2.5 py-1 font-brand text-[10px] font-bold uppercase tracking-wider text-white shadow-sm">
+            <span className="flex items-center gap-1 rounded-full bg-amber-500 px-2.5 py-1 font-brand text-[11px] font-bold uppercase tracking-wider text-white shadow-sm">
               <span aria-hidden>★</span> {!pickRank || pickRank === 1 ? "Mejor opción" : "Recomendado"}
             </span>
           )}
           {product.quality_price_score && (
             <span
-              className={`shrink-0 rounded-full px-2.5 py-1 font-brand text-[10px] font-semibold shadow-sm ${
+              className={`shrink-0 rounded-full px-2.5 py-1 font-brand text-[11px] font-semibold shadow-sm ${
                 QUALITY_SCORE_STYLE[product.quality_price_score] ?? QUALITY_SCORE_STYLE.REGULAR
               }`}
             >
@@ -349,20 +349,20 @@ export function ProductChatCard({
             </span>
           )}
           {product.out_of_budget && (
-            <span className="flex items-center gap-1 rounded-full bg-orange-600 px-2.5 py-1 font-brand text-[10px] font-bold uppercase tracking-wider text-white shadow-sm">
+            <span className="flex items-center gap-1 rounded-full bg-orange-600 px-2.5 py-1 font-brand text-[11px] font-bold uppercase tracking-wider text-white shadow-sm">
               <span aria-hidden>⚠</span> Fuera de presupuesto
             </span>
           )}
           {product.sponsored && (
             <span
               title="Esta tienda patrocina este rubro. Solo aparece más arriba si el producto es relevante para tu búsqueda."
-              className="flex cursor-help items-center rounded-full bg-amber-100 px-2.5 py-1 font-brand text-[10px] font-semibold uppercase tracking-wider text-amber-700 shadow-sm"
+              className="flex cursor-help items-center rounded-full bg-amber-100 px-2.5 py-1 font-brand text-[11px] font-semibold uppercase tracking-wider text-amber-700 shadow-sm"
             >
               Patrocinado
             </span>
           )}
           {inBudgetChip && (
-            <span className="flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 font-brand text-[10px] font-bold uppercase tracking-wider text-white shadow-sm">
+            <span className="flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 font-brand text-[11px] font-bold uppercase tracking-wider text-white shadow-sm">
               <span aria-hidden>✓</span> En tu presupuesto
             </span>
           )}
@@ -406,7 +406,7 @@ export function ProductChatCard({
             >
               <span className="material-symbols-outlined text-sm">chevron_right</span>
             </button>
-            <span className="absolute bottom-1.5 right-1.5 z-10 rounded-full bg-black/55 px-1.5 py-0.5 font-brand text-[10px] font-semibold text-white">
+            <span className="absolute bottom-1.5 right-1.5 z-10 rounded-full bg-black/55 px-1.5 py-0.5 font-brand text-[11px] font-semibold text-white">
               {imgIndex + 1}/{gallery.length}
             </span>
           </>

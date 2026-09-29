@@ -56,3 +56,13 @@ export async function checkRateLimit(
   bucket.count++;
   return { success: true };
 }
+
+// Tope GLOBAL diario de consultas que llegan a OpenAI (búsqueda + chats), sin
+// importar la IP: corta el gasto si el sitio recibe un pico anormal o un abuso
+// distribuido (el límite por IP no lo ve). Configurable con LLM_DAILY_REQUEST_CAP.
+// Es complementario al tope de gasto que hay que fijar en el panel de OpenAI.
+const DAILY_CAP = Number(process.env.LLM_DAILY_REQUEST_CAP ?? 5000);
+
+export async function checkGlobalLlmBudget(): Promise<{ success: boolean }> {
+  return checkRateLimit("global-llm", "all", DAILY_CAP, 24 * 60 * 60);
+}

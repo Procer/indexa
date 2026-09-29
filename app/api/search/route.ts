@@ -35,7 +35,7 @@ import {
   updateProductAnalysis,
 } from "@/lib/db/queries";
 import { buildQuickSelectionReason, explainProductSpecs, explainProductSpecsSimple } from "@/lib/domain/specExplainer";
-import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { checkGlobalLlmBudget, checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { detectBrandMention } from "@/lib/domain/detectBrand";
 import { detectProcessorMention } from "@/lib/domain/detectProcessor";
 import { detectTagUseCase } from "@/lib/domain/detectUseCase";
@@ -123,6 +123,13 @@ export async function POST(request: NextRequest) {
     const { success } = await checkRateLimit("search", getClientIp(request), 10, 60);
     if (!success) {
       return NextResponse.json({ error: "Demasiadas consultas, esperá un momento" }, { status: 429 });
+    }
+
+    if (!(await checkGlobalLlmBudget()).success) {
+      return NextResponse.json(
+        { error: "El servicio está con mucha demanda, probá de nuevo en un rato" },
+        { status: 503 }
+      );
     }
 
     const body = (await request.json()) as {

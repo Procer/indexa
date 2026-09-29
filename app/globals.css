@@ -15,7 +15,9 @@
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: var(--font-josefin), Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), system-ui, Arial, Helvetica, sans-serif;
+  font-feature-settings: "cv11", "ss01";
+  text-rendering: optimizeLegibility;
 }
 
 /* Scrollbar oscuro acorde al resto del sitio (Chrome/Edge/Safari) — sin esto
@@ -168,3 +170,41 @@ body {
   box-shadow: 0 4px 14px rgba(52, 82, 225, 0.35);
 }
 
+
+/* ── Accesibilidad ─────────────────────────────────────────────────────── */
+
+/* Anillo de foco visible para quien navega con teclado (no aparece al click). */
+:focus-visible {
+  outline: 2px solid #3452e1;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Enlace "Saltar al contenido": invisible hasta recibir foco con Tab. */
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  z-index: 100;
+  padding: 10px 16px;
+  border-radius: 9999px;
+  background: #3452e1;
+  color: #ffffff;
+  font-weight: 600;
+  transition: top 0.15s ease;
+}
+.skip-link:focus {
+  top: 8px;
+}
+
+/* Respeta la preferencia del sistema de reducir animaciones. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

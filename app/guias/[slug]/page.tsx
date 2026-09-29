@@ -35,7 +35,7 @@ export default function GuidePage({ params }: { params: { slug: string } }) {
   return (
     <>
       <Navbar />
-      <main className="mx-auto max-w-3xl px-4 pb-10 pt-6">
+      <main id="contenido" className="mx-auto max-w-3xl px-4 pb-10 pt-6">
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
         <Link

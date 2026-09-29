@@ -170,7 +170,7 @@ function ChecklistRow({ highlight }: { highlight: string }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs font-bold text-gathering-on-surface">{label}</span>
-          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${LEVEL_PILL[level]}`}>
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${LEVEL_PILL[level]}`}>
             {LEVEL_WORD[level]}
           </span>
         </div>
@@ -246,7 +246,7 @@ export function SpecHighlights({
                     <span className="font-bold uppercase tracking-wide text-gathering-on-surface">{f.label}</span>
                   )}
                   {f.value && (
-                    <span className="mx-1 rounded bg-gathering-surface-container-highest px-1.5 py-px text-[10px] font-bold text-gathering-on-surface">
+                    <span className="mx-1 rounded bg-gathering-surface-container-highest px-1.5 py-px text-[11px] font-bold text-gathering-on-surface">
                       {f.value}
                     </span>
                   )}{" "}

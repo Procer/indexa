@@ -194,9 +194,9 @@ export function OtherStoresButton({ productId, productTitle, current, triggerCla
                             <div className="min-w-0">
                               <p className="truncate font-brand text-xs font-semibold text-gathering-on-surface">{storeName(opt.source)}</p>
                               {opt.isCurrent && (
-                                <p className="font-brand text-[10px] text-gathering-primary-fixed-dim">Estás viendo esta</p>
+                                <p className="font-brand text-[11px] text-gathering-primary-fixed-dim">Estás viendo esta</p>
                               )}
-                              {isCheapest && <p className="font-brand text-[10px] font-semibold text-emerald-600">Más barato</p>}
+                              {isCheapest && <p className="font-brand text-[11px] font-semibold text-emerald-600">Más barato</p>}
                             </div>
                           </div>
                           <div className="flex shrink-0 items-center gap-2">
@@ -209,7 +209,7 @@ export function OtherStoresButton({ productId, productTitle, current, triggerCla
                                 <p className="font-brand text-sm text-gathering-on-surface-variant">—</p>
                               )}
                               {opt.price_cash != null && opt.price_installment && opt.installment_count ? (
-                                <p className="font-brand text-[10px] text-gathering-on-surface-variant">
+                                <p className="font-brand text-[11px] text-gathering-on-surface-variant">
                                   {formatPrice(opt.price_installment)}/mes x{opt.installment_count}
                                 </p>
                               ) : null}
@@ -272,7 +272,7 @@ export function OtherStoresButton({ productId, productTitle, current, triggerCla
                                   <p className="font-brand text-sm text-gathering-on-surface-variant">—</p>
                                 )}
                                 {opt.price_cash != null && opt.price_installment && opt.installment_count ? (
-                                  <p className="font-brand text-[10px] text-gathering-on-surface-variant">
+                                  <p className="font-brand text-[11px] text-gathering-on-surface-variant">
                                     {formatPrice(opt.price_installment)}/mes x{opt.installment_count}
                                   </p>
                                 ) : null}
@@ -294,7 +294,7 @@ export function OtherStoresButton({ productId, productTitle, current, triggerCla
                               {opt.differences.map((d) => (
                                 <span
                                   key={d}
-                                  className="rounded-full bg-gathering-surface-container-high px-2 py-0.5 font-brand text-[10px] text-gathering-on-surface-variant"
+                                  className="rounded-full bg-gathering-surface-container-high px-2 py-0.5 font-brand text-[11px] text-gathering-on-surface-variant"
                                 >
                                   {d}
                                 </span>

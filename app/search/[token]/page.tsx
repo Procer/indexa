@@ -977,7 +977,7 @@ export default function SearchResultsPage() {
 
   return (
     <div className="min-h-screen">
-      <main className="w-full px-4 py-6 sm:px-6 lg:px-10">
+      <main id="contenido" className="w-full px-4 py-6 sm:px-6 lg:px-10">
         {/* Identidad de marca — logo + slogan, siempre visible arriba de todo, sin caja.
             Sin padding propio: hereda el de <main>, así queda alineada con el
             contenido de abajo (antes tenía su propio padding chico mientras el

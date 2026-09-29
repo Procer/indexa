@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
-import { Josefin_Sans } from "next/font/google";
+import { Inter } from "next/font/google";
 import { SiteAnalyticsBeacon } from "@/components/SiteAnalyticsBeacon";
 import "./globals.css";
 
@@ -14,10 +14,13 @@ const geistMono = localFont({
   variable: "--font-geist-mono",
   weight: "100 900",
 });
-const josefinSans = Josefin_Sans({
+// Inter: tipografía neutra y muy legible en pantalla, con cifras claras para precios.
+// Reemplaza a Josefin Sans (geométrica y fina, poco profesional en textos largos).
+const inter = Inter({
   subsets: ["latin"],
-  variable: "--font-josefin",
-  weight: ["300", "400", "600", "700"],
+  variable: "--font-sans",
+  weight: ["400", "500", "600", "700", "800"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -36,7 +39,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es">
+    <html lang="es-AR">
       <head>
         {/* Solo para los íconos de la pantalla de preguntas guiadas (ver
             .material-symbols-outlined en globals.css) — next/font no cubre
@@ -47,7 +50,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${josefinSans.variable} min-h-screen bg-background antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} min-h-screen bg-background antialiased`}
       >
         {/* Glow ambiente — fixed para cubrir el viewport entero, igual en
             cualquier pantalla del sitio (mismo patrón que ya se usaba por
@@ -56,6 +59,9 @@ export default function RootLayout({
           <div className="gathering-ambient-glow-primary -left-24 -top-16" />
           <div className="gathering-ambient-glow-secondary -right-20 bottom-0" />
         </div>
+        <a href="#contenido" className="skip-link">
+          Saltar al contenido
+        </a>
         <SiteAnalyticsBeacon />
         <div className="relative z-10">
           {children}

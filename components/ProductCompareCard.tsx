@@ -54,7 +54,7 @@ export function getKeySpecs(item: CompareItem): string[] {
 function CheckCircle({ variant }: { variant: "blue" | "gray" }) {
   return (
     <svg
-      className={`mt-0.5 h-4 w-4 shrink-0 ${variant === "blue" ? "text-blue-500" : "text-gray-400"}`}
+      className={`mt-0.5 h-4 w-4 shrink-0 ${variant === "blue" ? "text-blue-500" : "text-gathering-on-surface-variant"}`}
       fill="none"
       viewBox="0 0 24 24"
       stroke="currentColor"
@@ -102,7 +102,7 @@ export function ProductCompareCard({ item, align = "left", searchToken, specMode
         </div>
       )}
       <div className="p-6">
-        <p className={`text-xs font-bold uppercase tracking-widest ${isRight ? "text-right text-gray-400" : "text-blue-500"}`}>
+        <p className={`text-xs font-bold uppercase tracking-widest ${isRight ? "text-right text-gathering-on-surface-variant" : "text-blue-500"}`}>
           {product.brand ?? ""}
         </p>
         <h2 className={`mt-1 text-base font-bold leading-snug text-gray-900 ${isRight ? "text-right" : ""}`}>
