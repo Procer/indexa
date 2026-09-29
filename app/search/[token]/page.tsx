@@ -1337,7 +1337,7 @@ export default function SearchResultsPage() {
         )}
       </main>
 
-      <Footer />
+      <Footer reserveChatSpace={chatOpen} />
 
       {showSyncModal && <SyncSearchesModal onClose={() => setShowSyncModal(false)} />}
 

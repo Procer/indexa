@@ -15,3 +15,10 @@ export const CATEGORY_LABELS: Record<string, string> = {
   tablet: "Tablets",
   tv: "Smart TVs",
 };
+
+// Email público de contacto. null = todavía no hay canal definido: /contact lo
+// dice explícito en vez de mostrar una dirección inventada. Cargarlo acá alcanza
+// para que aparezca en /contact y /privacy.
+export const CONTACT_EMAIL: string | null = null;
+
+export const LEGAL_LAST_UPDATE = "28 de septiembre de 2026";
