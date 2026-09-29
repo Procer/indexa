@@ -240,6 +240,42 @@ function SkeletonLoader({ hint, hintIndex }: { hint: string; hintIndex: number }
   );
 }
 
+// Splash centrado (logo + estado). Si la búsqueda está frenada esperando que el
+// usuario responda las preguntas del chat (ej. pasó de notebook a iPhone), no
+// está "analizando" nada todavía: se lo dice y le señala el chat con una flecha
+// (el chat va acoplado a la derecha en desktop y el splash deja lugar con
+// lg:pr-[26rem]; en celular el splash se oculta si el chat está abierto).
+function AnalyzingSplash({ waitingForAnswers, chatOpen }: { waitingForAnswers: boolean; chatOpen: boolean }) {
+  return (
+    <div
+      className={`pointer-events-none fixed inset-0 z-20 flex-col items-center justify-center gap-3 ${
+        chatOpen ? "hidden lg:flex lg:pr-[26rem]" : "flex"
+      }`}
+    >
+      <div className="gathering-solid-splash flex items-center gap-5 rounded-3xl px-8 py-7">
+        <div className="flex flex-col items-center gap-3">
+          <LogoBrand logoClass={waitingForAnswers ? "h-16" : "h-20 animate-dot-pulse"} />
+          <p className="max-w-[16rem] text-center font-brand text-sm font-bold uppercase tracking-wide text-gathering-on-surface">
+            {waitingForAnswers ? "Respondé las preguntas del chat para seguir" : "Analizando tu mejor opción..."}
+          </p>
+        </div>
+        {waitingForAnswers && (
+          <svg
+            aria-hidden="true"
+            className="hidden h-12 w-12 shrink-0 animate-arrow-nudge text-gathering-primary lg:block"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2.5}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 12h15m0 0l-6-6m6 6l-6 6" />
+          </svg>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function SearchResultsPage() {
   const params = useParams();
   const router = useRouter();
@@ -1164,17 +1200,8 @@ export default function SearchResultsPage() {
         {/* ── FINALIZANDO: splash inmediato al responder el presupuesto ── */}
         {finalizing && !showResultsLayout && (
           <Portal>
-            <div
-              className={`pointer-events-none fixed inset-0 z-20 flex flex-col items-center justify-center gap-3 ${
-                chatOpen ? "lg:pr-[26rem]" : ""
-              }`}
-            >
-              <LogoBrand logoClass="h-24 animate-dot-pulse" />
-              <p className="font-brand text-sm font-bold uppercase tracking-wide text-gathering-on-surface">
-                Analizando tu mejor opción...
-              </p>
-            </div>
-          </Portal>
+<AnalyzingSplash waitingForAnswers={questions.length > 0} chatOpen={chatOpen} />
+</Portal>
         )}
 
         {/* ── VIDRIERA: productos al azar mientras no hay resultados reales ──
@@ -1240,15 +1267,8 @@ export default function SearchResultsPage() {
             <div className="relative">
               {!chatRecommendations && (
                 <Portal>
-                  <div
-                    className={`pointer-events-none fixed inset-0 z-20 flex flex-col items-center justify-center gap-3 ${
-                      chatOpen ? "lg:pr-[26rem]" : ""
-                    }`}
-                  >
-                    <LogoBrand logoClass="h-24 animate-dot-pulse" />
-                    <p className="font-brand text-sm font-bold uppercase tracking-wide text-gathering-on-surface">Analizando tu mejor opción...</p>
-                  </div>
-                </Portal>
+<AnalyzingSplash waitingForAnswers={questions.length > 0} chatOpen={chatOpen} />
+</Portal>
               )}
               <div
                 // key cambia UNA sola vez, justo cuando llega chatRecommendations

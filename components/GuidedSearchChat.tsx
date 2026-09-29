@@ -621,7 +621,7 @@ export function GuidedSearchChat({
       transition={{ type: "spring", stiffness: 300, damping: 32, mass: 0.9 }}
       className={
         compact
-          ? `gathering-glass-panel animate-fade-up pointer-events-auto flex flex-col overflow-hidden bg-gathering-surface-container ${
+          ? `gathering-glass-panel gathering-solid-panel animate-fade-up pointer-events-auto flex flex-col overflow-hidden bg-gathering-surface-container ${
               centered
                 ? "gathering-welcome-panel max-h-[80dvh] w-[calc(100vw-2rem)] max-w-md rounded-3xl"
                 : "h-[calc(100vh-6rem)] w-[92vw] max-w-sm rounded-2xl"
@@ -629,11 +629,11 @@ export function GuidedSearchChat({
           : "gathering-glass-panel relative flex h-full flex-col overflow-hidden rounded-xl"
       }
     >
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-gathering-outline-variant/50 bg-gathering-surface-container/80 p-4 backdrop-blur-md">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-gathering-outline-variant/50 bg-white p-4">
         <div className="flex items-center gap-3">
           <a href={withBasePath("/")} className="shrink-0" aria-label="Volver al inicio">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-gathering-primary/30 bg-gathering-primary-container/20">
-              <LogoBrand icon logoClass="h-5" />
+            <div className="flex h-11 w-11 items-center justify-center rounded-full border border-gathering-primary/30 bg-white shadow-sm">
+              <LogoBrand icon logoClass="h-6" />
             </div>
           </a>
           <div>

@@ -80,6 +80,10 @@ const config: Config = {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0" },
         },
+        "arrow-nudge": {
+          "0%, 100%": { transform: "translateX(0)" },
+          "50%": { transform: "translateX(8px)" },
+        },
         "fade-up": {
           "0%": { opacity: "0", transform: "translateY(8px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
@@ -139,6 +143,7 @@ const config: Config = {
       animation: {
         blink: "blink 1s step-end infinite",
         "fade-up": "fade-up 0.4s ease-out forwards",
+        "arrow-nudge": "arrow-nudge 1s ease-in-out infinite",
         "step-in": "step-in 0.3s ease-out forwards",
         "slide-up": "slide-up 0.55s cubic-bezier(0.22,1,0.36,1) both",
         "dot-pulse": "dot-pulse 2.4s ease-in-out infinite",

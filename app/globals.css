@@ -236,3 +236,16 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* Superficies sólidas: el panel del chat y el splash "Analizando" flotan sobre
+   la grilla borrosa; con el vidrio translúcido el logo y el texto se perdían. */
+.gathering-solid-splash {
+  background: #ffffff;
+  border: 1px solid rgba(20, 23, 31, 0.08);
+  box-shadow: 0 2px 4px rgba(20, 23, 31, 0.04), 0 20px 50px rgba(52, 82, 225, 0.18);
+}
+
+.gathering-glass-panel.gathering-solid-panel {
+  background: #ffffff;
+  backdrop-filter: none;
+}
