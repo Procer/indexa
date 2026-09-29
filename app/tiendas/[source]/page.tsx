@@ -42,22 +42,37 @@ export default async function StorePage({ params }: { params: { source: string }
         <Link href="/tiendas" className="font-brand text-sm text-gathering-primary hover:underline">
           ← Todas las tiendas
         </Link>
-        <div className="mt-3 flex items-center gap-3">
+        <header className="mt-4 flex flex-col gap-4 rounded-3xl bg-gathering-surface-container p-6 shadow-sm sm:flex-row sm:items-center">
           {logo && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={logo} alt="" className="h-10 w-10 rounded" />
+            <img src={logo} alt="" className="h-16 w-16 rounded-2xl bg-white p-2 shadow-sm" />
           )}
-          <h1 className="font-brand text-3xl font-bold text-gathering-on-surface">{storeName(params.source)}</h1>
-        </div>
-        <p className="mt-2 font-brand text-gathering-on-surface-variant">
-          {summary.total.toLocaleString("es-AR")} productos disponibles
-          {summary.minPrice != null && <> · desde {formatPrice(summary.minPrice)}</>}
-          {summary.lastUpdate && <> · actualizado el {new Date(summary.lastUpdate).toLocaleDateString("es-AR")}</>}
-        </p>
+          <div>
+            <h1 className="font-brand text-3xl font-bold text-gathering-on-surface">{storeName(params.source)}</h1>
+            <div className="mt-2 flex flex-wrap gap-2 font-brand text-sm">
+              <span className="rounded-full bg-gathering-primary/10 px-3 py-1 font-semibold text-gathering-primary">
+                {summary.total.toLocaleString("es-AR")} productos
+              </span>
+              {summary.minPrice != null && (
+                <span className="rounded-full bg-gathering-primary/10 px-3 py-1 font-semibold text-gathering-primary">
+                  desde {formatPrice(summary.minPrice)}
+                </span>
+              )}
+              {summary.lastUpdate && (
+                <span className="rounded-full bg-gathering-surface-container-highest px-3 py-1 text-gathering-on-surface-variant">
+                  actualizado el {new Date(summary.lastUpdate).toLocaleDateString("es-AR")}
+                </span>
+              )}
+            </div>
+          </div>
+        </header>
 
         {drops.length > 0 && (
           <section className="mt-8">
-            <h2 className="font-brand text-xl font-bold text-gathering-on-surface">Bajaron de precio</h2>
+            <h2 className="flex items-center gap-2 font-brand text-xl font-bold text-gathering-on-surface">
+              <span className="material-symbols-outlined text-green-700" aria-hidden="true">trending_down</span>
+              Bajaron de precio
+            </h2>
             <p className="font-brand text-sm text-gathering-on-surface-variant">
               Contra su precio de hace dos semanas.
             </p>

@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function ContactPage() {
   return (
-    <InfoPage title="Contacto">
+    <InfoPage title="Contacto" icon="mail" subtitle="Cómo comunicarte con nosotros.">
       <InfoSection heading="Escribinos">
         {CONTACT_EMAIL ? (
           <p>

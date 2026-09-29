@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { InfoPage, InfoSection } from "@/components/InfoPage";
+import { InfoPage } from "@/components/InfoPage";
 
 export const metadata: Metadata = {
   title: "Ayuda y preguntas frecuentes — indexa",
@@ -44,22 +44,41 @@ const FAQ: { q: string; a: string }[] = [
     q: "El asesor se equivocó o no me entendió, ¿qué hago?",
     a: "Probá reformular con otras palabras. La IA puede equivocarse: confirmá siempre las características en la ficha de la tienda antes de comprar.",
   },
+  {
+    q: "No entiendo las palabras técnicas de las fichas",
+    a: "Tenemos una guía pensada para eso: explica procesador, RAM, almacenamiento y más con ejemplos de todos los días.",
+  },
 ];
 
 export default function HelpPage() {
   return (
-    <InfoPage title="Ayuda">
-      {FAQ.map((f) => (
-        <InfoSection key={f.q} heading={f.q}>
-          <p>{f.a}</p>
-        </InfoSection>
-      ))}
-      <p className="text-sm text-gathering-on-surface-variant">
-        ¿Seguís con dudas? Mirá cómo funciona nuestro{" "}
-        <Link className="font-semibold text-gathering-primary hover:underline" href="/method">método</Link>, las{" "}
-        <Link className="font-semibold text-gathering-primary hover:underline" href="/guias">guías de compra</Link> o
-        pasá por <Link className="font-semibold text-gathering-primary hover:underline" href="/contact">Contacto</Link>.
-      </p>
+    <InfoPage title="Ayuda" icon="help" subtitle="Las dudas más comunes, respondidas sin vueltas.">
+      <div className="space-y-3">
+        {FAQ.map((f) => (
+          <details
+            key={f.q}
+            className="group rounded-2xl bg-gathering-surface-container p-4 shadow-sm open:shadow-md"
+          >
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-brand text-base font-semibold text-gathering-on-surface">
+              {f.q}
+              <span
+                className="material-symbols-outlined shrink-0 text-gathering-primary transition-transform group-open:rotate-180"
+                aria-hidden="true"
+              >
+                expand_more
+              </span>
+            </summary>
+            <p className="mt-3 font-brand text-base leading-relaxed text-gathering-on-surface-variant">{f.a}</p>
+          </details>
+        ))}
+      </div>
+
+      <div className="rounded-2xl bg-gathering-tertiary-container p-4 font-brand text-sm text-gathering-on-tertiary-container">
+        ¿Seguís con dudas? Mirá la{" "}
+        <Link className="font-semibold underline" href="/guias/tecnologia-sin-vueltas">guía de tecnología sin vueltas</Link>,
+        cómo funciona nuestro <Link className="font-semibold underline" href="/method">método</Link> o pasá por{" "}
+        <Link className="font-semibold underline" href="/contact">Contacto</Link>.
+      </div>
     </InfoPage>
   );
 }

@@ -22,11 +22,16 @@ export default async function TiendasPage() {
     <>
       <Navbar />
       <main className="mx-auto max-w-6xl px-4 py-8">
-        <h1 className="font-brand text-3xl font-bold text-gathering-on-surface">Tiendas que comparamos</h1>
-        <p className="mt-2 max-w-2xl font-brand text-gathering-on-surface-variant">
-          Revisamos {stores.length} tiendas argentinas y {total.toLocaleString("es-AR")} productos disponibles.
-          No vendemos nada: te llevamos a la tienda oficial para comprar.
-        </p>
+        <header className="max-w-2xl">
+          <p className="font-brand text-sm font-bold uppercase tracking-wide text-gathering-primary">Tiendas</p>
+          <h1 className="mt-1 font-brand text-3xl font-bold leading-tight text-gathering-on-surface sm:text-4xl">
+            Comparamos {stores.length} tiendas por vos
+          </h1>
+          <p className="mt-3 font-brand text-lg text-gathering-on-surface-variant">
+            {total.toLocaleString("es-AR")} productos disponibles, actualizados todos los días. No vendemos nada: te
+            llevamos a la tienda oficial para comprar.
+          </p>
+        </header>
 
         <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {stores.map((s) => {
@@ -35,12 +40,12 @@ export default async function TiendasPage() {
               <li key={s.source}>
                 <Link
                   href={`/tiendas/${s.source}`}
-                  className="flex h-full flex-col gap-3 rounded-2xl bg-gathering-surface-container p-4 shadow-sm transition-shadow hover:shadow-md"
+                  className="group flex h-full flex-col gap-3 rounded-2xl bg-gathering-surface-container p-5 shadow-sm transition-shadow hover:shadow-md"
                 >
                   <div className="flex items-center gap-3">
                     {logo && (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={logo} alt="" className="h-8 w-8 rounded" />
+                      <img src={logo} alt="" className="h-10 w-10 rounded-lg bg-white p-1 shadow-sm" />
                     )}
                     <h2 className="font-brand text-lg font-bold text-gathering-on-surface">{storeName(s.source)}</h2>
                   </div>
@@ -48,11 +53,16 @@ export default async function TiendasPage() {
                     {s.total.toLocaleString("es-AR")} productos
                     {s.minPrice != null && <> · desde {formatPrice(s.minPrice)}</>}
                   </p>
-                  <p className="font-brand text-xs text-gathering-on-surface-variant">
-                    {Object.entries(s.byCategory)
-                      .map(([c, n]) => `${CATEGORY_LABELS[c] ?? c}: ${n}`)
-                      .join(" · ")}
-                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {Object.entries(s.byCategory).map(([c, n]) => (
+                      <span
+                        key={c}
+                        className="rounded-full bg-gathering-primary/10 px-2.5 py-0.5 font-brand text-xs font-semibold text-gathering-primary"
+                      >
+                        {CATEGORY_LABELS[c] ?? c} · {n}
+                      </span>
+                    ))}
+                  </div>
                   {s.lastUpdate && (
                     <p className="mt-auto font-brand text-[11px] text-gathering-on-surface-variant">
                       Actualizado el {new Date(s.lastUpdate).toLocaleDateString("es-AR")}

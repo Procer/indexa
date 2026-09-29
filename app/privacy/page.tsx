@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function PrivacyPage() {
   return (
-    <InfoPage title="Política de privacidad" updated={LEGAL_LAST_UPDATE}>
+    <InfoPage title="Política de privacidad" updated={LEGAL_LAST_UPDATE} icon="lock" subtitle="Qué guardamos, para qué y cómo pedir que lo borremos.">
       <p>
         indexa es un buscador de tecnología para Argentina. Acá te contamos, sin vueltas, qué información guardamos
         cuando lo usás y para qué. No hace falta crear una cuenta para buscar.

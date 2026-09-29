@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function TermsPage() {
   return (
-    <InfoPage title="Términos de uso" updated={LEGAL_LAST_UPDATE}>
+    <InfoPage title="Términos de uso" updated={LEGAL_LAST_UPDATE} icon="gavel" subtitle="Las reglas del sitio, cortas y en castellano simple.">
       <p>Al usar indexa aceptás estas condiciones. Son cortas y en castellano simple.</p>
 
       <InfoSection heading="Qué es indexa">

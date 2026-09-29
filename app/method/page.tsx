@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function MethodPage() {
   return (
-    <InfoPage title="Cómo funciona indexa">
+    <InfoPage title="Cómo funciona indexa" icon="psychology" subtitle="Qué hace la inteligencia artificial, qué hacen las cuentas y cómo ordenamos.">
       <InfoSection heading="1. Entendemos lo que necesitás">
         <p>
           Cuando describís qué buscás, un modelo de lenguaje (OpenAI GPT-4o mini) traduce tu pedido a datos concretos:
