@@ -466,7 +466,7 @@ function RankedResultRow({
 
   return (
     <article
-      className={`flex gap-4 rounded-2xl border p-4 transition-colors gathering-glass-card ${
+      className={`flex flex-wrap gap-3 rounded-2xl border p-3 transition-colors sm:flex-nowrap sm:gap-4 sm:p-4 gathering-glass-card ${
         spotlighted
           ? "z-10 animate-spotlight-pulse ring-4 ring-[#3452E1] ring-offset-2 ring-offset-gathering-background border-gathering-outline-variant"
           : "border-gathering-outline-variant"
@@ -475,8 +475,8 @@ function RankedResultRow({
       {/* Foto + galería + "también en X" en el espacio libre debajo — sin
           numerito de ranking (pedido 2026-09-17: el orden ya lo da la
           posición en la lista, el círculo numerado sobraba). */}
-      <div className="flex w-32 shrink-0 flex-col gap-1">
-        <div className="relative flex h-32 w-32 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gathering-surface-container-highest/40 p-2">
+      <div className="flex w-24 shrink-0 flex-col gap-1 sm:w-32">
+        <div className="relative flex h-24 w-24 shrink-0 items-center sm:h-32 sm:w-32 justify-center overflow-hidden rounded-xl bg-gathering-surface-container-highest/40 p-2">
           {currentImage ? (
             <img
               key={currentImage}
@@ -528,7 +528,7 @@ function RankedResultRow({
                     precio a una línea nueva donde perdía el align-right (bug
                     reportado 2026-09-17). El título trunca solo (line-clamp-2)
                     en el espacio que le queda. */}
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex flex-col items-start gap-1 sm:flex-row sm:justify-between sm:gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="mb-0.5 flex flex-wrap items-center gap-1.5">
                       {product.brand && (
@@ -563,8 +563,8 @@ function RankedResultRow({
                     )}
                   </div>
                   {pb && (
-                    <div className="shrink-0 text-right">
-                      <p className="font-brand text-2xl font-bold text-gathering-on-surface">
+                    <div className="sm:shrink-0 sm:text-right">
+                      <p className="font-brand text-xl font-bold text-gathering-on-surface sm:text-2xl">
                         {pb.leadAmount}
                         <span className="ml-1 text-xs font-medium text-gathering-on-surface-variant">{pb.leadUnit}</span>
                       </p>
@@ -627,13 +627,13 @@ function RankedResultRow({
               </div>
 
               {/* Acciones */}
-              <div className="flex shrink-0 flex-col items-stretch gap-1.5 self-center">
+              <div className="flex w-full shrink-0 flex-row flex-wrap items-stretch gap-1.5 sm:w-auto sm:flex-col sm:flex-nowrap sm:self-center">
                 <a
                   href={product.affiliate_url ?? product.url}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => onBuyClick(product, idx + 1)}
-                  className="flex items-center justify-center gap-1.5 rounded-xl bg-gathering-primary-fixed-dim px-4 py-2.5 font-brand text-[13px] font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.97]"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-gathering-primary-fixed-dim px-4 py-2.5 font-brand text-[13px] font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.97]"
                 >
                   <StoreLogo source={product.source} />
                   Comprar
@@ -673,7 +673,7 @@ function RankedResultRow({
                   showIcon={false}
                   triggerClassName="rounded-lg border border-gathering-outline-variant px-3 py-1.5 font-brand text-[11.5px] font-semibold text-gathering-on-surface-variant transition-all hover:-translate-y-0.5 hover:border-gathering-primary-fixed-dim hover:bg-gathering-surface-container hover:shadow-md"
                 />
-                <span className="text-center font-brand text-[11px] text-gathering-on-surface-variant">
+                <span className="w-full text-center font-brand text-[11px] text-gathering-on-surface-variant sm:w-auto">
                   {storeName(product.source)}
                 </span>
               </div>

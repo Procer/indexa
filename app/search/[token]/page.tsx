@@ -1014,7 +1014,7 @@ export default function SearchResultsPage() {
             repartidos en tres renglones (chips de filtro siempre visibles, dos
             menús de orden, tres enlaces de compartir): se agruparon en menús. */}
         {hasResults && (
-          <div className="mb-4 flex flex-col gap-3">
+          <div className={`mb-4 flex flex-col gap-3 ${chatOpen ? "lg:pr-[26rem]" : ""}`}>
             <div>
               {formatSearchCriteria(searchSlots) && (
                 <p className="font-brand text-sm font-semibold text-gathering-primary sm:text-base">
