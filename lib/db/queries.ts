@@ -285,3 +285,82 @@ export async function getConfigPriceMedians(): Promise<Record<string, number>> {
   }
   return out;
 }
+
+// ─── Páginas públicas de tienda (/tiendas) ────────────────────────────────────
+
+export interface StoreSummary {
+  source: string;
+  total: number;
+  byCategory: Record<string, number>;
+  minPrice: number | null;
+  lastUpdate: string | null;
+}
+
+export async function getStoreSummaries(): Promise<StoreSummary[]> {
+  const rows = await sql<
+    { source: string; category: string; n: number; min_price: string | null; last_update: Date | null }[]
+  >`
+    SELECT source, category, COUNT(*)::int AS n,
+           MIN(price_cash) FILTER (WHERE price_cash > 0) AS min_price,
+           MAX(updated_at) AS last_update
+    FROM products
+    WHERE available = true
+    GROUP BY source, category
+  `;
+  const map = new Map<string, StoreSummary>();
+  for (const r of rows) {
+    const s = map.get(r.source) ?? {
+      source: r.source, total: 0, byCategory: {}, minPrice: null, lastUpdate: null,
+    };
+    s.total += r.n;
+    s.byCategory[r.category] = r.n;
+    const min = r.min_price != null ? Number(r.min_price) : null;
+    if (min != null && (s.minPrice == null || min < s.minPrice)) s.minPrice = min;
+    const upd = r.last_update ? r.last_update.toISOString() : null;
+    if (upd && (!s.lastUpdate || upd > s.lastUpdate)) s.lastUpdate = upd;
+    map.set(r.source, s);
+  }
+  return Array.from(map.values()).sort((a, b) => b.total - a.total);
+}
+
+export async function getStoreProducts(
+  source: string,
+  perCategory = 8
+): Promise<Product[]> {
+  const rows = await sql<Product[]>`
+    SELECT * FROM (
+      SELECT p.*, ROW_NUMBER() OVER (PARTITION BY category ORDER BY price_cash ASC) AS rn
+      FROM products p
+      WHERE source = ${source} AND available = true AND price_cash > 0
+    ) t
+    WHERE rn <= ${perCategory}
+    ORDER BY category, price_cash ASC
+  `;
+  return rows as unknown as Product[];
+}
+
+// Productos cuyo precio contado bajó en los últimos `days` días (para /tiendas/[source]).
+export async function getRecentPriceDrops(
+  source: string,
+  days = 14,
+  limit = 6
+): Promise<{ product: Product; previous: number; pct: number }[]> {
+  const rows = await sql<(Product & { prev_price: string })[]>`
+    SELECT p.*, prev.price_cash AS prev_price
+    FROM products p
+    JOIN LATERAL (
+      SELECT price_cash FROM price_history h
+      WHERE h.product_id = p.id AND h.recorded_at < NOW() - make_interval(days => ${days})
+      ORDER BY h.recorded_at DESC LIMIT 1
+    ) prev ON true
+    WHERE p.source = ${source} AND p.available = true
+      AND p.price_cash > 0 AND prev.price_cash > p.price_cash * 1.03
+    ORDER BY (prev.price_cash - p.price_cash) / prev.price_cash DESC
+    LIMIT ${limit}
+  `;
+  return rows.map((r) => {
+    const previous = Number(r.prev_price);
+    const cur = Number(r.price_cash);
+    return { product: r as unknown as Product, previous, pct: Math.round(((previous - cur) / previous) * 100) };
+  });
+}

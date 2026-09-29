@@ -9,7 +9,19 @@ export function Footer() {
           <LogoBrand logoClass="h-6" />
           <span className="font-brand text-sm text-gathering-on-surface-variant">© 2025 indexa — Tu asesor tecnológico personal</span>
         </div>
-        <nav className="flex gap-6">
+        <nav className="flex flex-wrap gap-x-6 gap-y-2">
+          <Link
+            href="/tiendas"
+            className="font-brand text-sm text-gathering-on-surface-variant transition-colors hover:text-gathering-on-surface"
+          >
+            Tiendas
+          </Link>
+          <Link
+            href="/guias"
+            className="font-brand text-sm text-gathering-on-surface-variant transition-colors hover:text-gathering-on-surface"
+          >
+            Guías
+          </Link>
           <Link
             href="/privacy"
             className="font-brand text-sm text-gathering-on-surface-variant transition-colors hover:text-gathering-on-surface"

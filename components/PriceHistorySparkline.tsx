@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { describePriceTrend } from "@/lib/domain/priceHistory";
+import { describePriceTrend, describePriceVerdict } from "@/lib/domain/priceHistory";
 import { withBasePath } from "@/lib/basePath";
 import type { PriceHistoryPoint } from "@/types";
 
@@ -41,6 +41,8 @@ export function PriceHistorySparkline({ productId }: PriceHistorySparklineProps)
   const trend = describePriceTrend(points);
   if (!trend) return null;
 
+  const verdict = describePriceVerdict(points);
+
   const prices = withPrice.map((p) => p.price_cash);
   const min = Math.min(...prices);
   const max = Math.max(...prices);
@@ -68,7 +70,15 @@ export function PriceHistorySparkline({ productId }: PriceHistorySparklineProps)
       : "text-gray-400";
   const arrow = trend.direction === "down" ? "▼" : trend.direction === "up" ? "▲" : "–";
 
+  const verdictClass =
+    verdict?.kind === "lowest" || verdict?.kind === "below_avg"
+      ? "bg-green-50 text-green-700"
+      : verdict?.kind === "highest" || verdict?.kind === "above_avg"
+      ? "bg-red-50 text-red-600"
+      : "bg-gray-100 text-gray-500";
+
   return (
+    <div className="flex flex-col gap-1.5">
     <div className="flex items-center gap-2">
       <svg width={WIDTH} height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="shrink-0">
         <path
@@ -100,6 +110,12 @@ export function PriceHistorySparkline({ productId }: PriceHistorySparklineProps)
           </span>
         )}
       </div>
+    </div>
+    {verdict && (
+      <span className={`w-fit rounded-full px-2 py-0.5 text-[11px] font-semibold ${verdictClass}`}>
+        {verdict.text}
+      </span>
+    )}
     </div>
   );
 }
