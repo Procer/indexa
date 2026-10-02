@@ -10,6 +10,8 @@ const ALLOWED_EVENT_TYPES = new Set([
   "time_on_page",
   "client_error",
   "visitor_label",
+  "sponsor_home_view",
+  "sponsor_home_click",
 ]);
 
 // POST /api/events — tracking anónimo genérico (entrada al sitio, ver

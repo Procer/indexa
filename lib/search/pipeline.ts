@@ -88,34 +88,147 @@ export type RankedProduct = Product & {
   final_score: number;
   out_of_budget?: "above" | "below" | null;
   sponsored?: boolean;
+  // Campaña que lo favoreció y cómo: por score ("boost") o por posición
+  // garantizada ("slot"). Se persiste en search_sponsorships (no va a la UI).
+  sponsor_placement_id?: string | null;
+  sponsor_via?: "boost" | "slot";
 };
 
+// ¿La campaña está vigente ahora y apunta a la tienda + rubro de este producto?
+// (No mira la relevancia: eso lo decide quien llama.)
+function placementMatches(p: SponsoredPlacement, product: Product, now: number): boolean {
+  if (!p.active || !p.target_source) return false;
+  if (p.ends_at !== null && new Date(p.ends_at).getTime() <= now) return false;
+  if (p.starts_at !== null && new Date(p.starts_at).getTime() > now) return false;
+  if (p.target_source.toLowerCase() !== (product.source ?? "").toLowerCase()) return false;
+  if (p.categories.length > 0 && !p.categories.includes(product.category as never)) return false;
+  return true;
+}
+
+// ¿Alguna campaña vigente puede afectar a una búsqueda de esta categoría?
+// (category null = búsqueda mixta, cualquier campaña puede aplicar.) Si sí, el
+// caché estructurado se saltea: ese caché se armó sin saber qué productos
+// favorecía la campaña, así que serviría un ranking sin patrocinio, sin
+// etiqueta y sin medición.
+export function hasCampaignFor(category: string | null, placements: SponsoredPlacement[]): boolean {
+  const now = Date.now();
+  return placements.some((p) => {
+    if (!p.active || !p.target_source) return false;
+    if (p.ends_at !== null && new Date(p.ends_at).getTime() <= now) return false;
+    if (p.starts_at !== null && new Date(p.starts_at).getTime() > now) return false;
+    return category === null || p.categories.length === 0 || p.categories.includes(category as never);
+  });
+}
+
 // Boost de patrocinado (modelo tienda + rubro). Un producto sube si hay una
-// colocación activa para su tienda (target_source) y su rubro (categories) y
+// colocación vigente para su tienda (target_source) y su rubro (categories) y
 // además es relevante para esta búsqueda (similarity >= min_relevance). Se
 // resuelve acá y no en scoreResults porque hybrid_search no devuelve
 // source/category. Devuelve el boost a sumar (0 si no aplica) y si el producto
 // quedó marcado como patrocinado (para la etiqueta de la tarjeta).
+// `usage` cuenta cuántos productos favoreció cada campaña en ESTA búsqueda y
+// respeta max_per_search (los productos llegan ordenados por score, así que
+// se favorecen los mejores de la tienda, no cualquiera).
 function sponsorBoost(
   product: Product,
   similarity: number,
-  placements: SponsoredPlacement[]
-): { boost: number; sponsored: boolean } {
+  placements: SponsoredPlacement[],
+  usage: Map<string, number>
+): { boost: number; sponsored: boolean; placementId: string | null } {
   const now = Date.now();
   for (const p of placements) {
-    if (!p.active || !p.target_source) continue;
-    if (p.ends_at !== null && new Date(p.ends_at).getTime() <= now) continue;
-    if (p.target_source.toLowerCase() !== (product.source ?? "").toLowerCase()) continue;
-    if (p.categories.length > 0 && !p.categories.includes(product.category as never)) continue;
-    const applied = similarity >= p.min_relevance;
+    if (!placementMatches(p, product, now)) continue;
+    const used = usage.get(p.id) ?? 0;
+    const applied = similarity >= p.min_relevance && used < (p.max_per_search ?? 2);
     console.log(
       `[SPONSOR] placement="${p.advertiser}" source=${product.source} category=${product.category} ` +
         `product=${product.id} similarity=${similarity.toFixed(3)} minRelevance=${p.min_relevance} ` +
-        `boost=${p.score_boost} applied=${applied}`
+        `boost=${p.score_boost} used=${used}/${p.max_per_search ?? 2} applied=${applied}`
     );
-    if (applied) return { boost: p.score_boost, sponsored: true };
+    if (applied) {
+      usage.set(p.id, used + 1);
+      return { boost: p.score_boost, sponsored: true, placementId: p.id };
+    }
   }
-  return { boost: 0, sponsored: false };
+  return { boost: 0, sponsored: false, placementId: null };
+}
+
+// Posición garantizada: para cada campaña con slot_position, el mejor producto
+// ELEGIBLE de la tienda (relevante, dentro de presupuesto, sin penalizaciones
+// serias, y que respete la marca/procesador pedidos) queda como máximo en esa
+// posición del ranking. Mueve solo ese producto hacia arriba — no reordena el
+// resto. Devuelve un array nuevo.
+function applySponsorSlots(
+  ranked: RankedProduct[],
+  placements: SponsoredPlacement[],
+  opts: {
+    penaltyOf: (p: RankedProduct) => number;
+    respectsRequest: (p: RankedProduct) => boolean;
+    usage: Map<string, number>;
+  }
+): RankedProduct[] {
+  const now = Date.now();
+  const withSlot = placements
+    .filter((p) => p.slot_position != null && p.active && p.target_source)
+    .sort((a, b) => b.score_boost - a.score_boost);
+  if (withSlot.length === 0) return ranked;
+
+  const result = [...ranked];
+  let lastSlotIndex = -1;
+  for (const p of withSlot) {
+    const alreadyUsed = opts.usage.get(p.id) ?? 0;
+    const isEligible = (prod: RankedProduct): boolean =>
+      placementMatches(p, prod, now) &&
+      !prod.out_of_budget &&
+      prod.similarity >= p.min_relevance &&
+      opts.penaltyOf(prod) <= 0.2 &&
+      opts.respectsRequest(prod);
+
+    const idx = result.findIndex(isEligible);
+    if (idx === -1) continue;
+    const chosen = result[idx];
+    const alreadyBoosted = chosen.sponsor_placement_id === p.id;
+    // Producto nuevo para la campaña: respeta el tope por búsqueda.
+    if (!alreadyBoosted && alreadyUsed >= (p.max_per_search ?? 2)) continue;
+
+    const target = Math.min(Math.max((p.slot_position as number) - 1, lastSlotIndex + 1), result.length - 1);
+    if (idx > target) {
+      result.splice(idx, 1);
+      result.splice(target, 0, chosen);
+    }
+    const finalIdx = Math.min(idx, target);
+    lastSlotIndex = finalIdx;
+    if (!alreadyBoosted) opts.usage.set(p.id, alreadyUsed + 1);
+    result[finalIdx] = {
+      ...chosen,
+      sponsored: true,
+      sponsor_placement_id: p.id,
+      sponsor_via: idx > target ? "slot" : chosen.sponsor_via ?? "boost",
+    };
+    console.log(
+      `[SPONSOR] slot placement="${p.advertiser}" product=${chosen.id} from=${idx + 1} to=${finalIdx + 1} ` +
+        `wanted=${p.slot_position}`
+    );
+  }
+  return result;
+}
+
+// Filas para search_sponsorships a partir del pool final (posición 1-based).
+export function collectSponsorships(
+  ranked: RankedProduct[]
+): { product_id: string; placement_id: string; position: number; via: "boost" | "slot" }[] {
+  const rows: { product_id: string; placement_id: string; position: number; via: "boost" | "slot" }[] = [];
+  ranked.forEach((p, i) => {
+    if (p.sponsored && p.sponsor_placement_id) {
+      rows.push({
+        product_id: p.id,
+        placement_id: p.sponsor_placement_id,
+        position: i + 1,
+        via: p.sponsor_via ?? "boost",
+      });
+    }
+  });
+  return rows;
 }
 
 // Arma el pool ordenado y filtrado de productos para una búsqueda: SQL +
@@ -160,6 +273,7 @@ export async function buildRankedPool(params: {
   const fullProducts = await getProductsByIds(pageResults.map((p) => p.id));
   const scoreMap = new Map(pageResults.map((p) => [p.id, p]));
 
+  const sponsorUsage = new Map<string, number>();
   let scoredProducts: RankedProduct[] = fullProducts
     // Piso del rango de presupuesto (ej. "entre 900 mil y 1,6 millones") — a
     // diferencia del techo, que ya lo filtra hybrid_search en SQL, esto es un
@@ -167,11 +281,18 @@ export async function buildRankedPool(params: {
     .filter((product) => minCash == null || (product.price_cash ?? 0) >= minCash)
     .map((product) => {
       const similarity = scoreMap.get(product.id)!.similarity;
-      const { boost, sponsored } = sponsorBoost(product, similarity, sponsoredPlacements);
+      const { boost, sponsored, placementId } = sponsorBoost(
+        product,
+        similarity,
+        sponsoredPlacements,
+        sponsorUsage
+      );
       return {
         ...product,
         similarity,
         sponsored,
+        sponsor_placement_id: placementId,
+        sponsor_via: sponsored ? ("boost" as const) : undefined,
         // El grado de calidad/precio recién está disponible acá (getProductsByIds
         // trae el Product completo; hybrid_search/scoreResults no lo ven). Ajuste
         // acotado ±0.06 — ver qualityPriceBoost en scorer.ts. + boost de
@@ -542,7 +663,14 @@ export async function buildRankedPool(params: {
     return sB - sA;
   });
 
-  return merged;
+  // Posición garantizada de campañas con slot_position. Va AL FINAL, después de
+  // todos los re-ranks, para que ningún sort posterior la deshaga. Solo mueve
+  // un producto que ya cumple relevancia/presupuesto/marca pedida.
+  return applySponsorSlots(merged, sponsoredPlacements, {
+    penaltyOf: (p) => totalPenaltyById.get(p.id) ?? 0,
+    respectsRequest: (p) => (hasBrandPreference || hasProcessorPreference ? matchPriority(p) === 1 : true),
+    usage: sponsorUsage,
+  });
 }
 
 // Pool de IDs (rankeado, hasta RANKED_POOL_SIZE) para un share_token ya

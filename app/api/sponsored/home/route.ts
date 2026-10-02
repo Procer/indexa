@@ -15,6 +15,7 @@ export async function GET() {
       return NextResponse.json({ sponsor: null });
     }
     const sponsor: HomeSponsor = {
+      id: row.id,
       advertiser: row.advertiser,
       source: row.target_source,
       categories: row.categories as ProductCategory[],

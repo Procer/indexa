@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateActio
 import { motion } from "framer-motion";
 import { withBasePath } from "@/lib/basePath";
 import { getOrCreateVisitId } from "@/lib/analytics/visit";
+import { trackEvent } from "@/lib/analytics/track";
 import { detectCategoryLocally } from "@/lib/domain/detectCategory";
 import { BudgetPicker } from "@/components/BudgetPicker";
 import { LogoBrand } from "@/components/LogoBrand";
@@ -313,6 +314,16 @@ export function GuidedSearchChat({
       cancelled = true;
     };
   }, []);
+
+  // Medición del slot de inicio: una "vista" cuando la tarjeta patrocinada se
+  // muestra de verdad (hay campaña, todavía sin resultados y no es la burbuja
+  // compacta), una sola vez por carga.
+  const homeSponsorViewedRef = useRef(false);
+  useEffect(() => {
+    if (!homeSponsor || compact || products.length > 0 || homeSponsorViewedRef.current) return;
+    homeSponsorViewedRef.current = true;
+    trackEvent("sponsor_home_view", getOrCreateVisitId().id, { metadata: { placementId: homeSponsor.id } });
+  }, [homeSponsor, compact, products.length]);
 
   // A diferencia de saltar siempre al fondo (lo que fuerza al usuario a
   // scrollear de nuevo con cada respuesta del bot), cuando se agrega un
@@ -696,11 +707,14 @@ export function GuidedSearchChat({
             </p>
             <button
               type="button"
-              onClick={() =>
+              onClick={() => {
+                trackEvent("sponsor_home_click", getOrCreateVisitId().id, {
+                  metadata: { placementId: homeSponsor.id },
+                });
                 onSubmitAnswer(
                   `${RUBRO_PLURAL[homeSponsor.categories[0]] ?? homeSponsor.categories[0]} en ${homeSponsor.advertiser}`
-                )
-              }
+                );
+              }}
               className="mt-2 rounded-full bg-amber-600 px-4 py-1.5 font-brand text-sm font-semibold text-white active:scale-95"
             >
               Ver

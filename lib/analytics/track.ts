@@ -8,7 +8,9 @@ export type SiteEventType =
   | "product_buy_click"
   | "time_on_page"
   | "client_error"
-  | "visitor_label";
+  | "visitor_label"
+  | "sponsor_home_view"
+  | "sponsor_home_click";
 
 interface TrackEventPayload {
   productId?: string;

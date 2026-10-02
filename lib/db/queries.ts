@@ -136,20 +136,70 @@ export async function getActiveSponsoredPlacements(): Promise<
     WHERE active = true
       AND target_source IS NOT NULL
       AND (ends_at IS NULL OR ends_at > ${now})
+      AND (starts_at IS NULL OR starts_at <= ${now})
   `;
   return rows as unknown as SponsoredPlacement[];
+}
+
+export interface SponsorshipRow {
+  product_id: string;
+  placement_id: string;
+  position: number | null;
+  via: "boost" | "slot";
+}
+
+// Guarda qué productos de una búsqueda quedaron patrocinados (y por qué
+// campaña / en qué posición del pool). Se usa para: etiquetar "Patrocinado" al
+// recargar o paginar, y atribuir impresiones y clicks a la campaña.
+export async function saveSearchSponsorships(
+  shareToken: string,
+  rows: SponsorshipRow[]
+): Promise<void> {
+  if (rows.length === 0) return;
+  await sql`
+    INSERT INTO search_sponsorships ${sql(
+      rows.map((r) => ({ share_token: shareToken, ...r })),
+      "share_token",
+      "product_id",
+      "placement_id",
+      "position",
+      "via"
+    )}
+    ON CONFLICT (share_token, product_id) DO NOTHING
+  `;
+}
+
+export async function getSponsorshipsByToken(
+  shareToken: string
+): Promise<Map<string, string>> {
+  const rows = await sql<{ product_id: string; placement_id: string }[]>`
+    SELECT product_id, placement_id FROM search_sponsorships WHERE share_token = ${shareToken}
+  `;
+  return new Map(rows.map((r) => [r.product_id, r.placement_id]));
+}
+
+// Marca `sponsored` en productos que se sirven por un camino que no pasa por
+// buildRankedPool (recarga de /search/[token], paginación "más resultados").
+export async function markSponsored<T extends { id: string; sponsored?: boolean }>(
+  shareToken: string,
+  products: T[]
+): Promise<T[]> {
+  if (products.length === 0) return products;
+  const map = await getSponsorshipsByToken(shareToken).catch(() => new Map<string, string>());
+  if (map.size === 0) return products;
+  return products.map((p) => (map.has(p.id) ? { ...p, sponsored: true } : p));
 }
 
 // Colocación patrocinada para la pantalla de entrada (chat guiado). Una sola:
 // si hay varias con show_on_home, gana la de mayor boost.
 export async function getHomeSponsor(): Promise<
-  { advertiser: string; target_source: string; categories: string[] } | null
+  { id: string; advertiser: string; target_source: string; categories: string[] } | null
 > {
   const now = new Date().toISOString();
   const [row] = await sql<
-    { advertiser: string; target_source: string; categories: string[] }[]
+    { id: string; advertiser: string; target_source: string; categories: string[] }[]
   >`
-    SELECT advertiser, target_source, categories
+    SELECT id, advertiser, target_source, categories
     FROM sponsored_placements
     WHERE active = true
       AND show_on_home = true

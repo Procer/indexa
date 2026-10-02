@@ -17,6 +17,9 @@ const EDITABLE = [
   "active",
   "starts_at",
   "ends_at",
+  "amount_paid_ars",
+  "slot_position",
+  "max_per_search",
 ] as const;
 
 // PATCH /api/admin/sponsors/[id] — toggle active o actualizar campos
@@ -37,6 +40,18 @@ export async function PATCH(
   );
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "Nada para actualizar" }, { status: 400 });
+  }
+  const slot = updates.slot_position;
+  if (slot != null && (!Number.isInteger(slot) || (slot as number) < 1 || (slot as number) > 6)) {
+    return NextResponse.json({ error: "La posición garantizada va de 1 a 6" }, { status: 400 });
+  }
+  const max = updates.max_per_search;
+  if (max !== undefined && (!Number.isInteger(max) || (max as number) < 1 || (max as number) > 10)) {
+    return NextResponse.json({ error: "El tope por búsqueda va de 1 a 10" }, { status: 400 });
+  }
+  const paid = updates.amount_paid_ars;
+  if (paid != null && (typeof paid !== "number" || !Number.isFinite(paid) || paid < 0)) {
+    return NextResponse.json({ error: "Monto pagado inválido" }, { status: 400 });
   }
 
   try {

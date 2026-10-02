@@ -16,6 +16,7 @@ import { LEVEL_DOT } from "./SpecHighlights";
 import { withBasePath } from "@/lib/basePath";
 import { getOrCreateVisitId } from "@/lib/analytics/visit";
 import { trackEvent } from "@/lib/analytics/track";
+import { useImpression } from "@/lib/analytics/useImpression";
 import { formatPrice, storeLogoUrl, storeName } from "@/lib/domain/productDisplay";
 import type { AlternativeProduct } from "@/types";
 
@@ -258,6 +259,9 @@ export function ProductChatCard({
     if (spotlight) cardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [spotlight]);
 
+  // Impresión: la tarjeta cuenta como "vista" cuando estuvo ≥50% visible ~1s.
+  useImpression(cardRef, searchShareToken, product.id);
+
   // Selector de variante (casi-duplicados colapsados: color / SO / 256↔512GB).
   // Al elegir una cambian PRECIO y LINK DE COMPRA; las specs siguen siendo las
   // del primario (ver AlternativeProduct.variants / groupVariants).
@@ -322,6 +326,10 @@ export function ProductChatCard({
           ? "border-2 border-amber-400/70 bg-amber-50/60 shadow-[0_4px_14px_rgba(180,83,9,0.15)]"
           : ""
       } ${isSelected ? "border-gathering-primary-fixed-dim ring-2 ring-gathering-primary/20" : ""} ${
+        // Patrocinado: borde ámbar suave para que se note sin disfrazarse de
+        // "Mejor opción" (que usa borde grueso). La etiqueta sigue siendo clara.
+        product.sponsored && !isTopPick && !isSelected ? "ring-1 ring-amber-300/80" : ""
+      } ${
         // Índigo (el mismo acento que el botón del chat/gathering-primary),
         // grueso (ring-4) y sólido para distinguirse del ring-2 fino al 20%
         // de opacidad que usa isSelected — y distinto del ámbar de "Mejor

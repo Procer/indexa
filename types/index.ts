@@ -390,6 +390,68 @@ export interface SearchAnalytics {
   engagement: SiteEngagementAnalytics;
 }
 
+// ─── Admin: tiendas y mercado ─────────────────────────────────────────────────
+
+export interface StoreProductStat {
+  product_id: string;
+  title: string;
+  impressions: number;
+  clicks: number;
+}
+
+export interface StoreInsight {
+  store: string;
+  // Rendimiento en la ventana elegida
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  // Clicks de la ventana anterior de igual largo (para ver tendencia)
+  prevClicks: number;
+  // Interés más profundo que el click
+  detailViews: number;
+  chatAsks: number;
+  compareAdds: number;
+  // Catálogo
+  availableProducts: number;
+  withoutPrice: number;
+  lastSyncAt: string | null;
+  // Precio contra el resto de las tiendas, sobre los productos que otras tiendas también venden
+  comparableProducts: number;
+  cheapestCount: number;
+  // Promedio de cuánto más caro (+) o más barato (−) está vs. la tienda más barata, en %
+  avgGapPct: number | null;
+  topProducts: StoreProductStat[];
+  // Se mostraron mucho y nadie entró: precio, foto o título para revisar
+  ignoredProducts: StoreProductStat[];
+}
+
+export interface DemandGap {
+  category: string;
+  brand: string | null;
+  budgetBand: string;
+  searches: number;
+  // Búsquedas que terminaron con 0-2 resultados
+  unmet: number;
+  example: string | null;
+}
+
+export interface BudgetDistribution {
+  category: string;
+  total: number;
+  bands: { band: string; count: number }[];
+}
+
+export interface StoresInsights {
+  days: number;
+  totalImpressions: number;
+  totalClicks: number;
+  stores: StoreInsight[];
+  demandGaps: DemandGap[];
+  budgetByCategory: BudgetDistribution[];
+  // Hasta cuándo hay datos de impresiones (se empezaron a medir tarde)
+  impressionsSince: string | null;
+}
+
 // ─── UI ───────────────────────────────────────────────────────────────────────
 
 export interface GuidingQuestion {
@@ -420,11 +482,66 @@ export interface SponsoredPlacement {
   starts_at: string | null;
   ends_at: string | null;
   created_at: string;
+  // Lo que pagó el anunciante (ARS) — base de costo por mil impresiones / por click.
+  amount_paid_ars: number | null;
+  // null = solo empuja por score. 1..6 = además garantiza que el mejor producto
+  // elegible de la tienda quede como máximo en esa posición del ranking.
+  slot_position: number | null;
+  // Tope de productos favorecidos por búsqueda.
+  max_per_search: number;
+}
+
+// Rendimiento de una campaña desde que está vigente (GET /api/admin/sponsors/stats).
+export interface SponsorStatsDay {
+  date: string;
+  impressions: number;
+  clicks: number;
+}
+export interface SponsorStatsProduct {
+  product_id: string;
+  title: string;
+  impressions: number;
+  clicks: number;
+}
+export interface SponsorStats {
+  placement_id: string;
+  // Ventana medida: desde que la campaña empezó a valer hasta hoy / su fin.
+  from: string;
+  to: string;
+  daysActive: number;
+  // Búsquedas en las que la campaña favoreció al menos un producto.
+  searchesWithCampaign: number;
+  // Apariciones: veces que una tarjeta patrocinada se vio en pantalla.
+  impressions: number;
+  uniqueVisitors: number;
+  clicks: number;
+  ctr: number;
+  // Interacciones con la ficha sin ir a la tienda.
+  detailViews: number;
+  chatAsks: number;
+  compareAdds: number;
+  // Posición media que ocupó en el ranking (1 = primero).
+  avgPosition: number | null;
+  slotUses: number;
+  // Slot de la pantalla de inicio ("Ofertas en X de Y").
+  homeViews: number;
+  homeClicks: number;
+  // Referencia: CTR de la misma tienda cuando NO estuvo patrocinada.
+  organicImpressions: number;
+  organicClicks: number;
+  organicCtr: number | null;
+  // Costo (null si no se cargó el monto pagado o no hay datos).
+  amountPaid: number | null;
+  costPerThousandImpressions: number | null;
+  costPerClick: number | null;
+  byDay: SponsorStatsDay[];
+  topProducts: SponsorStatsProduct[];
 }
 
 // Colocación patrocinada a mostrar en la pantalla de entrada (chat guiado),
 // resuelta por GET /api/sponsored/home. null = no hay ninguna activa.
 export interface HomeSponsor {
+  id: string;
   advertiser: string;
   source: string;
   categories: ProductCategory[];

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { enrichWithAnalysis } from "@/lib/llm/productAnalysis";
 import { getOrBuildPoolIds, type RankedProduct } from "@/lib/search/pipeline";
 import { getAlsoAtCache, setAlsoAtCache } from "@/lib/search/cache";
-import { getProductsByIds, getSearchByShareToken, updateProductAnalysis } from "@/lib/db/queries";
+import { getProductsByIds, getSearchByShareToken, markSponsored, updateProductAnalysis } from "@/lib/db/queries";
 
 const BATCH_SIZE = 6;
 
@@ -45,7 +45,12 @@ export async function GET(
       final_score: Math.max(0, 1 - (offset + i) * 0.01),
     }));
 
-    const enrichedResults = await enrichWithAnalysis(batch, search.slots);
+    // Etiqueta "Patrocinado" según lo que se decidió al armar la búsqueda
+    // (search_sponsorships) — este camino no pasa por buildRankedPool.
+    const enrichedResults = await markSponsored(
+      params.token,
+      await enrichWithAnalysis(batch, search.slots)
+    );
 
     // Mismo non-blocking persistence que /api/search (also_at + análisis nuevo).
     for (const p of enrichedResults) {

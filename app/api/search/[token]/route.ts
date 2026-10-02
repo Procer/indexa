@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getProductsByIds, getSearchByShareToken } from "@/lib/db/queries";
+import { getProductsByIds, getSearchByShareToken, markSponsored } from "@/lib/db/queries";
 import { getAlsoAtCache } from "@/lib/search/cache";
 import { getOrBuildPoolIds } from "@/lib/search/pipeline";
 
@@ -22,10 +22,13 @@ export async function GET(
     // lib/search/cache.ts) para que un reload/link compartido siga mostrando
     // "también en otras tiendas" en vez de perderlo silenciosamente.
     const alsoAtByProduct = await Promise.all(rawProducts.map((p) => getAlsoAtCache(p.id)));
-    const products = rawProducts.map((p, i) => ({
-      ...p,
-      also_at: alsoAtByProduct[i] ?? undefined,
-    }));
+    const products = await markSponsored(
+      params.token,
+      rawProducts.map((p, i) => ({
+        ...p,
+        also_at: alsoAtByProduct[i] ?? undefined,
+      }))
+    );
 
     // Total real del pool (hasta RANKED_POOL_SIZE), no solo los ids guardados
     // en la búsqueda (que quedaron capados al primer lote enriquecido) — así

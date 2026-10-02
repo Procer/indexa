@@ -42,6 +42,9 @@ export async function POST(request: NextRequest) {
     show_on_home?: boolean;
     starts_at?: string | null;
     ends_at?: string | null;
+    amount_paid_ars?: number | null;
+    slot_position?: number | null;
+    max_per_search?: number;
   };
 
   if (!body.advertiser?.trim() || !body.target_source?.trim() || !body.categories?.length) {
@@ -50,11 +53,24 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
+  const slot = body.slot_position ?? null;
+  if (slot !== null && (!Number.isInteger(slot) || slot < 1 || slot > 6)) {
+    return NextResponse.json({ error: "La posición garantizada va de 1 a 6" }, { status: 400 });
+  }
+  const maxPerSearch = body.max_per_search ?? 2;
+  if (!Number.isInteger(maxPerSearch) || maxPerSearch < 1 || maxPerSearch > 10) {
+    return NextResponse.json({ error: "El tope por búsqueda va de 1 a 10" }, { status: 400 });
+  }
+  const paid = body.amount_paid_ars ?? null;
+  if (paid !== null && (typeof paid !== "number" || !Number.isFinite(paid) || paid < 0)) {
+    return NextResponse.json({ error: "Monto pagado inválido" }, { status: 400 });
+  }
 
   try {
     const [placement] = await sql`
       INSERT INTO sponsored_placements
-        (advertiser, target_source, categories, score_boost, min_relevance, show_on_home, active, starts_at, ends_at)
+        (advertiser, target_source, categories, score_boost, min_relevance, show_on_home, active,
+         starts_at, ends_at, amount_paid_ars, slot_position, max_per_search)
       VALUES (
         ${body.advertiser.trim()},
         ${body.target_source.trim()},
@@ -64,7 +80,10 @@ export async function POST(request: NextRequest) {
         ${body.show_on_home ?? false},
         true,
         ${body.starts_at ?? null},
-        ${body.ends_at ?? null}
+        ${body.ends_at ?? null},
+        ${paid},
+        ${slot},
+        ${maxPerSearch}
       )
       RETURNING *
     `;

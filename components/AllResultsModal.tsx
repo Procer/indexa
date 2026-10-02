@@ -146,6 +146,7 @@ export function AllResultsModal({
                     onCompareToggle={handleCompare}
                     isCompared={compareList.some((c) => c.id === p.id)}
                     compareDisabled={compareList.length >= 5}
+                    searchShareToken={shareToken}
                   />
                 ))}
               </div>

@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
   const hours = ALLOWED_HOURS.includes(hoursParam) ? hoursParam : 24;
   const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
 
-  const [summaryRows, recentErrors, recentActivity, visits, names] = await Promise.all([
+  const [summaryRows, recentErrors, recentActivity, visits, names, lastSearches] = await Promise.all([
     sql<{ visits: number; searches: number; chats: number; clicks: number; errors: number }[]>`
       SELECT
         (SELECT count(DISTINCT visit_id) FROM (
@@ -143,6 +143,14 @@ export async function GET(request: NextRequest) {
       WHERE event_type = 'visitor_label'
       ORDER BY visit_id, created_at DESC
     `,
+    // Lo último que buscó cada visita — se muestra como etiqueta cuando la
+    // persona no dejó su nombre (un código tipo "a3f9c1d2e…" no dice nada).
+    sql<{ visit_id: string; raw_input: string }[]>`
+      SELECT DISTINCT ON (visit_id) visit_id, raw_input
+      FROM searches
+      WHERE visit_id IS NOT NULL AND created_at >= ${cutoff}
+      ORDER BY visit_id, created_at DESC
+    `,
   ]);
 
   return NextResponse.json({
@@ -152,5 +160,6 @@ export async function GET(request: NextRequest) {
     recentActivity,
     visits,
     names: Object.fromEntries(names.map((n) => [n.visit_id, n.name])),
+    lastSearch: Object.fromEntries(lastSearches.map((s) => [s.visit_id, s.raw_input.slice(0, 80)])),
   });
 }

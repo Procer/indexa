@@ -207,7 +207,11 @@ CREATE TABLE sponsored_placements (
   active        BOOLEAN DEFAULT true,
   starts_at     TIMESTAMPTZ,
   ends_at       TIMESTAMPTZ,
-  created_at    TIMESTAMPTZ DEFAULT NOW()
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  -- ver db/vps/sponsor_stats.sql
+  amount_paid_ars NUMERIC(12,2),
+  slot_position   INT CHECK (slot_position IS NULL OR slot_position BETWEEN 1 AND 6),
+  max_per_search  INT NOT NULL DEFAULT 2 CHECK (max_per_search BETWEEN 1 AND 10)
 );
 CREATE INDEX idx_sponsored_placements_active
   ON sponsored_placements (active) WHERE active = true;
@@ -263,7 +267,8 @@ CREATE TABLE site_events (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_type TEXT NOT NULL CHECK (event_type IN (
     'session_start', 'product_view_details', 'product_compare_add', 'product_ask_about',
-    'product_buy_click', 'time_on_page', 'client_error', 'visitor_label'
+    'product_buy_click', 'time_on_page', 'client_error', 'visitor_label',
+    'sponsor_home_view', 'sponsor_home_click'
   )),
   visit_id    TEXT NOT NULL,
   product_id  UUID REFERENCES products(id) ON DELETE SET NULL,
@@ -274,6 +279,37 @@ CREATE TABLE site_events (
 );
 CREATE INDEX idx_site_events_visit        ON site_events(visit_id);
 CREATE INDEX idx_site_events_type_created ON site_events(event_type, created_at);
+
+-- =============================================================================
+-- Medición de patrocinados (ver db/vps/sponsor_stats.sql, mismo contenido)
+-- =============================================================================
+CREATE TABLE search_sponsorships (
+  share_token  TEXT NOT NULL,
+  product_id   UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  placement_id UUID NOT NULL REFERENCES sponsored_placements(id) ON DELETE CASCADE,
+  position     INT,
+  via          TEXT NOT NULL DEFAULT 'boost' CHECK (via IN ('boost', 'slot')),
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (share_token, product_id)
+);
+CREATE INDEX idx_search_sponsorships_placement ON search_sponsorships (placement_id, created_at);
+
+CREATE TABLE product_impressions (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  share_token  TEXT NOT NULL,
+  visit_id     TEXT NOT NULL,
+  product_id   UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  source       TEXT,
+  category     TEXT,
+  placement_id UUID REFERENCES sponsored_placements(id) ON DELETE SET NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (share_token, visit_id, product_id)
+);
+CREATE INDEX idx_impressions_created   ON product_impressions (created_at);
+CREATE INDEX idx_impressions_product   ON product_impressions (product_id);
+CREATE INDEX idx_impressions_source    ON product_impressions (source, created_at);
+CREATE INDEX idx_impressions_placement ON product_impressions (placement_id, created_at)
+  WHERE placement_id IS NOT NULL;
 
 -- =============================================================================
 -- chat_messages

@@ -10,6 +10,7 @@ import { storeName, formatPrice } from "@/lib/domain/productDisplay";
 import { withBasePath } from "@/lib/basePath";
 import { getOrCreateVisitId } from "@/lib/analytics/visit";
 import { trackEvent } from "@/lib/analytics/track";
+import { useImpression } from "@/lib/analytics/useImpression";
 import { SpecTermPopover } from "@/components/SpecTermPopover";
 import { OtherStoresButton } from "@/components/OtherStoresButton";
 import { priceBlock, StoreLogo, QUALITY_SCORE_STYLE } from "@/components/ProductChatCard";
@@ -393,6 +394,7 @@ export function RankedResultsList({
             onBuyClick={handleBuyClick}
             onCompareAdd={onCompareAdd}
             comparedIds={comparedIds}
+            searchShareToken={searchShareToken}
           />
         ))}
       </div>
@@ -413,6 +415,7 @@ interface RankedResultRowProps {
   onBuyClick: (product: AlternativeProduct, rank: number) => void;
   onCompareAdd?: (ids: string[], open?: boolean) => void;
   comparedIds?: string[];
+  searchShareToken?: string;
 }
 
 function RankedResultRow({
@@ -428,7 +431,10 @@ function RankedResultRow({
   onBuyClick,
   onCompareAdd,
   comparedIds,
+  searchShareToken,
 }: RankedResultRowProps) {
+  const rowRef = useRef<HTMLElement>(null);
+  useImpression(rowRef, searchShareToken, product.id);
   const value = vr?.value ?? 5.5;
   const pb = priceBlock(product, paymentMode);
   const fields = specFields(product);
@@ -466,10 +472,13 @@ function RankedResultRow({
 
   return (
     <article
+      ref={rowRef}
       className={`flex flex-wrap gap-3 rounded-2xl border p-3 transition-colors sm:flex-nowrap sm:gap-4 sm:p-4 gathering-glass-card ${
         spotlighted
           ? "z-10 animate-spotlight-pulse ring-4 ring-[#3452E1] ring-offset-2 ring-offset-gathering-background border-gathering-outline-variant"
-          : "border-gathering-outline-variant"
+          : product.sponsored
+            ? "border-amber-300/80"
+            : "border-gathering-outline-variant"
       }`}
     >
       {/* Foto + galería + "también en X" en el espacio libre debajo — sin

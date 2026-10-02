@@ -9,7 +9,7 @@ import {
 import { expandQuery, generateQueryEmbedding } from "@/lib/llm/queryExpansion";
 import { enrichWithAnalysis } from "@/lib/llm/productAnalysis";
 import { hybridSearch } from "@/lib/search/hybridSearch";
-import { buildRankedPool } from "@/lib/search/pipeline";
+import { buildRankedPool, collectSponsorships, hasCampaignFor } from "@/lib/search/pipeline";
 import { buildPriceVerdicts } from "@/lib/domain/priceVerdict";
 import {
   deleteBackgroundCache,
@@ -32,6 +32,7 @@ import {
   getProductIdsByCategory,
   getProductsByIds,
   saveSearch,
+  saveSearchSponsorships,
   updateProductAnalysis,
 } from "@/lib/db/queries";
 import { buildQuickSelectionReason, explainProductSpecs, explainProductSpecsSimple } from "@/lib/domain/specExplainer";
@@ -277,8 +278,12 @@ export async function POST(request: NextRequest) {
     const queryEmbedding = await generateQueryEmbedding(expandedQuery);
     const tEmbed = Date.now();
 
-    // 5. Caché estructurado por (category, use_cases, budget_tier)
-    const cachedIds = await getStructuredCache(slots);
+    // 5. Caché estructurado por (category, use_cases, budget_tier). Con una
+    //    campaña patrocinada vigente para este rubro se saltea (lectura y
+    //    escritura): el caché no sabe qué productos favorece la campaña, así que
+    //    serviría un ranking sin patrocinio, sin etiqueta y sin medición.
+    const campaignActive = hasCampaignFor(slots.category, sponsoredPlacements);
+    const cachedIds = campaignActive ? null : await getStructuredCache(slots);
     if (cachedIds && cachedIds.length > 0) {
       const cachedProducts = await getProductsByIds(cachedIds);
       const shareToken = randomBytes(8).toString("hex");
@@ -420,8 +425,10 @@ export async function POST(request: NextRequest) {
     // 11. Guardar en caché estructurado + pool completo (para paginación) +
     //     persistir búsqueda (todo non-blocking).
     const shareToken = randomBytes(8).toString("hex");
-    setStructuredCache(slots, enrichedResults.map((p) => p.id)).catch(() => {});
-    setStructuredPoolCache(slots, merged.map((p) => p.id)).catch(() => {});
+    if (!campaignActive) {
+      setStructuredCache(slots, enrichedResults.map((p) => p.id)).catch(() => {});
+      setStructuredPoolCache(slots, merged.map((p) => p.id)).catch(() => {});
+    }
     setPoolCache(shareToken, merged.map((p) => p.id)).catch(() => {});
     saveSearch({
       rawInput: input,
@@ -433,6 +440,11 @@ export async function POST(request: NextRequest) {
       visitId,
       shareToken,
     }).catch(() => {});
+    // Qué productos del pool quedaron patrocinados, por qué campaña y en qué
+    // posición — para etiquetar al recargar/paginar y atribuir la medición.
+    saveSearchSponsorships(shareToken, collectSponsorships(merged)).catch((err) =>
+      console.error("[SPONSOR] saveSearchSponsorships", err)
+    );
 
     const response: SearchResponse = {
       type: "results",

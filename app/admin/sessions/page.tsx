@@ -48,6 +48,8 @@ interface DashboardData {
   recentActivity: ActivityEntry[];
   visits: VisitSummary[];
   names: Record<string, string>;
+  // Último texto que buscó cada visita (para etiquetar cuando no dejó nombre)
+  lastSearch: Record<string, string>;
 }
 
 const HOUR_OPTIONS = [
@@ -76,8 +78,10 @@ function shortVisit(id: string): string {
 }
 // Nombre que la persona tipeó una vez (VisitorNamePrompt) si existe, si no el
 // visit_id acortado — así el dashboard es legible ("Juan") en vez de ids.
-function visitLabel(id: string, names: Record<string, string>): string {
-  return names[id] || shortVisit(id);
+function visitLabel(id: string, names: Record<string, string>, lastSearch?: Record<string, string>): string {
+  if (names[id]) return names[id];
+  const search = lastSearch?.[id];
+  return search ? `“${search}”` : shortVisit(id);
 }
 
 function KpiCard({ label, value, tone }: { label: string; value: number; tone?: "danger" }) {
@@ -91,7 +95,7 @@ function KpiCard({ label, value, tone }: { label: string; value: number; tone?: 
   );
 }
 
-function ActivityLine({ entry, names }: { entry: ActivityEntry; names: Record<string, string> }) {
+function ActivityLine({ entry, names, lastSearch }: { entry: ActivityEntry; names: Record<string, string>; lastSearch: Record<string, string> }) {
   const icon = entry.kind === "search" ? "🔍" : entry.kind === "chat" ? "💬" : "🖱️";
   let text: string;
   if (entry.kind === "search") {
@@ -107,7 +111,7 @@ function ActivityLine({ entry, names }: { entry: ActivityEntry; names: Record<st
     <div className="flex items-start gap-2 border-b border-gray-50 py-2 text-sm last:border-0">
       <span>{icon}</span>
       <p className="flex-1 truncate text-gray-700">{text}</p>
-      <span className="shrink-0 text-xs text-gray-400">{visitLabel(entry.visit_id, names)}</span>
+      <span className="shrink-0 text-xs text-gray-400">{visitLabel(entry.visit_id, names, lastSearch)}</span>
       <span className="shrink-0 text-xs text-gray-400">{fmtRelative(entry.created_at)}</span>
     </div>
   );
@@ -256,8 +260,10 @@ export default function AdminSessionsPage() {
     <div className="mx-auto max-w-5xl px-4 py-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Dashboard de pruebas</h1>
-          <p className="mt-1 text-sm text-gray-500">Errores, búsquedas, chats y clicks de todas las visitas.</p>
+          <h1 className="text-xl font-bold text-gray-900">Actividad en vivo</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Qué está haciendo la gente ahora mismo en el sitio: cada búsqueda, pregunta al chat, click y error.
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <select
@@ -289,7 +295,14 @@ export default function AdminSessionsPage() {
         <p className="mt-6 text-sm text-gray-400">Cargando...</p>
       ) : (
         <>
-          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <p className="mt-4 rounded-xl bg-blue-50 px-4 py-3 text-xs leading-relaxed text-blue-900">
+            <strong>Cómo leerlo:</strong> una <em>visita</em> es una persona (un navegador) entrando al sitio. Abajo, a la
+            derecha, cada fila es una visita con lo que hizo; hacé click en una para ver su recorrido completo, paso a
+            paso. Si la persona dejó su nombre se ve el nombre; si no, se ve lo último que buscó. Esta pantalla sirve
+            para revisar pruebas y detectar errores — para números del negocio usá <em>Analítica</em> y <em>Tiendas</em>.
+          </p>
+
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
             <KpiCard label="Visitas" value={data.summary.visits} />
             <KpiCard label="Búsquedas" value={data.summary.searches} />
             <KpiCard label="Mensajes de chat" value={data.summary.chats} />
@@ -338,7 +351,7 @@ export default function AdminSessionsPage() {
                 {data.recentActivity.length === 0 ? (
                   <p className="py-6 text-center text-sm text-gray-400">Sin actividad en este período.</p>
                 ) : (
-                  data.recentActivity.map((entry, i) => <ActivityLine key={i} entry={entry} names={data.names} />)
+                  data.recentActivity.map((entry, i) => <ActivityLine key={i} entry={entry} names={data.names} lastSearch={data.lastSearch} />)
                 )}
               </div>
             </div>
@@ -364,7 +377,9 @@ export default function AdminSessionsPage() {
                         onClick={() => openVisit(v.visit_id)}
                         className="cursor-pointer border-b border-gray-50 hover:bg-gray-50"
                       >
-                        <td className="px-3 py-2 text-xs text-gray-600">{visitLabel(v.visit_id, data.names)}</td>
+                        <td className="max-w-[12rem] truncate px-3 py-2 text-xs text-gray-600" title={v.visit_id}>
+                          {visitLabel(v.visit_id, data.names, data.lastSearch)}
+                        </td>
                         <td className="px-3 py-2">{v.searches}</td>
                         <td className="px-3 py-2">{v.chats}</td>
                         <td className="px-3 py-2">{v.clicks}</td>
