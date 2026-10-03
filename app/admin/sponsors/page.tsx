@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { adminFetch } from "@/lib/auth/adminClient";
+import { downloadCsv, escapeHtml, openPrintReport, slugify, stampedName } from "@/lib/admin/export";
+import { Button, EmptyState, ExportMenu, Notice, PageHeader, PageSkeleton } from "@/components/admin/ui";
 import type { SponsoredPlacement, SponsorStats, ProductCategory } from "@/types";
 
 const BOOST_MIN = 0.01;
@@ -59,6 +61,62 @@ const STATUS_STYLE: Record<CampaignStatus, string> = {
 // Fecha de un <input type="date"> en una columna timestamptz → "YYYY-MM-DD"
 function toDateInput(iso: string | null): string {
   return iso ? iso.slice(0, 10) : "";
+}
+
+function exportAllCsv(placements: SponsoredPlacement[], stats: Record<string, SponsorStats>) {
+  downloadCsv(stampedName("campanas", "csv"), [
+    [
+      "Anunciante", "Tienda", "Rubros", "Estado", "Desde", "Hasta", "Monto pagado (ARS)", "Posición garantizada",
+      "Empuje", "Relevancia mínima", "Máx. por búsqueda", "Apariciones", "Personas", "Clicks", "CTR (%)",
+      "CTR tienda sin patrocinio (%)", "Costo por click (ARS)", "Costo cada mil apariciones (ARS)", "Posición media",
+      "Vistas inicio", "Clicks inicio",
+    ],
+    ...placements.map((p) => {
+      const st = stats[p.id];
+      return [
+        p.advertiser, p.target_source ?? "", p.categories.map((c) => CATEGORY_LABEL[c] ?? c).join(" / "),
+        campaignStatus(p), p.starts_at?.slice(0, 10) ?? "", p.ends_at?.slice(0, 10) ?? "", p.amount_paid_ars ?? "",
+        p.slot_position ?? "", p.score_boost, p.min_relevance, p.max_per_search ?? 2,
+        st?.impressions ?? "", st?.uniqueVisitors ?? "", st?.clicks ?? "", st ? (st.ctr * 100).toFixed(2) : "",
+        st?.organicCtr != null ? (st.organicCtr * 100).toFixed(2) : "", st?.costPerClick ?? "",
+        st?.costPerThousandImpressions ?? "", st?.avgPosition ?? "", st?.homeViews ?? "", st?.homeClicks ?? "",
+      ];
+    }),
+  ]);
+}
+
+// Informe de una campaña listo para mandarle al anunciante (se abre para
+// imprimir / guardar como PDF).
+function printCampaignReport(p: SponsoredPlacement, s: SponsorStats) {
+  const lift = s.organicCtr && s.organicCtr > 0 ? s.ctr / s.organicCtr : null;
+  const tile = (label: string, value: string) =>
+    `<div class="tile"><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`;
+  const maxDay = Math.max(...s.byDay.map((d) => d.impressions), 1);
+  const top = s.topProducts
+    .map((t) => `<tr><td>${escapeHtml(t.title)}</td><td>${t.impressions}</td><td>${t.clicks}</td></tr>`)
+    .join("");
+  openPrintReport(
+    `Informe de campaña — ${p.advertiser}`,
+    `<h1>Informe de campaña · ${escapeHtml(p.advertiser)}</h1>
+    <p class="sub">${escapeHtml(p.categories.map((c) => CATEGORY_LABEL[c] ?? c).join(", "))} · Período ${escapeHtml(formatDate(s.from))} al ${escapeHtml(formatDate(s.to))} (${s.daysActive} días)</p>
+    <div class="grid">
+      ${tile("Apariciones", fmtInt(s.impressions))}
+      ${tile("Personas alcanzadas", fmtInt(s.uniqueVisitors))}
+      ${tile("Clicks a la tienda", fmtInt(s.clicks))}
+      ${tile("CTR", fmtPct(s.ctr))}
+      ${tile("Vs. sin patrocinio", lift != null ? "×" + lift.toFixed(1) : "—")}
+      ${tile("Posición media", s.avgPosition != null ? "#" + s.avgPosition : "—")}
+      ${s.amountPaid != null ? tile("Inversión", fmtMoney(s.amountPaid)) : ""}
+      ${s.costPerClick != null ? tile("Costo por click", fmtMoney(s.costPerClick)) : ""}
+      ${s.costPerThousandImpressions != null ? tile("Cada mil apariciones", fmtMoney(s.costPerThousandImpressions)) : ""}
+    </div>
+    <h2>Apariciones por día</h2>
+    <div class="bars">${s.byDay.map((d) => `<i title="${escapeHtml(d.date)}: ${d.impressions}" style="height:${Math.max((d.impressions / maxDay) * 100, 3)}%"></i>`).join("")}</div>
+    <h2>Productos que más rindieron</h2>
+    <table><thead><tr><th>Producto</th><th>Apariciones</th><th>Clicks</th></tr></thead><tbody>${top || "<tr><td colspan=3>Sin datos</td></tr>"}</tbody></table>
+    ${p.show_on_home ? `<h2>Pantalla de inicio</h2><p>${fmtInt(s.homeViews)} vistas · ${fmtInt(s.homeClicks)} clicks</p>` : ""}
+    <p class="foot">Apariciones = veces que una tarjeta del anunciante se vio en pantalla. Click = entrada a la tienda desde esa tarjeta. CTR = clicks ÷ apariciones.</p>`
+  );
 }
 
 interface FormState {
@@ -209,35 +267,40 @@ export default function SponsorsAdminPage() {
 
   // ── panel principal ────────────────────────────────────────────────────────
   return (
-    <main className="min-h-screen bg-gray-50 px-4 py-8">
-      <div className="mx-auto max-w-5xl space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Campañas patrocinadas</h1>
-            <p className="mt-1 text-sm text-gray-500">
-              Hacen que los productos de una tienda aparezcan más arriba, y miden qué resultado le dieron a quien paga.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={openNew}
-            className="shrink-0 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-          >
-            + Nueva campaña
-          </button>
-        </div>
+      <div className="space-y-6">
+        <PageHeader
+          title="Campañas patrocinadas"
+          subtitle="Hacen que los productos de una tienda aparezcan más arriba, y miden qué resultado le dieron a quien paga."
+          actions={
+            <>
+              <ExportMenu
+                options={[
+                  {
+                    label: "Todas las campañas (CSV)",
+                    hint: "Contrato + rendimiento de cada una",
+                    onSelect: () => exportAllCsv(placements, stats),
+                  },
+                ]}
+              />
+              <Button variant="primary" onClick={openNew}>
+                + Nueva campaña
+              </Button>
+            </>
+          }
+        />
 
         <HowItWorks />
 
-        {error && <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+        {error && <Notice tone="error">{error}</Notice>}
 
         {loading ? (
-          <div className="py-12 text-center text-sm text-gray-400">Cargando...</div>
+          <PageSkeleton stats={0} blocks={2} />
         ) : placements.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-200 py-16 text-center">
-            <p className="text-sm text-gray-400">No hay campañas todavía.</p>
-          </div>
+          <EmptyState
+            icon="🎯"
+            title="No hay campañas todavía"
+            text="Creá la primera para empezar a darle visibilidad a una tienda y medir qué resultado le da."
+          />
         ) : (
           <div className="space-y-4">
             {placements.map((p) => (
@@ -266,7 +329,6 @@ export default function SponsorsAdminPage() {
           />
         )}
       </div>
-    </main>
   );
 }
 
@@ -378,7 +440,7 @@ function buildSummaryText(p: SponsoredPlacement, s: SponsorStats): string {
   return lines.join("\n");
 }
 
-function downloadCsv(p: SponsoredPlacement, s: SponsorStats) {
+function downloadCampaignCsv(p: SponsoredPlacement, s: SponsorStats) {
   const rows = [
     ["fecha", "apariciones", "clicks", "ctr"],
     ...s.byDay.map((d) => [d.date, d.impressions, d.clicks, d.impressions ? (d.clicks / d.impressions).toFixed(4) : "0"]),
@@ -395,14 +457,7 @@ function downloadCsv(p: SponsoredPlacement, s: SponsorStats) {
     ["costo_por_click_ars", s.costPerClick ?? ""],
     ["costo_por_mil_apariciones_ars", s.costPerThousandImpressions ?? ""],
   ];
-  const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
-  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `campana-${p.advertiser.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadCsv(stampedName(`campana-${slugify(p.advertiser)}`, "csv"), rows);
 }
 
 function PlacementCard({
@@ -583,10 +638,17 @@ function PlacementCard({
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => downloadCsv(placement, stats)}
+                onClick={() => downloadCampaignCsv(placement, stats)}
                 className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
               >
                 Descargar reporte (CSV)
+              </button>
+              <button
+                type="button"
+                onClick={() => printCampaignReport(placement, stats)}
+                className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+              >
+                Informe para imprimir / PDF
               </button>
               <button
                 type="button"

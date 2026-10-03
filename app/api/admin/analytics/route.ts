@@ -5,6 +5,7 @@ import type { Slots, SearchAnalytics, ProductCategory } from "@/types";
 
 interface AnalyticsSearchRow {
   share_token: string;
+  raw_input: string;
   slots: Slots | null;
   result_count: number;
   created_at: string;
@@ -64,6 +65,8 @@ export async function GET(request: NextRequest) {
   const daysParam = Number(request.nextUrl.searchParams.get("days"));
   const days = ALLOWED_DAYS.includes(daysParam) ? daysParam : 30;
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  // Ventana anterior de igual largo, para mostrar variación (▲/▼) en las métricas.
+  const prevCutoff = new Date(Date.now() - 2 * days * 24 * 60 * 60 * 1000).toISOString();
 
   // Patrones (mes del año / día de la semana): ventana fija del año calendario
   // en curso, INDEPENDIENTE del picker 7/30/90 — con 7 días no hay forma de ver
@@ -80,11 +83,12 @@ export async function GET(request: NextRequest) {
   let visitYearRows: { created_at: string }[];
   let engagementRows: { dur: number | null; engaged: boolean; bought: boolean }[];
   let clientErrorRow: { n: number }[];
+  let previousRow: { searches: number; clicks: number; buys: number; visits: number; no_result: number }[];
   try {
-    [searchRows, clickRows, buyEventRows, patternRows, storeRows, visitTotalRow, visitYearRows, engagementRows, clientErrorRow] =
+    [searchRows, clickRows, buyEventRows, patternRows, storeRows, visitTotalRow, visitYearRows, engagementRows, clientErrorRow, previousRow] =
       await Promise.all([
         sql<AnalyticsSearchRow[]>`
-          SELECT share_token, slots, result_count, created_at
+          SELECT share_token, raw_input, slots, result_count, created_at
           FROM searches WHERE created_at >= ${cutoff}
         `,
         sql<AnalyticsClickRow[]>`
@@ -133,6 +137,14 @@ export async function GET(request: NextRequest) {
         sql<{ n: number }[]>`
           SELECT COUNT(*)::int AS n FROM site_events
           WHERE event_type = 'client_error' AND created_at >= ${cutoff}
+        `,
+        sql<{ searches: number; clicks: number; buys: number; visits: number; no_result: number }[]>`
+          SELECT
+            (SELECT count(*) FROM searches WHERE created_at >= ${prevCutoff} AND created_at < ${cutoff})::int AS searches,
+            (SELECT count(*) FROM searches WHERE result_count = 0 AND created_at >= ${prevCutoff} AND created_at < ${cutoff})::int AS no_result,
+            (SELECT count(*) FROM product_clicks WHERE created_at >= ${prevCutoff} AND created_at < ${cutoff})::int AS clicks,
+            (SELECT count(*) FROM site_events WHERE event_type = 'product_buy_click' AND created_at >= ${prevCutoff} AND created_at < ${cutoff})::int AS buys,
+            (SELECT count(*) FROM site_events WHERE event_type = 'session_start' AND created_at >= ${prevCutoff} AND created_at < ${cutoff})::int AS visits
         `,
       ]);
   } catch (error) {
@@ -297,6 +309,31 @@ export async function GET(request: NextRequest) {
     clientErrors: clientErrorRow[0]?.n ?? 0,
   };
 
+  // Búsquedas más repetidas (texto normalizado) y cuántas no dieron resultados.
+  const queryMap = new Map<string, { display: string; count: number; noResult: number }>();
+  for (const s of searchRows) {
+    const display = (s.raw_input ?? "").trim().replace(/s+/g, " ");
+    if (!display) continue;
+    const key = display.toLowerCase();
+    const cur = queryMap.get(key) ?? { display: display.slice(0, 120), count: 0, noResult: 0 };
+    cur.count++;
+    if (s.result_count <= 2) cur.noResult++;
+    queryMap.set(key, cur);
+  }
+  const topQueries = Array.from(queryMap.values())
+    .sort((a, b) => b.count - a.count || b.noResult - a.noResult)
+    .slice(0, 10)
+    .map((q) => ({ query: q.display, count: q.count, noResult: q.noResult }));
+
+  const prev = previousRow[0];
+  const previous = {
+    totalSearches: prev?.searches ?? 0,
+    noResultCount: prev?.no_result ?? 0,
+    totalClicks: prev?.clicks ?? 0,
+    buyClicks: prev?.buys ?? 0,
+    visits: prev?.visits ?? 0,
+  };
+
   const analytics: SearchAnalytics = {
     days,
     totalSearches,
@@ -317,6 +354,9 @@ export async function GET(request: NextRequest) {
     topProducts,
     visits,
     engagement,
+    previous,
+    topQueries,
+    noResultCount,
   };
 
   return NextResponse.json(analytics);

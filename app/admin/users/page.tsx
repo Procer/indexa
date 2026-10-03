@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { adminFetch } from "@/lib/auth/adminClient";
 import { withBasePath } from "@/lib/basePath";
+import { downloadCsv, stampedName } from "@/lib/admin/export";
+import { Badge, EmptyState, ExportMenu, Notice, PageHeader, PageSkeleton } from "@/components/admin/ui";
 
 type AdminRole = "admin" | "super_admin";
 
@@ -125,31 +127,44 @@ export default function UsersPage() {
 
   if (forbidden) {
     return (
-      <main className="min-h-screen bg-gray-50 px-4 py-8">
-        <div className="mx-auto max-w-5xl">
-          <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-gray-100">
-            <p className="text-3xl">🔒</p>
-            <h1 className="mt-3 text-lg font-bold text-gray-900">Solo para super admins</h1>
-            <p className="mt-1 text-sm text-gray-500">
-              La gestión de usuarios está reservada al super administrador.
-            </p>
-          </div>
-        </div>
-      </main>
+      <EmptyState
+        icon="🔒"
+        title="Solo para super admins"
+        text="La gestión de usuarios está reservada al super administrador."
+      />
     );
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 px-4 py-8">
-      <div className="mx-auto max-w-5xl space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Usuarios del panel</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Alta por link de invitación de un solo uso. Vos se lo hacés llegar a la persona.
-          </p>
-        </div>
+      <div className="space-y-6">
+        <PageHeader
+          title="Usuarios del panel"
+          subtitle="Alta por link de invitación de un solo uso. Vos se lo hacés llegar a la persona."
+          actions={
+            <ExportMenu
+              options={[
+                {
+                  label: "Usuarios (CSV)",
+                  hint: "Email, rol, estado y último ingreso",
+                  onSelect: () =>
+                    downloadCsv(stampedName("usuarios-admin", "csv"), [
+                      ["Email", "Rol", "Estado", "Contraseña definida", "Alta", "Último ingreso"],
+                      ...(users ?? []).map((u) => [
+                        u.email,
+                        ROLE_LABEL[u.role],
+                        u.active ? "Activo" : "Inactivo",
+                        u.has_password ? "Sí" : "No",
+                        u.created_at,
+                        u.last_login_at ?? "",
+                      ]),
+                    ]),
+                },
+              ]}
+            />
+          }
+        />
 
-        {error && <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+        {error && <Notice tone="error">{error}</Notice>}
 
         {/* Crear usuario */}
         <form onSubmit={handleCreate} className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
@@ -214,7 +229,9 @@ export default function UsersPage() {
         {/* Lista */}
         <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-100">
           {users === null ? (
-            <p className="py-16 text-center text-sm text-gray-400">Cargando...</p>
+            <div className="p-5">
+              <PageSkeleton stats={0} blocks={1} />
+            </div>
           ) : users.length === 0 ? (
             <p className="py-16 text-center text-sm text-gray-400">Todavía no hay usuarios.</p>
           ) : (
@@ -249,13 +266,7 @@ export default function UsersPage() {
                       </select>
                     </td>
                     <td className="px-3 py-3">
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                          u.active ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-500"
-                        }`}
-                      >
-                        {u.active ? "Activo" : "Inactivo"}
-                      </span>
+                      <Badge tone={u.active ? "green" : "gray"}>{u.active ? "Activo" : "Inactivo"}</Badge>
                     </td>
                     <td className="px-3 py-3 text-gray-500">{fmtDate(u.last_login_at)}</td>
                     <td className="px-5 py-3">
@@ -284,6 +295,5 @@ export default function UsersPage() {
           )}
         </div>
       </div>
-    </main>
   );
 }

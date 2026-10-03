@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { adminFetch } from "@/lib/auth/adminClient";
+import { downloadCsv, downloadJson, stampedName } from "@/lib/admin/export";
+import { Card, EmptyState, ExportMenu, Notice, PageHeader, PageSkeleton, StatCard } from "@/components/admin/ui";
 
 interface VisitSummary {
   visit_id: string;
@@ -85,14 +87,8 @@ function visitLabel(id: string, names: Record<string, string>, lastSearch?: Reco
 }
 
 function KpiCard({ label, value, tone }: { label: string; value: number; tone?: "danger" }) {
-  return (
-    <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-      <p className="text-xs font-medium text-gray-500">{label}</p>
-      <p className={`mt-1 text-2xl font-bold ${tone === "danger" && value > 0 ? "text-red-600" : "text-gray-900"}`}>
-        {value}
-      </p>
-    </div>
-  );
+  const accent = tone === "danger" ? (value > 0 ? "red" : "green") : "blue";
+  return <StatCard label={label} value={value.toLocaleString("es-AR")} accent={accent} />;
 }
 
 function ActivityLine({ entry, names, lastSearch }: { entry: ActivityEntry; names: Record<string, string>; lastSearch: Record<string, string> }) {
@@ -174,12 +170,52 @@ function TimelineRow({ entry }: { entry: TimelineEntry }) {
   );
 }
 
+function exportVisitsCsv(d: DashboardData) {
+  downloadCsv(stampedName(`visitas-${d.hours}h`, "csv"), [
+    ["Visita", "Nombre", "Última búsqueda", "Búsquedas", "Chats", "Clicks", "Errores", "Primera actividad", "Última actividad"],
+    ...d.visits.map((v) => [
+      v.visit_id, d.names[v.visit_id] ?? "", d.lastSearch[v.visit_id] ?? "", v.searches, v.chats, v.clicks, v.errors,
+      v.first_seen, v.last_seen,
+    ]),
+  ]);
+}
+
+function activityText(e: ActivityEntry): string {
+  if (e.kind === "search") return `Buscó: ${String(e.data.raw_input)} (${String(e.data.result_count ?? 0)} resultados)`;
+  if (e.kind === "chat") return e.data.greeting ? "Abrió el chat" : `Preguntó: ${String(e.data.user_message ?? "")}`;
+  return `Click en: ${String(e.data.product_title ?? "producto")}`;
+}
+
+function exportActivityCsv(d: DashboardData) {
+  downloadCsv(stampedName(`actividad-${d.hours}h`, "csv"), [
+    ["Fecha", "Tipo", "Detalle", "Visita", "Nombre"],
+    ...d.recentActivity.map((e) => [e.created_at, e.kind, activityText(e), e.visit_id, d.names[e.visit_id] ?? ""]),
+  ]);
+}
+
+function exportErrorsCsv(d: DashboardData) {
+  downloadCsv(stampedName("errores", "csv"), [
+    ["Fecha", "Tipo", "Mensaje", "Página", "Navegador", "Visita"],
+    ...d.recentErrors.map((e) => [
+      e.created_at, e.metadata?.kind ?? "", e.metadata?.message ?? "", e.path ?? "", e.metadata?.userAgent ?? "", e.visit_id,
+    ]),
+  ]);
+}
+
+function exportTimelineCsv(visitId: string, timeline: TimelineEntry[]) {
+  downloadCsv(stampedName(`visita-${visitId.slice(0, 8)}`, "csv"), [
+    ["Fecha", "Tipo", "Detalle"],
+    ...timeline.map((t) => [t.created_at, t.kind, JSON.stringify(t.data)]),
+  ]);
+}
+
 export default function AdminSessionsPage() {
   const [hours, setHours] = useState(24);
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -223,28 +259,31 @@ export default function AdminSessionsPage() {
 
   if (selected) {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-8">
+      <div className="space-y-4">
         <button
           type="button"
           onClick={() => setSelected(null)}
-          className="mb-3 text-sm font-medium text-blue-600 hover:underline"
+          className="text-sm font-medium text-blue-600 hover:underline print:hidden"
         >
-          ← Volver al dashboard
+          ← Volver a la actividad
         </button>
-        <p className="mb-3 text-sm text-gray-500">
-          {data?.names[selected] ? (
-            <>
-              <span className="font-semibold text-gray-700">{data.names[selected]}</span>{" "}
-              <span className="font-mono text-xs text-gray-400">({selected})</span>
-            </>
-          ) : (
-            <span className="font-mono text-xs text-gray-400">visit_id: {selected}</span>
-          )}
-        </p>
+        <PageHeader
+          title={data?.names[selected] ?? (data?.lastSearch[selected] ? `“${data.lastSearch[selected]}”` : "Recorrido de la visita")}
+          subtitle={<span className="font-mono text-xs">visit_id: {selected}</span>}
+          actions={
+            <ExportMenu
+              options={[
+                { label: "Recorrido (CSV)", hint: "Cada paso con fecha y detalle", onSelect: () => exportTimelineCsv(selected, timeline) },
+                { label: "Recorrido (JSON)", onSelect: () => downloadJson(stampedName(`visita-${selected.slice(0, 8)}`, "json"), timeline) },
+                { label: "Imprimir / PDF", onSelect: () => window.print() },
+              ]}
+            />
+          }
+        />
         {loadingTimeline ? (
-          <p className="text-sm text-gray-400">Cargando...</p>
+          <PageSkeleton stats={0} blocks={2} />
         ) : timeline.length === 0 ? (
-          <p className="text-sm text-gray-400">Sin actividad registrada para esta visita.</p>
+          <EmptyState title="Sin actividad registrada para esta visita" />
         ) : (
           <div className="space-y-2">
             {timeline.map((entry, i) => (
@@ -256,15 +295,42 @@ export default function AdminSessionsPage() {
     );
   }
 
+  const q = query.trim().toLowerCase();
+  const visitMatches = (id: string) =>
+    !q ||
+    id.toLowerCase().includes(q) ||
+    (data?.names[id] ?? "").toLowerCase().includes(q) ||
+    (data?.lastSearch[id] ?? "").toLowerCase().includes(q);
+  const visitsF = (data?.visits ?? []).filter((v) => visitMatches(v.visit_id));
+  const activityF = (data?.recentActivity ?? []).filter(
+    (a) => !q || visitMatches(a.visit_id) || JSON.stringify(a.data).toLowerCase().includes(q)
+  );
+
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Actividad en vivo</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Qué está haciendo la gente ahora mismo en el sitio: cada búsqueda, pregunta al chat, click y error.
-          </p>
-        </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Actividad en vivo"
+        subtitle="Qué está haciendo la gente ahora mismo en el sitio: cada búsqueda, pregunta al chat, click y error."
+        actions={
+          <>
+            <ExportMenu
+              options={[
+                { label: "Visitas (CSV)", hint: "Una fila por visita, con lo último que buscó", onSelect: () => data && exportVisitsCsv(data) },
+                { label: "Actividad reciente (CSV)", onSelect: () => data && exportActivityCsv(data) },
+                { label: "Errores (CSV)", onSelect: () => data && exportErrorsCsv(data) },
+              ]}
+            />
+          </>
+        }
+      />
+      <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Buscar por nombre, texto buscado o visita…"
+          className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-400 sm:max-w-xs"
+        />
         <div className="flex items-center gap-2">
           <select
             value={hours}
@@ -292,17 +358,17 @@ export default function AdminSessionsPage() {
       </div>
 
       {loading || !data ? (
-        <p className="mt-6 text-sm text-gray-400">Cargando...</p>
+        <PageSkeleton stats={5} blocks={2} />
       ) : (
         <>
-          <p className="mt-4 rounded-xl bg-blue-50 px-4 py-3 text-xs leading-relaxed text-blue-900">
+          <Notice>
             <strong>Cómo leerlo:</strong> una <em>visita</em> es una persona (un navegador) entrando al sitio. Abajo, a la
             derecha, cada fila es una visita con lo que hizo; hacé click en una para ver su recorrido completo, paso a
             paso. Si la persona dejó su nombre se ve el nombre; si no, se ve lo último que buscó. Esta pantalla sirve
             para revisar pruebas y detectar errores — para números del negocio usá <em>Analítica</em> y <em>Tiendas</em>.
-          </p>
+          </Notice>
 
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
             <KpiCard label="Visitas" value={data.summary.visits} />
             <KpiCard label="Búsquedas" value={data.summary.searches} />
             <KpiCard label="Mensajes de chat" value={data.summary.chats} />
@@ -312,22 +378,17 @@ export default function AdminSessionsPage() {
 
           {/* Errores primero y bien visible — es lo que más importa revisar
               de una prueba con varias personas. */}
-          <div className="mt-6">
-            <h2 className="text-sm font-bold text-gray-900">
-              🚨 Errores recientes {data.recentErrors.length > 0 && `(${data.recentErrors.length})`}
-            </h2>
+          <Card title={`🚨 Errores recientes${data.recentErrors.length > 0 ? ` (${data.recentErrors.length})` : ""}`}>
             {data.recentErrors.length === 0 ? (
-              <p className="mt-2 rounded-xl bg-white p-4 text-sm text-gray-400 shadow-sm ring-1 ring-gray-100">
-                Sin errores registrados. 🎉
-              </p>
+              <p className="text-sm text-gray-400">Sin errores registrados. 🎉</p>
             ) : (
-              <div className="mt-2 space-y-1.5">
+              <div className="max-h-80 space-y-1.5 overflow-y-auto">
                 {data.recentErrors.map((e, i) => (
                   <div key={i} className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm">
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-semibold text-red-700">{e.metadata?.kind ?? "error"}</span>
                       <div className="flex items-center gap-2 text-xs text-gray-400">
-                        <span>{visitLabel(e.visit_id, data.names)}</span>
+                        <span>{visitLabel(e.visit_id, data.names, data.lastSearch)}</span>
                         <span>{fmtRelative(e.created_at)}</span>
                       </div>
                     </div>
@@ -342,57 +403,58 @@ export default function AdminSessionsPage() {
                 ))}
               </div>
             )}
-          </div>
+          </Card>
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-2">
-            <div>
-              <h2 className="text-sm font-bold text-gray-900">Actividad reciente</h2>
-              <div className="mt-2 max-h-[32rem] overflow-y-auto rounded-xl bg-white p-3 shadow-sm ring-1 ring-gray-100">
-                {data.recentActivity.length === 0 ? (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card title="Actividad reciente" subtitle={q ? `Filtrando por “${query}”` : undefined}>
+              <div className="max-h-[32rem] overflow-y-auto">
+                {activityF.length === 0 ? (
                   <p className="py-6 text-center text-sm text-gray-400">Sin actividad en este período.</p>
                 ) : (
-                  data.recentActivity.map((entry, i) => <ActivityLine key={i} entry={entry} names={data.names} lastSearch={data.lastSearch} />)
+                  activityF.map((entry, i) => (
+                    <ActivityLine key={i} entry={entry} names={data.names} lastSearch={data.lastSearch} />
+                  ))
                 )}
               </div>
-            </div>
+            </Card>
 
-            <div>
-              <h2 className="text-sm font-bold text-gray-900">Por visita ({data.visits.length})</h2>
-              <div className="mt-2 max-h-[32rem] overflow-y-auto rounded-xl bg-white shadow-sm ring-1 ring-gray-100">
+            <Card title={`Por visita (${visitsF.length}${q ? ` de ${data.visits.length}` : ""})`}>
+              <div className="-mx-2 max-h-[32rem] overflow-y-auto">
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 bg-white">
                     <tr className="border-b border-gray-100 text-left text-xs text-gray-500">
-                      <th className="px-3 py-2 font-medium">Visita</th>
-                      <th className="px-3 py-2 font-medium">Búsq.</th>
-                      <th className="px-3 py-2 font-medium">Chats</th>
-                      <th className="px-3 py-2 font-medium">Clicks</th>
-                      <th className="px-3 py-2 font-medium">Err.</th>
-                      <th className="px-3 py-2 font-medium">Última</th>
+                      <th className="px-2 py-2 font-medium">Visita</th>
+                      <th className="px-2 py-2 font-medium">Búsq.</th>
+                      <th className="px-2 py-2 font-medium">Chats</th>
+                      <th className="px-2 py-2 font-medium">Clicks</th>
+                      <th className="px-2 py-2 font-medium">Err.</th>
+                      <th className="px-2 py-2 font-medium">Última</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {data.visits.map((v) => (
+                    {visitsF.map((v) => (
                       <tr
                         key={v.visit_id}
                         onClick={() => openVisit(v.visit_id)}
-                        className="cursor-pointer border-b border-gray-50 hover:bg-gray-50"
+                        className="cursor-pointer border-b border-gray-50 hover:bg-blue-50/50"
                       >
-                        <td className="max-w-[12rem] truncate px-3 py-2 text-xs text-gray-600" title={v.visit_id}>
+                        <td className="max-w-[12rem] truncate px-2 py-2 text-xs text-gray-600" title={v.visit_id}>
                           {visitLabel(v.visit_id, data.names, data.lastSearch)}
                         </td>
-                        <td className="px-3 py-2">{v.searches}</td>
-                        <td className="px-3 py-2">{v.chats}</td>
-                        <td className="px-3 py-2">{v.clicks}</td>
-                        <td className={`px-3 py-2 ${v.errors > 0 ? "font-semibold text-red-600" : "text-gray-400"}`}>
+                        <td className="px-2 py-2 tabular-nums">{v.searches}</td>
+                        <td className="px-2 py-2 tabular-nums">{v.chats}</td>
+                        <td className="px-2 py-2 tabular-nums">{v.clicks}</td>
+                        <td className={`px-2 py-2 tabular-nums ${v.errors > 0 ? "font-semibold text-red-600" : "text-gray-400"}`}>
                           {v.errors}
                         </td>
-                        <td className="px-3 py-2 text-xs text-gray-400">{fmtRelative(v.last_seen)}</td>
+                        <td className="px-2 py-2 text-xs text-gray-400">{fmtRelative(v.last_seen)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                {visitsF.length === 0 && <p className="py-6 text-center text-sm text-gray-400">Ninguna visita coincide.</p>}
               </div>
-            </div>
+            </Card>
           </div>
         </>
       )}

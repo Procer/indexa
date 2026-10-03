@@ -388,6 +388,17 @@ export interface SearchAnalytics {
   topProducts: SearchAnalyticsProduct[];
   visits: SiteVisitsAnalytics;
   engagement: SiteEngagementAnalytics;
+  // Mismas métricas en la ventana anterior de igual largo (para ▲/▼).
+  previous: {
+    totalSearches: number;
+    noResultCount: number;
+    totalClicks: number;
+    buyClicks: number;
+    visits: number;
+  };
+  // Búsquedas más repetidas; noResult = las que dieron 0-2 resultados.
+  topQueries: { query: string; count: number; noResult: number }[];
+  noResultCount: number;
 }
 
 // ─── Admin: tiendas y mercado ─────────────────────────────────────────────────

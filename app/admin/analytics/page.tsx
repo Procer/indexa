@@ -2,14 +2,26 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { adminFetch } from "@/lib/auth/adminClient";
-import type {
-  SearchAnalytics,
-  SearchAnalyticsCategory,
-  SearchAnalyticsDay,
-  SearchAnalyticsDow,
-  SearchAnalyticsHour,
-  SearchAnalyticsMonth,
-} from "@/types";
+import {
+  downloadCsv,
+  downloadJson,
+  escapeHtml,
+  openPrintReport,
+  stampedName,
+  type CsvCell,
+} from "@/lib/admin/export";
+import {
+  Card,
+  Delta,
+  ExportMenu,
+  Notice,
+  PageHeader,
+  PageSkeleton,
+  RangeTabs,
+  RankBars,
+  StatCard,
+} from "@/components/admin/ui";
+import type { SearchAnalytics, SearchAnalyticsDow, SearchAnalyticsHour, SearchAnalyticsMonth } from "@/types";
 
 const RANGES = [7, 30, 90] as const;
 
@@ -23,8 +35,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 // Mismas etiquetas que USE_CASE_LABEL en lib/domain/specExplainer.ts —
-// duplicado a propósito (igual que CATEGORY_LABELS arriba): esta página ya
-// hardcodea sus propias etiquetas de UI en vez de importar del dominio.
+// duplicado a propósito: esta página hardcodea sus propias etiquetas de UI.
 const USE_CASE_LABELS: Record<string, string> = {
   casual_browsing: "Uso diario",
   office: "Trabajo de oficina",
@@ -49,21 +60,17 @@ const USE_CASE_LABELS: Record<string, string> = {
   professional_mobile: "Trabajo y email",
 };
 
-const MONTH_LABELS = [
-  "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic",
-];
+const MONTH_LABELS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
 function formatPct(n: number): string {
-  return `${Math.round(n * 100)}%`;
+  return `${(n * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`;
 }
-
-function StatTile({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-      <p className="text-xs font-medium text-gray-500">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-gray-900">{value}</p>
-    </div>
-  );
+function fmtInt(n: number): string {
+  return n.toLocaleString("es-AR");
+}
+function fmtDuration(sec: number): string {
+  if (sec < 60) return `${sec}s`;
+  return `${Math.floor(sec / 60)}m ${String(sec % 60).padStart(2, "0")}s`;
 }
 
 // Gráfico de barras verticales genérico. Cada columna es un flex-col de altura
@@ -117,7 +124,7 @@ function VBarChart({
   );
 }
 
-function DailyVolumeChart({ data }: { data: SearchAnalyticsDay[] }) {
+function DailyVolumeChart({ data }: { data: { date: string; count: number }[] }) {
   return (
     <VBarChart
       emptyText="Sin datos en este rango."
@@ -127,56 +134,6 @@ function DailyVolumeChart({ data }: { data: SearchAnalyticsDay[] }) {
         title: `${new Date(`${d.date}T00:00:00`).toLocaleDateString("es-AR")}: ${d.count}`,
       }))}
     />
-  );
-}
-
-function CategoryBars({ data }: { data: SearchAnalyticsCategory[] }) {
-  if (data.length === 0) {
-    return <p className="text-sm text-gray-400">Sin datos en este rango.</p>;
-  }
-  const max = Math.max(...data.map((d) => d.count), 1);
-  return (
-    <div className="space-y-2.5">
-      {data.map((d) => (
-        <div key={d.category} className="flex items-center gap-3 text-sm">
-          <span className="w-32 shrink-0 truncate text-gray-600">
-            {CATEGORY_LABELS[d.category] ?? d.category}
-          </span>
-          <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100">
-            <div
-              className="h-full rounded-full bg-blue-600"
-              style={{ width: `${(d.count / max) * 100}%` }}
-            />
-          </div>
-          <span className="w-8 shrink-0 text-right font-semibold text-gray-900">{d.count}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// Barra de ranking genérica — misma pinta que CategoryBars, reusada para
-// uso/marca/tienda (listas de {label, count} sin tipo compartido entre sí).
-function RankBars({ data }: { data: { key: string; label: string; count: number }[] }) {
-  if (data.length === 0) {
-    return <p className="text-sm text-gray-400">Sin datos en este rango.</p>;
-  }
-  const max = Math.max(...data.map((d) => d.count), 1);
-  return (
-    <div className="space-y-2.5">
-      {data.map((d) => (
-        <div key={d.key} className="flex items-center gap-3 text-sm">
-          <span className="w-32 shrink-0 truncate text-gray-600">{d.label}</span>
-          <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100">
-            <div
-              className="h-full rounded-full bg-blue-600"
-              style={{ width: `${(d.count / max) * 100}%` }}
-            />
-          </div>
-          <span className="w-8 shrink-0 text-right font-semibold text-gray-900">{d.count}</span>
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -213,7 +170,11 @@ function HourChart({ data }: { data: SearchAnalyticsHour[] }) {
         }))}
       />
       <div className="mt-1 flex justify-between text-[10px] text-gray-400">
-        <span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>23h</span>
+        <span>00h</span>
+        <span>06h</span>
+        <span>12h</span>
+        <span>18h</span>
+        <span>23h</span>
       </div>
       <p className="mt-2 text-xs text-gray-500">
         Pico: <span className="font-semibold text-gray-800">{String(peak.hour).padStart(2, "0")}:00 h</span> ({peak.count} visitas)
@@ -251,6 +212,136 @@ function DayOfWeekChart({ data }: { data: SearchAnalyticsDow[] }) {
   );
 }
 
+// Embudo de visitas: cuánta gente entra, cuánta interactúa y cuánta llega a comprar.
+function Funnel({ steps }: { steps: { label: string; value: number }[] }) {
+  const top = Math.max(steps[0]?.value ?? 0, 1);
+  return (
+    <div className="space-y-3">
+      {steps.map((s, i) => {
+        const pctOfTop = (s.value / top) * 100;
+        const prev = i > 0 ? steps[i - 1].value : null;
+        return (
+          <div key={s.label}>
+            <div className="flex items-baseline justify-between text-sm">
+              <span className="font-medium text-gray-700">{s.label}</span>
+              <span className="tabular-nums text-gray-900">
+                <span className="font-bold">{fmtInt(s.value)}</span>
+                {prev !== null && prev > 0 && (
+                  <span className="ml-2 text-xs text-gray-400">{formatPct(s.value / prev)} del paso anterior</span>
+                )}
+              </span>
+            </div>
+            <div className="mt-1 h-3 overflow-hidden rounded-full bg-gray-100">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500"
+                style={{ width: `${Math.max(pctOfTop, s.value > 0 ? 2 : 0)}%` }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── exportaciones ───────────────────────────────────────────────────────────
+
+function summaryRows(d: SearchAnalytics): CsvCell[][] {
+  const p = d.previous;
+  const row = (label: string, cur: number | string, prev?: number | string): CsvCell[] => [label, cur, prev ?? ""];
+  return [
+    ["Métrica", `Últimos ${d.days} días`, "Período anterior"],
+    row("Visitas", d.visits.inRange, p.visits),
+    row("Búsquedas", d.totalSearches, p.totalSearches),
+    row("Búsquedas sin resultado (%)", (d.noResultRate * 100).toFixed(1)),
+    row("Búsquedas con pocos resultados (%)", (d.fewResultRate * 100).toFixed(1)),
+    row("Clicks a tienda", d.totalClicks, p.totalClicks),
+    row("Conversión búsqueda→click (%)", (d.conversionRate * 100).toFixed(1)),
+    row("Clicks de compra", d.buyClicks, p.buyClicks),
+    row("Compras de un recomendado (%)", (d.recommendedBuyShare * 100).toFixed(1)),
+    row("Visitas que interactuaron", d.engagement.engagedVisits),
+    row("Rebote (%)", (d.engagement.bouncedShare * 100).toFixed(1)),
+    row("Tiempo promedio (s)", d.engagement.avgDurationSec),
+    row("Tiempo mediano (s)", d.engagement.medianDurationSec),
+    row("Errores en el navegador", d.engagement.clientErrors),
+  ];
+}
+
+function exportSummaryCsv(d: SearchAnalytics) {
+  downloadCsv(stampedName(`analitica-resumen-${d.days}d`, "csv"), summaryRows(d));
+}
+
+function exportFullCsv(d: SearchAnalytics) {
+  const rows: CsvCell[][] = [
+    ...summaryRows(d),
+    [],
+    ["BÚSQUEDAS POR DÍA"],
+    ["fecha", "búsquedas"],
+    ...d.byDay.map((x) => [x.date, x.count]),
+    [],
+    ["VISITAS POR DÍA"],
+    ["fecha", "visitas"],
+    ...d.visits.byDay.map((x) => [x.date, x.count]),
+    [],
+    ["CATEGORÍAS"],
+    ["categoría", "búsquedas"],
+    ...d.byCategory.map((x) => [CATEGORY_LABELS[x.category] ?? x.category, x.count]),
+    [],
+    ["USOS"],
+    ["uso", "búsquedas"],
+    ...d.byUseCase.map((x) => [USE_CASE_LABELS[x.use_case] ?? x.use_case, x.count]),
+    [],
+    ["MARCAS"],
+    ["marca", "búsquedas"],
+    ...d.byBrand.map((x) => [x.brand, x.count]),
+    [],
+    ["TIENDAS (CLICKS)"],
+    ["tienda", "clicks"],
+    ...d.byStore.map((x) => [x.store, x.count]),
+    [],
+    ["PRODUCTOS MÁS CLICKEADOS"],
+    ["producto", "rubro", "clicks"],
+    ...d.topProducts.map((x) => [x.title, CATEGORY_LABELS[x.category ?? ""] ?? x.category ?? "", x.clicks]),
+    [],
+    ["BÚSQUEDAS MÁS FRECUENTES"],
+    ["texto", "veces", "con 0-2 resultados"],
+    ...d.topQueries.map((x) => [x.query, x.count, x.noResult]),
+  ];
+  downloadCsv(stampedName(`analitica-completa-${d.days}d`, "csv"), rows);
+}
+
+function printReport(d: SearchAnalytics) {
+  const tile = (label: string, value: string) =>
+    `<div class="tile"><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`;
+  const maxDay = Math.max(...d.byDay.map((x) => x.count), 1);
+  const table = (head: string[], rows: (string | number)[][]) =>
+    `<table><thead><tr>${head.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead><tbody>${rows
+      .map((r) => `<tr>${r.map((c) => `<td>${escapeHtml(String(c))}</td>`).join("")}</tr>`)
+      .join("")}</tbody></table>`;
+  openPrintReport(
+    `Informe de analítica — ${d.days} días`,
+    `<h1>Informe de analítica</h1><p class="sub">Últimos ${d.days} días · indexa</p>
+    <div class="grid">
+      ${tile("Visitas", fmtInt(d.visits.inRange))}
+      ${tile("Búsquedas", fmtInt(d.totalSearches))}
+      ${tile("Sin resultado", formatPct(d.noResultRate))}
+      ${tile("Clicks a tienda", fmtInt(d.totalClicks))}
+      ${tile("Conversión", formatPct(d.conversionRate))}
+      ${tile("Clicks de compra", fmtInt(d.buyClicks))}
+    </div>
+    <h2>Búsquedas por día</h2>
+    <div class="bars">${d.byDay.map((x) => `<i title="${escapeHtml(x.date)}: ${x.count}" style="height:${Math.max((x.count / maxDay) * 100, 3)}%"></i>`).join("")}</div>
+    <h2>Rubros más buscados</h2>
+    ${table(["Rubro", "Búsquedas"], d.byCategory.map((x) => [CATEGORY_LABELS[x.category] ?? x.category, x.count]))}
+    <h2>Búsquedas más frecuentes</h2>
+    ${table(["Texto", "Veces", "Con 0-2 resultados"], d.topQueries.map((x) => [x.query, x.count, x.noResult]))}
+    <h2>Tiendas con más clicks</h2>
+    ${table(["Tienda", "Clicks"], d.byStore.map((x) => [x.store, x.count]))}
+    <h2>Productos más clickeados</h2>
+    ${table(["Producto", "Clicks"], d.topProducts.map((x) => [x.title, x.clicks]))}`
+  );
+}
+
 export default function AnalyticsPage() {
   const [days, setDays] = useState<(typeof RANGES)[number]>(30);
   const [data, setData] = useState<SearchAnalytics | null>(null);
@@ -273,187 +364,227 @@ export default function AnalyticsPage() {
     load(days);
   }, [days, load]);
 
+  const e = data?.engagement;
+
   return (
-    <main className="min-h-screen bg-gray-50 px-4 py-8">
-      <div className="mx-auto max-w-5xl space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Analítica de búsquedas</h1>
-            <p className="mt-1 text-sm text-gray-500">
-              Volumen, categorías, tasa sin resultado y conversión a &quot;Ver en tienda&quot;.
-            </p>
-          </div>
-          <div className="inline-flex rounded-full bg-gray-100 p-1">
-            {RANGES.map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setDays(r)}
-                className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
-                  days === r ? "bg-white text-blue-700 shadow-sm" : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {r}d
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {error && <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-
-        {loading || !data ? (
-          <div className="py-16 text-center text-sm text-gray-400">Cargando...</div>
-        ) : (
+    <div className="space-y-6">
+      <PageHeader
+        title="Analítica"
+        subtitle="Qué busca la gente, cuánto se usa el sitio y cuántos terminan yendo a una tienda."
+        actions={
           <>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-              <StatTile label="Búsquedas" value={String(data.totalSearches)} />
-              <StatTile label="Sin resultado" value={formatPct(data.noResultRate)} />
-              <StatTile label="Pocos resultados" value={formatPct(data.fewResultRate)} />
-              <StatTile label="Clicks a tienda" value={String(data.totalClicks)} />
-              <StatTile label="Conversión" value={formatPct(data.conversionRate)} />
-              <StatTile label="Clicks de compra" value={String(data.buyClicks)} />
-              <StatTile
-                label="Compras de un recomendado"
-                value={`${formatPct(data.recommendedBuyShare)} · ${data.recommendedBuyClicks}/${data.buyClicks}`}
-              />
-            </div>
-
-            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-              <div className="flex items-baseline justify-between">
-                <h2 className="text-sm font-semibold text-gray-900">Embudo y permanencia</h2>
-                <span className="text-xs text-gray-400">últimos {days} días, por visita</span>
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <StatTile label="Visitas" value={String(data.engagement.visits)} />
-                <StatTile label="Interactuaron con productos" value={`${data.engagement.engagedVisits} · ${formatPct(1 - data.engagement.bouncedShare)}`} />
-                <StatTile label="Llegaron a comprar" value={String(data.engagement.buyVisits)} />
-                <StatTile label="Rebote" value={formatPct(data.engagement.bouncedShare)} />
-                <StatTile label="Tiempo promedio" value={`${data.engagement.avgDurationSec}s`} />
-                <StatTile label="Tiempo mediano" value={`${data.engagement.medianDurationSec}s`} />
-                <StatTile label="Errores en el navegador" value={String(data.engagement.clientErrors)} />
-              </div>
-            </div>
-
-            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-              <div className="flex items-baseline justify-between">
-                <h2 className="text-sm font-semibold text-gray-900">Visitas al sitio</h2>
-                <span className="text-xs text-gray-400">
-                  {data.visits.total} en total · {data.visits.inRange} en los últimos {days} días
-                </span>
-              </div>
-              <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
-                <div>
-                  <h3 className="text-xs font-medium text-gray-500">Por día (últimos {days} días)</h3>
-                  <div className="mt-3"><DailyVolumeChart data={data.visits.byDay} /></div>
-                </div>
-                <div>
-                  <h3 className="text-xs font-medium text-gray-500">Por semana (últimas 12)</h3>
-                  <div className="mt-3"><WeekChart data={data.visits.byWeek} /></div>
-                </div>
-                <div>
-                  <h3 className="text-xs font-medium text-gray-500">Por mes (año {new Date().getFullYear()})</h3>
-                  <div className="mt-3"><MonthlyChart data={data.visits.byMonth} /></div>
-                </div>
-                <div>
-                  <h3 className="text-xs font-medium text-gray-500">Por hora del día (AR)</h3>
-                  <div className="mt-3"><HourChart data={data.visits.byHour} /></div>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-              <h2 className="text-sm font-semibold text-gray-900">Volumen diario de búsquedas</h2>
-              <div className="mt-4">
-                <DailyVolumeChart data={data.byDay} />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-                <h2 className="text-sm font-semibold text-gray-900">Categorías más buscadas</h2>
-                <div className="mt-4">
-                  <CategoryBars data={data.byCategory} />
-                </div>
-              </div>
-
-              <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-                <h2 className="text-sm font-semibold text-gray-900">Productos más clickeados</h2>
-                <div className="mt-4">
-                  {data.topProducts.length === 0 ? (
-                    <p className="text-sm text-gray-400">Sin clicks en este rango.</p>
-                  ) : (
-                    <table className="w-full text-sm">
-                      <tbody>
-                        {data.topProducts.map((p) => (
-                          <tr key={p.product_id} className="border-t border-gray-100 first:border-0">
-                            <td className="py-2 pr-3">
-                              <p className="truncate font-medium text-gray-800">{p.title}</p>
-                              <p className="text-xs text-gray-400">
-                                {CATEGORY_LABELS[p.category ?? ""] ?? p.category ?? "—"}
-                              </p>
-                            </td>
-                            <td className="py-2 text-right font-semibold text-gray-900">{p.clicks}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-              <h2 className="text-sm font-semibold text-gray-900">Patrones (año {new Date().getFullYear()})</h2>
-              <p className="mt-0.5 text-xs text-gray-400">
-                Independiente del rango de arriba — necesita todo el año para verse un patrón real.
-              </p>
-              <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
-                <div>
-                  <h3 className="text-xs font-medium text-gray-500">Búsquedas por mes</h3>
-                  <div className="mt-3">
-                    <MonthlyChart data={data.byMonth} />
-                  </div>
-                </div>
-                <div>
-                  <h3 className="text-xs font-medium text-gray-500">Búsquedas por día de la semana</h3>
-                  <div className="mt-3">
-                    <DayOfWeekChart data={data.byDayOfWeek} />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-                <h2 className="text-sm font-semibold text-gray-900">Uso más buscado</h2>
-                <div className="mt-4">
-                  <RankBars
-                    data={data.byUseCase.map((d) => ({
-                      key: d.use_case,
-                      label: USE_CASE_LABELS[d.use_case] ?? d.use_case,
-                      count: d.count,
-                    }))}
-                  />
-                </div>
-              </div>
-
-              <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-                <h2 className="text-sm font-semibold text-gray-900">Marca más pedida</h2>
-                <div className="mt-4">
-                  <RankBars data={data.byBrand.map((d) => ({ key: d.brand, label: d.brand, count: d.count }))} />
-                </div>
-              </div>
-
-              <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-                <h2 className="text-sm font-semibold text-gray-900">Tienda con más clicks</h2>
-                <div className="mt-4">
-                  <RankBars data={data.byStore.map((d) => ({ key: d.store, label: d.store, count: d.count }))} />
-                </div>
-              </div>
-            </div>
+            <RangeTabs options={RANGES} value={days} onChange={setDays} />
+            <ExportMenu
+              options={[
+                { label: "Resumen (CSV)", hint: "Métricas clave vs. período anterior", onSelect: () => data && exportSummaryCsv(data) },
+                { label: "Detalle completo (CSV)", hint: "Todas las tablas en un solo archivo", onSelect: () => data && exportFullCsv(data) },
+                { label: "Datos crudos (JSON)", hint: "Para análisis propios", onSelect: () => data && downloadJson(stampedName(`analitica-${days}d`, "json"), data) },
+                { label: "Informe para imprimir / PDF", hint: "Se abre listo para guardar como PDF", onSelect: () => data && printReport(data) },
+              ]}
+            />
           </>
-        )}
-      </div>
-    </main>
+        }
+      />
+
+      {error && <Notice tone="error">{error}</Notice>}
+
+      {loading || !data || !e ? (
+        <PageSkeleton stats={8} blocks={3} />
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <StatCard
+              label="Visitas"
+              value={fmtInt(data.visits.inRange)}
+              accent="blue"
+              delta={<Delta current={data.visits.inRange} previous={data.previous.visits} />}
+            />
+            <StatCard
+              label="Búsquedas"
+              value={fmtInt(data.totalSearches)}
+              accent="blue"
+              delta={<Delta current={data.totalSearches} previous={data.previous.totalSearches} />}
+            />
+            <StatCard
+              label="Clicks a tienda"
+              value={fmtInt(data.totalClicks)}
+              accent="green"
+              delta={<Delta current={data.totalClicks} previous={data.previous.totalClicks} />}
+              hint={`Conversión ${formatPct(data.conversionRate)} de las búsquedas`}
+            />
+            <StatCard
+              label="Clicks de compra"
+              value={fmtInt(data.buyClicks)}
+              accent="green"
+              delta={<Delta current={data.buyClicks} previous={data.previous.buyClicks} />}
+              hint={`${formatPct(data.recommendedBuyShare)} de un recomendado (${data.recommendedBuyClicks}/${data.buyClicks})`}
+            />
+            <StatCard
+              label="Sin resultado"
+              value={formatPct(data.noResultRate)}
+              accent={data.noResultRate > 0.1 ? "red" : "amber"}
+              delta={
+                <Delta
+                  current={data.noResultCount}
+                  previous={data.previous.noResultCount}
+                  inverse
+                  suffix="vs. período anterior (cantidad)"
+                />
+              }
+              hint={`Pocos resultados: ${formatPct(data.fewResultRate)}`}
+            />
+            <StatCard label="Tiempo promedio" value={fmtDuration(e.avgDurationSec)} hint={`Mediano ${fmtDuration(e.medianDurationSec)}`} accent="purple" />
+            <StatCard label="Rebote" value={formatPct(e.bouncedShare)} hint="Visitas que no tocaron ningún producto" accent="purple" />
+            <StatCard
+              label="Errores en el navegador"
+              value={fmtInt(e.clientErrors)}
+              accent={e.clientErrors > 0 ? "red" : "green"}
+              hint={e.clientErrors > 0 ? "Revisá Actividad en vivo" : "Sin errores 🎉"}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Card title="Embudo de visitas" subtitle={`Últimos ${days} días, por visita`}>
+              <Funnel
+                steps={[
+                  { label: "Visitaron el sitio", value: e.visits },
+                  { label: "Interactuaron con productos", value: e.engagedVisits },
+                  { label: "Llegaron a comprar", value: e.buyVisits },
+                ]}
+              />
+            </Card>
+
+            <Card title="Búsquedas más frecuentes" subtitle="Lo que más se escribe. En naranja, las que terminaron con 0-2 resultados.">
+              {data.topQueries.length === 0 ? (
+                <p className="text-sm text-gray-400">Sin búsquedas en este rango.</p>
+              ) : (
+                <ol className="space-y-1.5">
+                  {data.topQueries.map((q, i) => (
+                    <li key={q.query} className="flex items-baseline gap-2 text-sm">
+                      <span className="w-5 shrink-0 text-right text-xs text-gray-400">{i + 1}</span>
+                      <span className="min-w-0 flex-1 truncate text-gray-700" title={q.query}>
+                        {q.query}
+                      </span>
+                      {q.noResult > 0 && (
+                        <span className="shrink-0 rounded-full bg-amber-50 px-1.5 text-[11px] font-medium text-amber-700">
+                          {q.noResult} sin resultado
+                        </span>
+                      )}
+                      <span className="w-8 shrink-0 text-right font-semibold tabular-nums text-gray-900">{q.count}</span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </Card>
+          </div>
+
+          <Card
+            title="Visitas al sitio"
+            subtitle={`${fmtInt(data.visits.total)} en total · ${fmtInt(data.visits.inRange)} en los últimos ${days} días`}
+          >
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+              <div>
+                <h3 className="text-xs font-medium text-gray-500">Por día (últimos {days} días)</h3>
+                <div className="mt-3">
+                  <DailyVolumeChart data={data.visits.byDay} />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-xs font-medium text-gray-500">Por semana (últimas 12)</h3>
+                <div className="mt-3">
+                  <WeekChart data={data.visits.byWeek} />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-xs font-medium text-gray-500">Por mes (año {new Date().getFullYear()})</h3>
+                <div className="mt-3">
+                  <MonthlyChart data={data.visits.byMonth} />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-xs font-medium text-gray-500">Por hora del día (AR)</h3>
+                <div className="mt-3">
+                  <HourChart data={data.visits.byHour} />
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <Card title="Volumen diario de búsquedas">
+            <DailyVolumeChart data={data.byDay} />
+          </Card>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Card title="Categorías más buscadas">
+              <RankBars
+                data={data.byCategory.map((d) => ({
+                  key: d.category,
+                  label: CATEGORY_LABELS[d.category] ?? d.category,
+                  count: d.count,
+                }))}
+              />
+            </Card>
+
+            <Card title="Productos más clickeados">
+              {data.topProducts.length === 0 ? (
+                <p className="text-sm text-gray-400">Sin clicks en este rango.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <tbody>
+                    {data.topProducts.map((p) => (
+                      <tr key={p.product_id} className="border-t border-gray-100 first:border-0">
+                        <td className="max-w-0 py-2 pr-3">
+                          <p className="truncate font-medium text-gray-800">{p.title}</p>
+                          <p className="text-xs text-gray-400">{CATEGORY_LABELS[p.category ?? ""] ?? p.category ?? "—"}</p>
+                        </td>
+                        <td className="py-2 text-right font-semibold tabular-nums text-gray-900">{p.clicks}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <Card title="Uso más buscado">
+              <RankBars
+                data={data.byUseCase.map((d) => ({
+                  key: d.use_case,
+                  label: USE_CASE_LABELS[d.use_case] ?? d.use_case,
+                  count: d.count,
+                }))}
+              />
+            </Card>
+            <Card title="Marca más pedida">
+              <RankBars data={data.byBrand.map((d) => ({ key: d.brand, label: d.brand, count: d.count }))} />
+            </Card>
+            <Card title="Tienda con más clicks" subtitle="Detalle por tienda en la sección Tiendas">
+              <RankBars data={data.byStore.map((d) => ({ key: d.store, label: d.store, count: d.count }))} />
+            </Card>
+          </div>
+
+          <Card
+            title={`Patrones (año ${new Date().getFullYear()})`}
+            subtitle="Independiente del rango de arriba — necesita todo el año para verse un patrón real."
+          >
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+              <div>
+                <h3 className="text-xs font-medium text-gray-500">Búsquedas por mes</h3>
+                <div className="mt-3">
+                  <MonthlyChart data={data.byMonth} />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-xs font-medium text-gray-500">Búsquedas por día de la semana</h3>
+                <div className="mt-3">
+                  <DayOfWeekChart data={data.byDayOfWeek} />
+                </div>
+              </div>
+            </div>
+          </Card>
+        </>
+      )}
+    </div>
   );
 }

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { adminFetch } from "@/lib/auth/adminClient";
+import { downloadCsv, downloadJson, escapeHtml, openPrintReport, stampedName, type CsvCell } from "@/lib/admin/export";
+import { Card, EmptyState, ExportMenu, Notice, PageHeader, PageSkeleton, RangeTabs, StatCard } from "@/components/admin/ui";
 import type { BudgetDistribution, DemandGap, StoreInsight, StoresInsights } from "@/types";
 
 const RANGES = [7, 30, 90] as const;
@@ -198,6 +200,62 @@ function BudgetBars({ data }: { data: BudgetDistribution[] }) {
   );
 }
 
+function storeRows(d: StoresInsights): CsvCell[][] {
+  return [
+    [
+      "Tienda", "Veces que se vio", "Clicks", "CTR (%)", "Clicks período anterior", "Detalles vistos", "Consultas al chat",
+      "Agregados a comparar", "Productos disponibles", "Sin precio", "Última actualización", "Productos comparables",
+      "Más barata en", "Diferencia media vs. más barata (%)",
+    ],
+    ...d.stores.map((s) => [
+      storeLabel(s.store), s.impressions, s.clicks, (s.ctr * 100).toFixed(2), s.prevClicks, s.detailViews, s.chatAsks,
+      s.compareAdds, s.availableProducts, s.withoutPrice, s.lastSyncAt ?? "", s.comparableProducts, s.cheapestCount,
+      s.avgGapPct ?? "",
+    ]),
+  ];
+}
+
+function exportStoresCsv(d: StoresInsights) {
+  downloadCsv(stampedName(`tiendas-${d.days}d`, "csv"), storeRows(d));
+}
+
+function exportMarketCsv(d: StoresInsights) {
+  downloadCsv(stampedName(`mercado-${d.days}d`, "csv"), [
+    ["DEMANDA SIN CUBRIR"],
+    ["Rubro", "Marca", "Presupuesto", "Búsquedas", "Con 0-2 resultados", "Ejemplo"],
+    ...d.demandGaps.map((g) => [CATEGORY_LABELS[g.category] ?? g.category, g.brand ?? "", g.budgetBand, g.searches, g.unmet, g.example ?? ""]),
+    [],
+    ["PRESUPUESTOS POR RUBRO"],
+    ["Rubro", ...(d.budgetByCategory[0]?.bands.map((b) => b.band) ?? []), "Total"],
+    ...d.budgetByCategory.map((b) => [CATEGORY_LABELS[b.category] ?? b.category, ...b.bands.map((x) => x.count), b.total]),
+  ]);
+}
+
+function printStores(d: StoresInsights) {
+  const rows = d.stores
+    .map(
+      (s) =>
+        `<tr><td>${escapeHtml(storeLabel(s.store))}</td><td>${s.impressions}</td><td>${s.clicks}</td><td>${(s.ctr * 100).toFixed(1)}%</td><td>${
+          s.comparableProducts > 0 ? `${s.cheapestCount}/${s.comparableProducts}` : "—"
+        }</td><td>${s.availableProducts}</td></tr>`
+    )
+    .join("");
+  const gaps = d.demandGaps
+    .map((g) => `<tr><td>${escapeHtml(`${CATEGORY_LABELS[g.category] ?? g.category}${g.brand ? " · " + g.brand : ""} · ${g.budgetBand}`)}</td><td>${g.unmet} de ${g.searches}</td></tr>`)
+    .join("");
+  openPrintReport(
+    `Informe de tiendas — ${d.days} días`,
+    `<h1>Tiendas y mercado</h1><p class="sub">Últimos ${d.days} días · indexa</p>
+    <div class="grid"><div class="tile"><span>Veces que se vio un producto</span><b>${fmtInt(d.totalImpressions)}</b></div>
+    <div class="tile"><span>Clicks a tiendas</span><b>${fmtInt(d.totalClicks)}</b></div>
+    <div class="tile"><span>Tiendas</span><b>${d.stores.length}</b></div></div>
+    <h2>Rendimiento por tienda</h2>
+    <table><thead><tr><th>Tienda</th><th>Se vio</th><th>Clicks</th><th>CTR</th><th>Más barata en</th><th>Productos</th></tr></thead><tbody>${rows}</tbody></table>
+    <h2>Demanda sin cubrir</h2>
+    <table><thead><tr><th>Pedido</th><th>Sin resultados útiles</th></tr></thead><tbody>${gaps || "<tr><td colspan=2>Sin datos</td></tr>"}</tbody></table>`
+  );
+}
+
 export default function AdminStoresPage() {
   const [days, setDays] = useState<(typeof RANGES)[number]>(30);
   const [data, setData] = useState<StoresInsights | null>(null);
@@ -218,86 +276,79 @@ export default function AdminStoresPage() {
   }, [days, load]);
 
   return (
-    <main className="min-h-screen bg-gray-50 px-4 py-8">
-      <div className="mx-auto max-w-5xl space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Tiendas y mercado</h1>
-            <p className="mt-1 text-sm text-gray-500">
-              Qué le pasa a cada tienda en Indexa, qué tan competitiva está en precio y qué busca la gente que todavía
-              no se puede cubrir.
-            </p>
-          </div>
-          <div className="inline-flex rounded-full bg-gray-100 p-1">
-            {RANGES.map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setDays(r)}
-                className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
-                  days === r ? "bg-white text-blue-700 shadow-sm" : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {r}d
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {error && <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-
-        {loading || !data ? (
-          <div className="py-16 text-center text-sm text-gray-400">Cargando...</div>
-        ) : (
+    <div className="space-y-6">
+      <PageHeader
+        title="Tiendas y mercado"
+        subtitle="Qué le pasa a cada tienda en Indexa, qué tan competitiva está en precio y qué busca la gente que todavía no se puede cubrir."
+        actions={
           <>
-            <div className="rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-900">
-              <strong>Cómo leerlo:</strong> “se vio” es una tarjeta que la persona realmente tuvo en pantalla (no solo
-              cargada); “click” es entrar a la tienda desde esa tarjeta; CTR = clicks ÷ veces que se vio.
-              {data.impressionsSince ? (
-                <>
-                  {" "}
-                  Las apariciones se miden desde el{" "}
-                  {new Date(data.impressionsSince).toLocaleDateString("es-AR")}; antes de esa fecha solo hay clicks.
-                </>
-              ) : (
-                <> Todavía no hay apariciones registradas: empiezan a medirse con las próximas búsquedas.</>
-              )}
-            </div>
-
-            <section className="space-y-4">
-              <h2 className="text-sm font-semibold text-gray-900">
-                Rendimiento por tienda · últimos {days} días ({fmtInt(data.totalClicks)} clicks en total)
-              </h2>
-              {data.stores.length === 0 ? (
-                <p className="text-sm text-gray-400">Sin datos.</p>
-              ) : (
-                data.stores.map((s) => <StoreCard key={s.store} s={s} />)
-              )}
-            </section>
-
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-                <h2 className="text-sm font-semibold text-gray-900">Lo que la gente pide y no se encuentra</h2>
-                <p className="mt-0.5 text-xs text-gray-400">
-                  Búsquedas que terminaron con 0-2 resultados, agrupadas por rubro, marca y presupuesto. Es una guía de
-                  qué stock conviene sumar.
-                </p>
-                <div className="mt-4">
-                  <DemandList gaps={data.demandGaps} />
-                </div>
-              </section>
-
-              <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-                <h2 className="text-sm font-semibold text-gray-900">Cuánto quiere gastar la gente</h2>
-                <p className="mt-0.5 text-xs text-gray-400">Presupuesto declarado en las búsquedas, por rubro.</p>
-                <div className="mt-4">
-                  <BudgetBars data={data.budgetByCategory} />
-                </div>
-              </section>
-            </div>
+            <RangeTabs options={RANGES} value={days} onChange={setDays} />
+            <ExportMenu
+              options={[
+                { label: "Tiendas (CSV)", hint: "Una fila por tienda con todas las métricas", onSelect: () => data && exportStoresCsv(data) },
+                { label: "Mercado (CSV)", hint: "Demanda sin cubrir y presupuestos", onSelect: () => data && exportMarketCsv(data) },
+                { label: "Datos crudos (JSON)", onSelect: () => data && downloadJson(stampedName(`tiendas-${days}d`, "json"), data) },
+                { label: "Informe para imprimir / PDF", hint: "Para compartir con una tienda", onSelect: () => data && printStores(data) },
+              ]}
+            />
           </>
-        )}
-      </div>
-    </main>
+        }
+      />
+
+      {error && <Notice tone="error">{error}</Notice>}
+
+      {loading || !data ? (
+        <PageSkeleton stats={4} blocks={3} />
+      ) : (
+        <>
+          <Notice>
+            <strong>Cómo leerlo:</strong> “se vio” es una tarjeta que la persona realmente tuvo en pantalla (no solo
+            cargada); “click” es entrar a la tienda desde esa tarjeta; CTR = clicks ÷ veces que se vio.
+            {data.impressionsSince ? (
+              <>
+                {" "}
+                Las apariciones se miden desde el {new Date(data.impressionsSince).toLocaleDateString("es-AR")}; antes
+                de esa fecha solo hay clicks.
+              </>
+            ) : (
+              <> Todavía no hay apariciones registradas: empiezan a medirse con las próximas búsquedas.</>
+            )}
+          </Notice>
+
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <StatCard label="Veces que se vio un producto" value={fmtInt(data.totalImpressions)} accent="blue" />
+            <StatCard label="Clicks a tiendas" value={fmtInt(data.totalClicks)} accent="green" />
+            <StatCard
+              label="CTR general"
+              value={data.totalImpressions > 0 ? fmtPct(data.totalClicks / data.totalImpressions) : "—"}
+              accent="purple"
+            />
+            <StatCard label="Tiendas activas" value={String(data.stores.length)} accent="amber" />
+          </div>
+
+          <section className="space-y-4">
+            <h2 className="text-sm font-semibold text-gray-900">Rendimiento por tienda · últimos {days} días</h2>
+            {data.stores.length === 0 ? (
+              <EmptyState title="Sin datos de tiendas" text="Cuando haya clicks y apariciones se muestran acá." />
+            ) : (
+              data.stores.map((s) => <StoreCard key={s.store} s={s} />)
+            )}
+          </section>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Card
+              title="Lo que la gente pide y no se encuentra"
+              subtitle="Búsquedas que terminaron con 0-2 resultados, agrupadas por rubro, marca y presupuesto. Es una guía de qué stock conviene sumar."
+            >
+              <DemandList gaps={data.demandGaps} />
+            </Card>
+
+            <Card title="Cuánto quiere gastar la gente" subtitle="Presupuesto declarado en las búsquedas, por rubro.">
+              <BudgetBars data={data.budgetByCategory} />
+            </Card>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
