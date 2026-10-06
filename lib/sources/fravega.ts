@@ -34,6 +34,8 @@ interface FravePricing {
 }
 
 interface FraveResult {
+  // Plan de cuotas sin interés más largo, agregado por fraveQuery (plans/favPlans).
+  installmentPlan?: { quantity: number } | null;
   code: string;
   images: string[];
   item: FraveItem;
@@ -265,9 +267,7 @@ async function buildProduct(
     specs,
     upgradeable,
     price_cash: pricing.salePrice ?? null,
-    price_installment: null,
-    installment_count: null,
-    installment_info: null,
+    ...fraveInstallment(result, pricing.salePrice ?? null),
     currency: "ARS",
     image_url: imageUrls[0] ?? null,
     images: imageUrls,
@@ -277,6 +277,70 @@ async function buildProduct(
 }
 
 // ─── API fetch ────────────────────────────────────────────────────────────────
+
+// ─── Cuotas ──────────────────────────────────────────────────────────────────
+// La búsqueda de items no trae cuotas, pero la API expone `plans(sku)` (todos los
+// planes) y `favPlans(sku)` (los destacados, p. ej. con banco). Nos quedamos con
+// el plan SIN interés más largo; `price_installment` es la cuota MENSUAL
+// (precio contado / cantidad de cuotas, porque sin interés el factor es 1/n).
+
+const PLANS_CHUNK = 12;
+
+function fraveInstallment(result: FraveResult, priceCash: number | null) {
+  const q = result.installmentPlan?.quantity ?? null;
+  if (!q || q < 2 || !priceCash) {
+    return { price_installment: null, installment_count: null, installment_info: null };
+  }
+  return {
+    price_installment: Math.round(priceCash / q),
+    installment_count: q,
+    installment_info: `${q} cuotas sin interés (según tarjeta)`,
+  };
+}
+
+interface FravePlansPayload {
+  [alias: string]: { installments: { quantity: number; hasInterest: boolean } | null }[] | null;
+}
+
+async function attachInstallmentPlans(results: FraveResult[]): Promise<void> {
+  for (let i = 0; i < results.length; i += PLANS_CHUNK) {
+    const chunk = results.slice(i, i + PLANS_CHUNK);
+    const fields = chunk
+      .map(
+        (r, j) =>
+          `p${j}: plans(sku: ${JSON.stringify(r.code)}) { installments { quantity hasInterest } } ` +
+          `f${j}: favPlans(sku: ${JSON.stringify(r.code)}) { installments { quantity hasInterest } }`
+      )
+      .join(" ");
+    try {
+      const res = await fetch(GRAPHQL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+          Referer: "https://www.fravega.com/",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ query: `query { ${fields} }` }),
+      });
+      if (!res.ok) continue;
+      const data = ((await res.json()) as { data?: FravePlansPayload }).data;
+      if (!data) continue;
+      chunk.forEach((r, j) => {
+        const plans = [...(data[`p${j}`] ?? []), ...(data[`f${j}`] ?? [])];
+        const noInterest = plans
+          .map((p) => p.installments)
+          .filter((x): x is { quantity: number; hasInterest: boolean } => !!x && !x.hasInterest)
+          .map((x) => x.quantity);
+        r.installmentPlan = noInterest.length > 0 ? { quantity: Math.max(...noInterest) } : null;
+      });
+    } catch {
+      // Sin cuotas para este lote: quedan en null, como antes.
+    }
+    await sleep(150);
+  }
+}
 
 async function fraveQuery(keywords: string, from: number): Promise<FraveResponse> {
   const res = await fetch(GRAPHQL, {
@@ -296,7 +360,9 @@ async function fraveQuery(keywords: string, from: number): Promise<FraveResponse
     throw new Error(`Fravega GraphQL ${res.status}: ${text.slice(0, 200)}`);
   }
 
-  return res.json() as Promise<FraveResponse>;
+  const json = (await res.json()) as FraveResponse;
+  await attachInstallmentPlans(json.data.items.results);
+  return json;
 }
 
 function sleep(ms: number) {
@@ -379,9 +445,7 @@ async function buildPhoneProduct(result: FraveResult, llmStats: { calls: number 
     specs,
     upgradeable: PHONE_UPGRADEABLE,
     price_cash: pricing.salePrice ?? null,
-    price_installment: null,
-    installment_count: null,
-    installment_info: null,
+    ...fraveInstallment(result, pricing.salePrice ?? null),
     currency: "ARS",
     image_url: imageUrls[0] ?? null,
     images: imageUrls,
@@ -408,9 +472,7 @@ async function buildTabletProduct(result: FraveResult, llmStats: { calls: number
     specs,
     upgradeable: TABLET_UPGRADEABLE,
     price_cash: pricing.salePrice ?? null,
-    price_installment: null,
-    installment_count: null,
-    installment_info: null,
+    ...fraveInstallment(result, pricing.salePrice ?? null),
     currency: "ARS",
     image_url: imageUrls[0] ?? null,
     images: imageUrls,
@@ -437,9 +499,7 @@ async function buildTVProduct(result: FraveResult, llmStats: { calls: number }) 
     specs,
     upgradeable: TV_UPGRADEABLE,
     price_cash: pricing.salePrice ?? null,
-    price_installment: null,
-    installment_count: null,
-    installment_info: null,
+    ...fraveInstallment(result, pricing.salePrice ?? null),
     currency: "ARS",
     image_url: imageUrls[0] ?? null,
     images: imageUrls,

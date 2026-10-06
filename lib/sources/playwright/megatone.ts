@@ -115,6 +115,33 @@ interface ScrapedProduct {
   available: boolean;
 }
 
+// Megatone embebe los planes en el HTML como un objeto JS (no JSON):
+//   planes:{...,cuotasDestacadas:[{idPlan:3738,cantidad:12,valor:141333.25,leyenda:"Sin Interés:",...},...]}
+// `valor` es la cuota mensual. Nos quedamos con el plan sin interés más largo.
+function extractMegatoneInstallment(html: string): {
+  priceInstallment: number | null;
+  installmentCount: number | null;
+  installmentInfo: string | null;
+} {
+  const none = { priceInstallment: null, installmentCount: null, installmentInfo: null };
+  const start = html.indexOf("cuotasDestacadas:[");
+  if (start === -1) return none;
+  const block = html.slice(start, start + 6000);
+  let best: { cantidad: number; valor: number } | null = null;
+  for (const m of Array.from(block.matchAll(/cantidad:(\d+),valor:([\d.]+),leyenda:"([^"]*)"/g))) {
+    if (!/sin inter/i.test(m[3])) continue;
+    const cantidad = parseInt(m[1], 10);
+    const valor = parseFloat(m[2]);
+    if (cantidad >= 2 && valor > 0 && (!best || cantidad > best.cantidad)) best = { cantidad, valor };
+  }
+  if (!best) return none;
+  return {
+    priceInstallment: Math.round(best.valor),
+    installmentCount: best.cantidad,
+    installmentInfo: `${best.cantidad} cuotas sin interés (según tarjeta)`,
+  };
+}
+
 async function scrapeProductPage(page: Page, url: string): Promise<ScrapedProduct | null> {
   try {
     await retry(() => page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 }), 2);
@@ -122,6 +149,8 @@ async function scrapeProductPage(page: Page, url: string): Promise<ScrapedProduc
   } catch {
     return null;
   }
+
+  const installment = extractMegatoneInstallment(await page.content().catch(() => ""));
 
   // 1. Intentar JSON-LD (más confiable)
   const jsonLd = await extractJsonLd(page);
@@ -144,9 +173,7 @@ async function scrapeProductPage(page: Page, url: string): Promise<ScrapedProduc
       title: jsonLd.name,
       brand: brandName,
       priceCash: price,
-      priceInstallment: null,
-      installmentCount: null,
-      installmentInfo: null,
+      ...installment,
       imageUrl,
       images: imageUrl ? [imageUrl] : [],
       available: !offer.availability || offer.availability.includes("InStock"),
@@ -173,9 +200,7 @@ async function scrapeProductPage(page: Page, url: string): Promise<ScrapedProduc
       title: meta.title,
       brand: null,
       priceCash,
-      priceInstallment: null,
-      installmentCount: null,
-      installmentInfo: null,
+      ...installment,
       imageUrl: meta.image,
       images: meta.image ? [meta.image] : [],
       available: true,

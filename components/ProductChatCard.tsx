@@ -65,11 +65,11 @@ export function priceBlock(
     return { leadAmount: inst.amount, leadUnit: instUnit, sub: cash ? `${cash} contado` : null, tag: instTag };
   }
   if (cash) {
-    // Paga en cuotas pero esta tienda no informa cuotas: avisarlo en vez de
-    // mostrar el contado como si fuera la cuota.
+    // Paga en cuotas pero no tenemos el dato de cuotas de esta tienda: avisar que
+    // puede haberlas (el precio grande es el contado) en vez de mostrarlo como cuota.
     const tag =
       mode === "installments" && !inst
-        ? { text: "Sin cuotas informadas — precio contado", tone: "warn" as const }
+        ? { text: "Puede tener cuotas en la tienda, no tenemos el dato", tone: "warn" as const }
         : null;
     return { leadAmount: cash, leadUnit: "contado", sub: instLong, tag };
   }
