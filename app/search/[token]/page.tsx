@@ -1336,7 +1336,12 @@ export default function SearchResultsPage() {
             Se mantiene SIEMPRE montada (solo se oculta con CSS) para no volver
             a disparar el saludo desde cero al minimizar/reabrir (ver
             GuidedSearchChat/greetedForTokenRef). */}
+        {/* En Portal (directo en <body>): el contenedor `relative z-10` del layout
+            crea un stacking context, así que el z-30 del chat quedaba POR DEBAJO
+            del splash "Respondé las preguntas del chat" (también en Portal, z-20)
+            y lo tapaba por completo — no se podía responder (bug reportado). */}
         {chatActive && (
+          <Portal>
           <div className={chatOpen ? "" : "hidden"}>
             <GuidedSearchChat
               compact
@@ -1361,6 +1366,7 @@ export default function SearchResultsPage() {
               onNewQuery={handleSpotlightConsumed}
             />
           </div>
+          </Portal>
         )}
         {chatActive && !chatOpen && <ChatFAB onClick={() => setChatOpen(true)} pending={hasPendingQuestion} />}
 
