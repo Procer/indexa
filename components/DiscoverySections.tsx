@@ -40,6 +40,7 @@ function toAlternativeProduct(p: EnrichedProduct): AlternativeProduct {
     url: p.url,
     affiliate_url: p.affiliate_url,
     installment_count: p.installment_count,
+    installment_info: p.installment_info,
     quality_price_score: p.quality_price_score,
     spec_highlights: p.spec_highlights,
     spec_highlights_simple: p.spec_highlights_simple,

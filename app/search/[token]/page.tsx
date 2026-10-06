@@ -69,6 +69,7 @@ function toAlternativeProduct(p: EnrichedProduct): AlternativeProduct {
     url: p.url,
     affiliate_url: p.affiliate_url,
     installment_count: p.installment_count,
+    installment_info: p.installment_info,
     quality_price_score: p.quality_price_score,
     spec_highlights: p.spec_highlights,
     spec_highlights_simple: p.spec_highlights_simple,
@@ -981,8 +982,11 @@ export default function SearchResultsPage() {
   // El usuario eligió pagar en cuotas si dio un presupuesto mensual y no uno al
   // contado — la tarjeta muestra entonces la cuota como número grande, no "$X
   // contado" (bug reportado en vivo).
+  // También cuenta si pidió un número de cuotas explícito ("en 12 cuotas"),
+  // aunque haya dado el presupuesto como monto total.
   const paymentMode: "cash" | "installments" =
-    searchSlots?.budget_monthly_ars != null && searchSlots?.budget_cash_ars == null
+    (searchSlots?.budget_monthly_ars != null && searchSlots?.budget_cash_ars == null) ||
+    searchSlots?.budget_installment_count != null
       ? "installments"
       : "cash";
 

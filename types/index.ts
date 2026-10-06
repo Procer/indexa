@@ -667,6 +667,7 @@ export interface AlternativeProduct {
   // de EnrichedProduct — el chat del comparador (quickAlternative.ts) sigue sin
   // pasarlos, la UI los trata como ausentes sin romper nada.
   installment_count?: number | null;
+  installment_info?: string | null;
   quality_price_score?: QualityPriceScore | null;
   spec_highlights?: string[];
   spec_highlights_simple?: string[];

@@ -34,10 +34,18 @@ interface PriceBlock {
   leadAmount: string;
   leadUnit: string;
   sub: string | null;
+  // Aviso corto bajo el precio: "Sin interés" o, si el usuario paga en cuotas y la
+  // tienda no informa cuotas, que el precio mostrado es el contado.
+  tag: { text: string; tone: "ok" | "warn" } | null;
 }
 
 export function priceBlock(
-  p: { price_cash: number | null; price_installment: number | null; installment_count?: number | null },
+  p: {
+    price_cash: number | null;
+    price_installment: number | null;
+    installment_count?: number | null;
+    installment_info?: string | null;
+  },
   mode: "cash" | "installments"
 ): PriceBlock | null {
   const cash = p.price_cash ? formatPrice(p.price_cash) : null;
@@ -50,14 +58,23 @@ export function priceBlock(
     ? `${inst.amount}/mes en ${inst.count} ${inst.count === 1 ? "cuota" : "cuotas"}`
     : null;
 
+  const noInterest = !!p.installment_info?.toLowerCase().includes("sin inter");
+  const instTag = inst && noInterest ? { text: "Sin interés", tone: "ok" as const } : null;
+
   if (mode === "installments" && inst) {
-    return { leadAmount: inst.amount, leadUnit: instUnit, sub: cash ? `${cash} contado` : null };
+    return { leadAmount: inst.amount, leadUnit: instUnit, sub: cash ? `${cash} contado` : null, tag: instTag };
   }
   if (cash) {
-    return { leadAmount: cash, leadUnit: "contado", sub: instLong };
+    // Paga en cuotas pero esta tienda no informa cuotas: avisarlo en vez de
+    // mostrar el contado como si fuera la cuota.
+    const tag =
+      mode === "installments" && !inst
+        ? { text: "Sin cuotas informadas — precio contado", tone: "warn" as const }
+        : null;
+    return { leadAmount: cash, leadUnit: "contado", sub: instLong, tag };
   }
   if (inst) {
-    return { leadAmount: inst.amount, leadUnit: instUnit, sub: null };
+    return { leadAmount: inst.amount, leadUnit: instUnit, sub: null, tag: instTag };
   }
   return null;
 }
@@ -274,6 +291,7 @@ export function ProductChatCard({
     price_cash: activeVariant ? activeVariant.price_cash : product.price_cash,
     price_installment: activeVariant ? activeVariant.price_installment : product.price_installment,
     installment_count: activeVariant ? activeVariant.installment_count : product.installment_count ?? null,
+    installment_info: activeVariant ? null : product.installment_info ?? null,
     url: activeVariant?.url ?? product.url,
     affiliate_url: activeVariant ? activeVariant.affiliate_url : product.affiliate_url,
   };
@@ -473,6 +491,11 @@ export function ProductChatCard({
           </p>
         )}
         {pb?.sub && <p className="font-brand text-xs font-medium text-gathering-primary">{pb.sub}</p>}
+        {pb?.tag && (
+          <p className={`font-brand text-xs font-bold ${pb.tag.tone === "ok" ? "text-emerald-700" : "text-amber-700"}`}>
+            {pb.tag.text}
+          </p>
+        )}
       </div>
 
       {cheaperElsewhere && (

@@ -528,6 +528,15 @@ function RankedResultRow({
                         <span className="ml-1 text-xs font-medium text-gathering-on-surface-variant">{pb.leadUnit}</span>
                       </p>
                       {pb.sub && <p className="font-brand text-[11px] text-gathering-on-surface-variant">{pb.sub}</p>}
+                      {pb.tag && (
+                        <p
+                          className={`mt-0.5 font-brand text-[11px] font-bold ${
+                            pb.tag.tone === "ok" ? "text-emerald-700" : "text-amber-700"
+                          }`}
+                        >
+                          {pb.tag.text}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
