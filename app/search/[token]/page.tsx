@@ -1301,6 +1301,9 @@ export default function SearchResultsPage() {
                     searchShareToken={resolvedTokenRef.current}
                     sessionId={sessionId}
                     paymentMode={paymentMode}
+                    useCases={chatUseCases}
+                    budgetCash={searchSlots?.budget_cash_ars ?? null}
+                    budgetMonthly={searchSlots?.budget_monthly_ars ?? null}
                     onCompareAdd={addSimilarToCompare}
                     comparedIds={compareList.map((p) => p.id)}
                   />

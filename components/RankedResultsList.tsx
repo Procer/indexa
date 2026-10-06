@@ -14,7 +14,8 @@ import { useImpression } from "@/lib/analytics/useImpression";
 import { SpecTermPopover } from "@/components/SpecTermPopover";
 import { OtherStoresButton } from "@/components/OtherStoresButton";
 import { priceBlock, StoreLogo, QUALITY_SCORE_STYLE } from "@/components/ProductChatCard";
-import type { AlternativeProduct, NotebookSpecs, PhoneSpecs, TabletSpecs, TvSpecs } from "@/types";
+import { buildBudgetFit, buildFitVerdict, PLAIN_QUALITY_LABEL } from "@/lib/domain/plainFit";
+import type { AlternativeProduct, NotebookSpecs, PhoneSpecs, TabletSpecs, TvSpecs, UseCase } from "@/types";
 
 // "Vista B" — lista rankeada centrada en precio + características, pedida
 // explícitamente por el usuario como alternativa a la grilla de tarjetas
@@ -32,6 +33,11 @@ interface RankedResultsListProps {
   searchShareToken?: string;
   sessionId?: string;
   paymentMode?: "cash" | "installments";
+  // Lo que el usuario contó (uso y presupuesto) — para decir en cada fila si le
+  // sirve y si entra en lo que puede pagar.
+  useCases?: UseCase[];
+  budgetCash?: number | null;
+  budgetMonthly?: number | null;
   onCompareAdd?: (ids: string[], open?: boolean) => void;
   comparedIds?: string[];
   // Orden controlado desde afuera (la barra de herramientas de la página tiene el
@@ -293,6 +299,9 @@ export function RankedResultsList({
   searchShareToken,
   sessionId,
   paymentMode = "cash",
+  useCases = [],
+  budgetCash = null,
+  budgetMonthly = null,
   onCompareAdd,
   comparedIds,
   sortMode: sortModeProp,
@@ -383,6 +392,9 @@ export function RankedResultsList({
             idx={idx}
             vr={valueById.get(product.id)}
             paymentMode={paymentMode}
+            useCases={useCases}
+            budgetCash={budgetCash}
+            budgetMonthly={budgetMonthly}
             spotlighted={
               !!spotlightProductId &&
               (product.id === spotlightProductId || !!product.variants?.some((v) => v.id === spotlightProductId))
@@ -407,6 +419,9 @@ interface RankedResultRowProps {
   idx: number;
   vr: ValueResult | undefined;
   paymentMode: "cash" | "installments";
+  useCases: UseCase[];
+  budgetCash: number | null;
+  budgetMonthly: number | null;
   spotlighted: boolean;
   compared: boolean;
   compareDisabled: boolean;
@@ -423,6 +438,9 @@ function RankedResultRow({
   idx,
   vr,
   paymentMode,
+  useCases,
+  budgetCash,
+  budgetMonthly,
   spotlighted,
   compared,
   compareDisabled,
@@ -435,9 +453,11 @@ function RankedResultRow({
 }: RankedResultRowProps) {
   const rowRef = useRef<HTMLElement>(null);
   useImpression(rowRef, searchShareToken, product.id);
-  const value = vr?.value ?? 5.5;
   const pb = priceBlock(product, paymentMode);
   const fields = specFields(product);
+  const [showTech, setShowTech] = useState(false);
+  const fit = buildFitVerdict(product, useCases);
+  const budgetFit = buildBudgetFit(product, { cash: budgetCash, monthly: budgetMonthly });
 
   // Mini galería — mismo patrón que ProductChatCard (flechas + contador),
   // pedido de vuelta para la Vista B (2026-09-17).
@@ -551,8 +571,7 @@ function RankedResultRow({
                             QUALITY_SCORE_STYLE[product.quality_price_score] ?? QUALITY_SCORE_STYLE.REGULAR
                           }`}
                         >
-                          {product.quality_price_score.charAt(0) + product.quality_price_score.slice(1).toLowerCase()}{" "}
-                          calidad/precio
+                          {PLAIN_QUALITY_LABEL[product.quality_price_score] ?? "Compra regular"}
                         </span>
                       )}
                       {product.sponsored && (
@@ -564,12 +583,6 @@ function RankedResultRow({
                     <h3 className="line-clamp-2 font-brand text-[15px] font-bold leading-snug text-gathering-on-surface">
                       {product.title}
                     </h3>
-                    {product.out_of_budget && (
-                      <p className="mt-1 flex items-start gap-1 font-brand text-[11px] font-medium text-orange-700">
-                        <span className="material-symbols-outlined text-[13px]">info</span>
-                        Se pasa un poco de tu presupuesto — te la mostramos igual por si te sirve.
-                      </p>
-                    )}
                   </div>
                   {pb && (
                     <div className="sm:shrink-0 sm:text-right">
@@ -582,22 +595,37 @@ function RankedResultRow({
                   )}
                 </div>
 
-                {/* Barra de valor */}
-                <div className="flex items-center gap-2.5">
-                  <span className="flex w-14 shrink-0 items-center font-brand text-[11px] font-bold uppercase tracking-wide text-gathering-on-surface-variant">
-                    Valor
-                    <ValueTooltip />
-                  </span>
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-gathering-surface-container-highest">
-                    <div
-                      className="h-full rounded-full"
-                      style={{ width: `${Math.round(value * 10)}%`, backgroundColor: valueColor(value) }}
-                    />
+                {/* Veredicto en lenguaje llano: ¿me sirve? ¿entra en mi presupuesto? */}
+                {(fit || budgetFit) && (
+                  <div className="flex flex-col gap-1">
+                    {fit && (
+                      <p className="font-brand text-[13px] font-semibold leading-snug text-gathering-on-surface">
+                        <span
+                          className={`mr-1.5 inline-block h-2 w-2 rounded-full align-middle ${
+                            fit.level === "warn" ? "bg-amber-400" : "bg-emerald-400"
+                          }`}
+                          aria-hidden="true"
+                        />
+                        {fit.headline}
+                        {fit.detail && (
+                          <span className="ml-1 font-normal text-gathering-on-surface-variant">{fit.detail}</span>
+                        )}
+                      </p>
+                    )}
+                    {budgetFit && (
+                      <p
+                        className={`flex items-start gap-1 font-brand text-[12px] font-medium ${
+                          budgetFit.tone === "warn" ? "text-orange-700" : "text-emerald-700"
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-[14px]">
+                          {budgetFit.tone === "warn" ? "info" : "check_circle"}
+                        </span>
+                        {budgetFit.text}
+                      </p>
+                    )}
                   </div>
-                  <span className="w-11 shrink-0 text-right font-brand text-xs font-bold text-gathering-on-surface">
-                    {value.toFixed(1)}/10
-                  </span>
-                </div>
+                )}
 
                 {/* Insignias comparativas */}
                 {vr && vr.badges.length > 0 && (
@@ -622,15 +650,41 @@ function RankedResultRow({
                   </div>
                 )}
 
-                {/* Specs con tooltip */}
-                {fields.length > 0 && (
-                  <div className="flex flex-wrap gap-x-4 gap-y-1">
-                    {fields.map((f) => (
-                      <span key={f.label} className="inline-flex items-center font-brand text-[12px] text-gathering-on-surface-variant">
-                        <SpecTermPopover category={product.category} label={f.label} variant="chip" />
-                        <span className="ml-1.5 font-semibold text-gathering-on-surface">{f.value}</span>
+                {/* Qué tan bien anda cada parte, en palabras. El dato técnico queda
+                    a un toque, para quien sí lo entiende. */}
+                {(fit?.chips.length ?? 0) > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {fit?.chips.map((c) => (
+                      <span
+                        key={c.label}
+                        className="inline-flex items-center gap-1 rounded-full border border-gathering-outline-variant bg-gathering-surface-container px-2.5 py-1 font-brand text-[11.5px] text-gathering-on-surface-variant"
+                      >
+                        <span aria-hidden="true">{c.icon}</span>
+                        <span className="font-semibold text-gathering-on-surface">{c.label}:</span> {c.word}
                       </span>
                     ))}
+                  </div>
+                )}
+                {fields.length > 0 && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setShowTech((v) => !v)}
+                      aria-expanded={showTech}
+                      className="font-brand text-[11.5px] font-semibold text-gathering-primary-fixed-dim underline-offset-2 hover:underline"
+                    >
+                      {showTech ? "Ocultar datos técnicos" : "Ver datos técnicos"}
+                    </button>
+                    {showTech && (
+                      <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1">
+                        {fields.map((f) => (
+                          <span key={f.label} className="inline-flex items-center font-brand text-[12px] text-gathering-on-surface-variant">
+                            <SpecTermPopover category={product.category} label={f.label} variant="chip" />
+                            <span className="ml-1.5 font-semibold text-gathering-on-surface">{f.value}</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
