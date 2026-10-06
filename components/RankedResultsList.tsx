@@ -429,7 +429,7 @@ function RankedResultRow({
   return (
     <article
       ref={rowRef}
-      className={`flex flex-wrap gap-3 rounded-2xl border p-3 transition-colors sm:flex-nowrap sm:gap-4 sm:p-4 gathering-glass-card ${
+      className={`flex flex-col gap-3 rounded-2xl border p-3 transition-colors sm:p-4 gathering-glass-card ${
         spotlighted
           ? "z-10 animate-spotlight-pulse ring-4 ring-[#3452E1] ring-offset-2 ring-offset-gathering-background border-gathering-outline-variant"
           : product.sponsored
@@ -437,6 +437,7 @@ function RankedResultRow({
             : "border-gathering-outline-variant"
       }`}
     >
+      <div className="flex flex-wrap gap-3 sm:flex-nowrap sm:gap-4">
       {/* Foto + galería + "también en X" en el espacio libre debajo — sin
           numerito de ranking (pedido 2026-09-17: el orden ya lo da la
           posición en la lista, el círculo numerado sobraba). */}
@@ -654,8 +655,9 @@ function RankedResultRow({
                   {storeName(product.source)}
                 </span>
               </div>
+      </div>
 
-              <SpecDetailPanel product={product} useCases={useCases} />
+      <SpecDetailPanel product={product} useCases={useCases} />
             </article>
   );
 }
