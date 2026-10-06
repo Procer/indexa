@@ -3,7 +3,6 @@
 import { useMemo, useRef, useState } from "react";
 import { groupVariants } from "@/lib/domain/variantGroup";
 import { rankWithValue, type BadgeIcon, type ValueResult } from "@/lib/domain/valueRanking";
-import { shortSpecValues } from "@/lib/domain/specExplainer";
 import { TIER_RANK } from "@/lib/domain/usageToSpecs";
 import { getGlossaryForCategories } from "@/lib/domain/specGlossary";
 import { storeName, formatPrice } from "@/lib/domain/productDisplay";
@@ -11,11 +10,11 @@ import { withBasePath } from "@/lib/basePath";
 import { getOrCreateVisitId } from "@/lib/analytics/visit";
 import { trackEvent } from "@/lib/analytics/track";
 import { useImpression } from "@/lib/analytics/useImpression";
-import { SpecTermPopover } from "@/components/SpecTermPopover";
+import { SpecDetailPanel } from "@/components/SpecDetailPanel";
 import { OtherStoresButton } from "@/components/OtherStoresButton";
 import { priceBlock, StoreLogo, QUALITY_SCORE_STYLE } from "@/components/ProductChatCard";
 import { buildBudgetFit, buildFitVerdict, PLAIN_QUALITY_LABEL } from "@/lib/domain/plainFit";
-import type { AlternativeProduct, NotebookSpecs, PhoneSpecs, TabletSpecs, TvSpecs, UseCase } from "@/types";
+import type { AlternativeProduct, NotebookSpecs, PhoneSpecs, TabletSpecs, UseCase } from "@/types";
 
 // "Vista B" — lista rankeada centrada en precio + características, pedida
 // explícitamente por el usuario como alternativa a la grilla de tarjetas
@@ -227,38 +226,6 @@ function BadgeIconSvg({ icon }: { icon: BadgeIcon }) {
   }
 }
 
-function specFields(product: AlternativeProduct): { label: string; value: string }[] {
-  const category = product.category;
-  if (category === "tv") {
-    const s = (product.specs ?? {}) as Partial<TvSpecs>;
-    const fields: { label: string; value: string }[] = [];
-    if (s.screen_inches) fields.push({ label: "Pantalla", value: `${s.screen_inches}"` });
-    if (s.resolution) fields.push({ label: "Resolución", value: s.resolution });
-    return fields;
-  }
-  if (!product.specs) return [];
-  const values = shortSpecValues(category, product.specs, product.title);
-  const order: { label: string; key: string }[] =
-    category === "notebook" || category === "desktop"
-      ? [
-          { label: "Rapidez", key: "rapidez" },
-          { label: "Memoria", key: "memoria" },
-          { label: "Almacenamiento", key: "almacenamiento" },
-        ]
-      : category === "phone"
-        ? [
-            { label: "Memoria", key: "memoria" },
-            { label: "Almacenamiento", key: "almacenamiento" },
-            { label: "Cámara", key: "cámara" },
-            { label: "Batería", key: "batería" },
-          ]
-        : [
-            { label: "Memoria", key: "memoria" },
-            { label: "Almacenamiento", key: "almacenamiento" },
-          ];
-  return order.filter((o) => values[o.key]).map((o) => ({ label: o.label, value: values[o.key] }));
-}
-
 export function RankedResultsList({
   products,
   topPickIds,
@@ -425,8 +392,6 @@ function RankedResultRow({
   const rowRef = useRef<HTMLElement>(null);
   useImpression(rowRef, searchShareToken, product.id);
   const pb = priceBlock(product, paymentMode);
-  const fields = specFields(product);
-  const [showTech, setShowTech] = useState(false);
   const fit = buildFitVerdict(product, useCases);
   const budgetFit = buildBudgetFit(product, { cash: budgetCash, monthly: budgetMonthly });
 
@@ -636,28 +601,6 @@ function RankedResultRow({
                     ))}
                   </div>
                 )}
-                {fields.length > 0 && (
-                  <div>
-                    <button
-                      type="button"
-                      onClick={() => setShowTech((v) => !v)}
-                      aria-expanded={showTech}
-                      className="font-brand text-[11.5px] font-semibold text-gathering-primary-fixed-dim underline-offset-2 hover:underline"
-                    >
-                      {showTech ? "Ocultar datos técnicos" : "Ver datos técnicos"}
-                    </button>
-                    {showTech && (
-                      <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1">
-                        {fields.map((f) => (
-                          <span key={f.label} className="inline-flex items-center font-brand text-[12px] text-gathering-on-surface-variant">
-                            <SpecTermPopover category={product.category} label={f.label} variant="chip" />
-                            <span className="ml-1.5 font-semibold text-gathering-on-surface">{f.value}</span>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
 
               {/* Acciones */}
@@ -711,6 +654,8 @@ function RankedResultRow({
                   {storeName(product.source)}
                 </span>
               </div>
+
+              <SpecDetailPanel product={product} useCases={useCases} />
             </article>
   );
 }
