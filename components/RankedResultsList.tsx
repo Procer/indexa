@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { groupVariants } from "@/lib/domain/variantGroup";
-import { rankWithValue, valueColor, type BadgeIcon, type ValueResult } from "@/lib/domain/valueRanking";
+import { rankWithValue, type BadgeIcon, type ValueResult } from "@/lib/domain/valueRanking";
 import { shortSpecValues } from "@/lib/domain/specExplainer";
 import { TIER_RANK } from "@/lib/domain/usageToSpecs";
 import { getGlossaryForCategories } from "@/lib/domain/specGlossary";
@@ -225,35 +225,6 @@ function BadgeIconSvg({ icon }: { icon: BadgeIcon }) {
         </svg>
       );
   }
-}
-
-// Popover mínimo para "Valor" — no es un término del glosario de specs
-// (SpecTermPopover), así que se resuelve acá mismo, mismo patrón de tap.
-function ValueTooltip() {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLSpanElement>(null);
-  return (
-    <span ref={ref} className="relative inline-flex items-center">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-label="Qué significa Valor"
-        className="ml-1 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border border-gathering-outline-variant text-[8px] font-bold leading-none text-gathering-on-surface-variant hover:border-gathering-primary-fixed-dim hover:text-gathering-primary-fixed-dim"
-      >
-        ?
-      </button>
-      {open && (
-        <span
-          role="tooltip"
-          className="absolute left-0 top-full z-20 mt-1 block w-60 max-w-[calc(100vw-3rem)] rounded-lg border border-gathering-outline-variant bg-gathering-surface p-3 text-left font-brand text-[11px] font-normal normal-case leading-snug text-gathering-on-surface-variant shadow-lg"
-        >
-          Combina el precio con las características (según categoría) en un número del 0 al 10 — para comparar de un
-          vistazo qué tan conveniente es cada opción, más allá del orden de arriba.
-        </span>
-      )}
-    </span>
-  );
 }
 
 function specFields(product: AlternativeProduct): { label: string; value: string }[] {
