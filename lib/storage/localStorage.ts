@@ -114,12 +114,14 @@ export function setSpecGlossaryDismissed(dismissed: boolean): void {
 // Preferencia de vista de resultados — "ranked" (lista por valor, default
 // desde 2026-09-17) o "classic" (grilla de tarjetas de siempre). El usuario
 // pidió que se pueda cambiar y que la elección se recuerde entre búsquedas.
-export type ResultsView = "ranked" | "classic";
+// "simple" (default desde 2026-10-08) es la tarjeta mínima para quien no sabe de
+// tecnología; "ranked" es la lista con características a la vista.
+export type ResultsView = "simple" | "ranked" | "classic";
 
 export function getResultsViewPref(): ResultsView | null {
   if (typeof window === "undefined") return null;
   const raw = localStorage.getItem(RESULTS_VIEW_KEY);
-  return raw === "ranked" || raw === "classic" ? raw : null;
+  return raw === "simple" || raw === "ranked" || raw === "classic" ? raw : null;
 }
 
 export function saveResultsViewPref(view: ResultsView): void {

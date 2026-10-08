@@ -18,9 +18,16 @@ const LEVEL_PILL: Record<HighlightLevel, string> = {
 interface SpecDetailPanelProps {
   product: SpecDetailInput;
   useCases: UseCase[];
+  closedLabel?: string;
+  openLabel?: string;
 }
 
-export function SpecDetailPanel({ product, useCases }: SpecDetailPanelProps) {
+export function SpecDetailPanel({
+  product,
+  useCases,
+  closedLabel = "¿Qué estás comprando? Verlo explicado",
+  openLabel = "Ocultar explicación",
+}: SpecDetailPanelProps) {
   const [open, setOpen] = useState(false);
   const details = buildSpecDetails(product, useCases);
   if (details.length === 0) return null;
@@ -33,7 +40,7 @@ export function SpecDetailPanel({ product, useCases }: SpecDetailPanelProps) {
         aria-expanded={open}
         className="flex w-full items-center justify-between gap-2 rounded-xl border border-gathering-primary-fixed-dim/40 bg-gathering-primary-fixed-dim/10 px-4 py-3 text-left font-brand text-sm font-bold text-gathering-primary-fixed-dim transition-colors hover:bg-gathering-primary-fixed-dim/15"
       >
-        <span>{open ? "Ocultar explicación" : "¿Qué estás comprando? Verlo explicado"}</span>
+        <span>{open ? openLabel : closedLabel}</span>
         <span className="material-symbols-outlined text-xl" aria-hidden="true">
           {open ? "expand_less" : "expand_more"}
         </span>

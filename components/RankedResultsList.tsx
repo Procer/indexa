@@ -11,6 +11,7 @@ import { getOrCreateVisitId } from "@/lib/analytics/visit";
 import { trackEvent } from "@/lib/analytics/track";
 import { useImpression } from "@/lib/analytics/useImpression";
 import { SpecDetailPanel } from "@/components/SpecDetailPanel";
+import { SimpleResultRow } from "@/components/SimpleResultRow";
 import { OtherStoresButton } from "@/components/OtherStoresButton";
 import { priceBlock, StoreLogo, QUALITY_SCORE_STYLE } from "@/components/ProductChatCard";
 import { buildBudgetFit, buildFitVerdict, PLAIN_QUALITY_LABEL } from "@/lib/domain/plainFit";
@@ -45,6 +46,8 @@ interface RankedResultsListProps {
   onSortModeChange?: (mode: SortMode) => void;
   // Oculta la fila propia de "Ordenar por" (cuando la página ya la muestra).
   hideSortBar?: boolean;
+  // Vista "Simple" para quien no sabe de tecnología (ver SimpleResultRow).
+  simple?: boolean;
 }
 
 export type SortMode = string;
@@ -245,6 +248,7 @@ export function RankedResultsList({
   sortMode: sortModeProp,
   onSortModeChange,
   hideSortBar = false,
+  simple = false,
 }: RankedResultsListProps) {
   const [sortModeState, setSortModeState] = useState<SortMode>("relevance");
   const sortMode = sortModeProp ?? sortModeState;
@@ -323,7 +327,29 @@ export function RankedResultsList({
       )}
 
       <div className="flex flex-col gap-3">
-        {sorted.map((product, idx) => (
+        {sorted.map((product, idx) => {
+          const spotlighted =
+            !!spotlightProductId &&
+            (product.id === spotlightProductId || !!product.variants?.some((v) => v.id === spotlightProductId));
+          return simple ? (
+            <SimpleResultRow
+              key={product.id}
+              product={product}
+              idx={idx}
+              paymentMode={paymentMode}
+              useCases={useCases}
+              budgetCash={budgetCash}
+              budgetMonthly={budgetMonthly}
+              spotlighted={spotlighted}
+              compared={isCompared(product.id)}
+              compareDisabled={compareDisabled}
+              onCompareToggle={onCompareToggle}
+              onBuyClick={handleBuyClick}
+              onCompareAdd={onCompareAdd}
+              comparedIds={comparedIds}
+              searchShareToken={searchShareToken}
+            />
+          ) : (
           <RankedResultRow
             key={product.id}
             product={product}
@@ -333,10 +359,7 @@ export function RankedResultsList({
             useCases={useCases}
             budgetCash={budgetCash}
             budgetMonthly={budgetMonthly}
-            spotlighted={
-              !!spotlightProductId &&
-              (product.id === spotlightProductId || !!product.variants?.some((v) => v.id === spotlightProductId))
-            }
+            spotlighted={spotlighted}
             compared={isCompared(product.id)}
             compareDisabled={compareDisabled}
             onViewDetails={onViewDetails}
@@ -346,7 +369,8 @@ export function RankedResultsList({
             comparedIds={comparedIds}
             searchShareToken={searchShareToken}
           />
-        ))}
+          );
+        })}
       </div>
     </div>
   );

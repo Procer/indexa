@@ -351,7 +351,7 @@ export default function SearchResultsPage() {
   // "classic" es la grilla de tarjetas de siempre (RecommendedProductsGrid,
   // sin tocar). Se lee la preferencia guardada recién en el cliente (evita
   // desajuste de hidratación) y se re-guarda cada vez que el usuario cambia.
-  const [resultsView, setResultsViewState] = useState<ResultsView>("ranked");
+  const [resultsView, setResultsViewState] = useState<ResultsView>("simple");
   useEffect(() => {
     const saved = getResultsViewPref();
     if (saved) setResultsViewState(saved);
@@ -1089,7 +1089,7 @@ export default function SearchResultsPage() {
                 )}
               </button>
 
-              {resultsView === "ranked" ? (
+              {resultsView !== "classic" ? (
                 <SortMenu
                   options={getRankedSortOptions(displayedProducts)}
                   value={rankedSort}
@@ -1136,15 +1136,29 @@ export default function SearchResultsPage() {
                     type="button"
                     onClick={() => {
                       setSortOrder("relevance");
+                      setResultsView("simple");
+                    }}
+                    aria-pressed={resultsView === "simple"}
+                    title="Lo justo y necesario, explicado simple"
+                    className={`rounded-full px-3 py-1.5 font-brand text-xs font-bold transition-colors ${
+                      resultsView === "simple" ? "bg-gathering-primary text-white" : "text-gathering-on-surface-variant"
+                    }`}
+                  >
+                    Simple
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSortOrder("relevance");
                       setResultsView("ranked");
                     }}
                     aria-pressed={resultsView === "ranked"}
-                    title="Lista ordenada por valor, con explicaciones"
+                    title="Lista con las características a la vista"
                     className={`rounded-full px-3 py-1.5 font-brand text-xs font-bold transition-colors ${
                       resultsView === "ranked" ? "bg-gathering-primary text-white" : "text-gathering-on-surface-variant"
                     }`}
                   >
-                    Por valor
+                    Con detalles
                   </button>
                   <button
                     type="button"
@@ -1290,8 +1304,9 @@ export default function SearchResultsPage() {
                   !chatRecommendations ? "pointer-events-none select-none opacity-40 blur-md" : "opacity-100 blur-0"
                 }`}
               >
-                {resultsView === "ranked" ? (
+                {resultsView !== "classic" ? (
                   <RankedResultsList
+                    simple={resultsView === "simple"}
                     sortMode={rankedSort}
                     onSortModeChange={setRankedSort}
                     hideSortBar
