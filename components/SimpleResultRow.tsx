@@ -5,6 +5,7 @@ import { storeName } from "@/lib/domain/productDisplay";
 import { withBasePath } from "@/lib/basePath";
 import { useImpression } from "@/lib/analytics/useImpression";
 import { SpecDetailPanel } from "@/components/SpecDetailPanel";
+import { OutlookPanel } from "@/components/OutlookPanel";
 import { OtherStoresButton } from "@/components/OtherStoresButton";
 import { priceBlock, StoreLogo } from "@/components/ProductChatCard";
 import { buildBudgetFit, buildFitVerdict, PLAIN_QUALITY_LABEL } from "@/lib/domain/plainFit";
@@ -202,6 +203,8 @@ export function SimpleResultRow({
           triggerClassName="rounded-xl border border-gathering-outline-variant px-4 py-3 font-brand text-sm font-semibold text-gathering-on-surface-variant transition-all hover:-translate-y-0.5 hover:border-gathering-primary-fixed-dim hover:bg-gathering-surface-container hover:shadow-md"
         />
       </div>
+
+      <OutlookPanel product={product} useCases={useCases} />
 
       <SpecDetailPanel
         product={product}

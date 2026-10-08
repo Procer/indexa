@@ -620,6 +620,18 @@ export async function buildRankedPool(params: {
     return gpu === "dedicated" ? 0 : 0.3;
   };
 
+  // RAM por debajo de lo que pide el uso (2026-10-08): "gaming" exige 16GB
+  // (usageToSpecs) pero nada penalizaba quedarse corto — una LOQ RTX 3050 de
+  // 8GB encabezó el ranking sobre una TUF de 16GB (visto en vivo). Proporcional
+  // al déficit; 8GB vs 16GB resta 0.2. Sin dato de RAM no penaliza.
+  const notebookRamShortfallPenalty = (p: RankedProduct): number => {
+    if (!isSpecRankable) return 0;
+    if (p.category !== "notebook" && p.category !== "desktop") return 0;
+    const ram = (p.specs as Partial<NotebookSpecs>).ram_gb;
+    if (typeof ram !== "number" || ram <= 0 || ram >= requiredSpecs.ram_gb) return 0;
+    return Math.min(1, (requiredSpecs.ram_gb - ram) / requiredSpecs.ram_gb) * 0.4;
+  };
+
   // Cordura de specs general (jugada #9): hunde —sin excluir— unidades con
   // specs físicamente inverosímiles en CUALQUIER categoría (RAM inflada por la
   // tienda, disco = RAM, pantalla fuera de rango).
@@ -632,6 +644,7 @@ export async function buildRankedPool(params: {
       p.id,
       notebookOverSpecPenalty(p) +
         notebookGpuMismatchPenalty(p) +
+        notebookRamShortfallPenalty(p) +
         tabletJunkPenalty(p) +
         phoneUnderSpecPenalty(p) +
         (sanityPenaltyById.get(p.id) ?? 0),
