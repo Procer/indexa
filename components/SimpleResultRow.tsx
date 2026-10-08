@@ -163,22 +163,24 @@ export function SimpleResultRow({
         </div>
       )}
 
-      <div className="flex flex-wrap items-stretch gap-2">
+      <div className="flex flex-nowrap items-stretch gap-1.5 sm:gap-2">
         <a
           href={product.affiliate_url ?? product.url}
           target="_blank"
           rel="noopener noreferrer"
           onClick={() => onBuyClick(product, idx + 1)}
-          className="flex min-w-[10rem] flex-1 items-center justify-center gap-2 rounded-xl bg-gathering-primary-fixed-dim px-5 py-3 font-brand text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.97]"
+          className="flex min-w-0 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-gathering-primary-fixed-dim px-3 py-2.5 font-brand text-xs font-bold sm:px-5 sm:py-3 sm:text-sm text-white transition-all hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.97]"
         >
-          <StoreLogo source={product.source} />
-          Comprar en {storeName(product.source)}
+          <span className="hidden sm:inline-flex">
+            <StoreLogo source={product.source} />
+          </span>
+          Comprar<span className="hidden sm:inline">&nbsp;en {storeName(product.source)}</span>
         </a>
         <button
           type="button"
           onClick={() => onCompareToggle(product)}
           disabled={!compared && compareDisabled}
-          className={`rounded-xl border px-4 py-3 font-brand text-sm font-semibold transition-all hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none ${
+          className={`whitespace-nowrap rounded-xl border px-2.5 py-2.5 font-brand text-xs font-semibold transition-all sm:px-4 sm:py-3 sm:text-sm hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none ${
             compared
               ? "border-gathering-primary-fixed-dim bg-gathering-primary-fixed-dim/10 text-gathering-primary-fixed-dim"
               : "border-gathering-outline-variant text-gathering-on-surface-variant hover:border-gathering-primary-fixed-dim hover:bg-gathering-surface-container"
@@ -200,7 +202,7 @@ export function SimpleResultRow({
           onCompareAdd={onCompareAdd}
           comparedIds={comparedIds}
           showIcon={false}
-          triggerClassName="rounded-xl border border-gathering-outline-variant px-4 py-3 font-brand text-sm font-semibold text-gathering-on-surface-variant transition-all hover:-translate-y-0.5 hover:border-gathering-primary-fixed-dim hover:bg-gathering-surface-container hover:shadow-md"
+          triggerClassName="whitespace-nowrap rounded-xl border border-gathering-outline-variant px-2.5 py-2.5 font-brand text-xs font-semibold sm:px-4 sm:py-3 sm:text-sm text-gathering-on-surface-variant transition-all hover:-translate-y-0.5 hover:border-gathering-primary-fixed-dim hover:bg-gathering-surface-container hover:shadow-md"
         />
       </div>
 
