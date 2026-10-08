@@ -128,10 +128,10 @@ interface ProductChatCardProps {
 // Logo de la tienda (favicon por dominio, ver lib/domain/productDisplay.ts)
 // dentro del botón de compra. Si no carga (dominio sin favicon, o servicio
 // caído) se oculta solo y queda el botón con texto, nunca un ícono roto.
-export function StoreLogo({ source }: { source: string }) {
+export function StoreLogo({ source, fallback = null }: { source: string; fallback?: React.ReactNode }) {
   const [failed, setFailed] = useState(false);
   const url = storeLogoUrl(source);
-  if (!url || failed) return null;
+  if (!url || failed) return <>{fallback}</>;
   return (
     <img
       src={url}

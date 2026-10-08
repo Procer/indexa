@@ -171,6 +171,13 @@ export function SimpleResultRow({
           onClick={() => onBuyClick(product, idx + 1)}
           className="flex min-w-0 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-gathering-primary-fixed-dim px-3 py-2.5 font-brand text-xs font-bold sm:px-5 sm:py-3 sm:text-sm text-white transition-all hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.97]"
         >
+          {/* Celular: logo + "Comprar"; si el logo no carga, el nombre de la tienda. */}
+          <span className="sm:hidden">
+            <StoreLogo
+              source={product.source}
+              fallback={<span className="max-w-[5rem] truncate text-[11px] font-semibold opacity-90">{storeName(product.source)}</span>}
+            />
+          </span>
           <span className="hidden sm:inline-flex">
             <StoreLogo source={product.source} />
           </span>
