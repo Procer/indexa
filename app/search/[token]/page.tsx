@@ -352,7 +352,7 @@ export default function SearchResultsPage() {
   // "classic" es la grilla de tarjetas de siempre (RecommendedProductsGrid,
   // sin tocar). Se lee la preferencia guardada recién en el cliente (evita
   // desajuste de hidratación) y se re-guarda cada vez que el usuario cambia.
-  const [resultsView, setResultsViewState] = useState<ResultsView>("simple");
+  const [resultsView, setResultsViewState] = useState<ResultsView>("podium");
   useEffect(() => {
     const saved = getResultsViewPref();
     if (saved) setResultsViewState(saved);

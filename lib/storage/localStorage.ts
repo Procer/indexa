@@ -5,7 +5,9 @@ const MAX_SAVED = 10;
 const RECENT_PRODUCTS_KEY = "techsearch_recent_products";
 const MAX_RECENT_PRODUCTS = 8;
 const SYNC_CONTACT_KEY = "techsearch_sync_contact";
-const RESULTS_VIEW_KEY = "techsearch_results_view";
+// v2: el default pasó a "podium"; la clave nueva descarta la preferencia vieja
+// (que casi todos tenían guardada como "simple" sin haberla elegido a propósito).
+const RESULTS_VIEW_KEY = "techsearch_results_view_v2";
 
 export interface SyncContact {
   email: string;
@@ -114,7 +116,8 @@ export function setSpecGlossaryDismissed(dismissed: boolean): void {
 // Preferencia de vista de resultados — "ranked" (lista por valor, default
 // desde 2026-09-17) o "classic" (grilla de tarjetas de siempre). El usuario
 // pidió que se pueda cambiar y que la elección se recuerde entre búsquedas.
-// "simple" (default desde 2026-10-08) es la tarjeta mínima para quien no sabe de
+// "podium" (default desde 2026-10-13) elige 3 por rol + escalera de precio y cae
+// a "simple" si no hay datos (no es notebook/PC). "simple" es la tarjeta mínima para quien no sabe de
 // tecnología; "ranked" es la lista con características a la vista.
 export type ResultsView = "podium" | "simple" | "ranked" | "classic";
 
