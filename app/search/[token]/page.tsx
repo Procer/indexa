@@ -11,6 +11,7 @@ import { GuidedSearchChat } from "@/components/GuidedSearchChat";
 import { ProductDetailPanel } from "@/components/ProductDetailPanel";
 import { RecommendedProductsGrid } from "@/components/RecommendedProductsGrid";
 import { RankedResultsList, getRankedSortOptions } from "@/components/RankedResultsList";
+import { PodiumResults } from "@/components/PodiumResults";
 import { ResultsFilterBar } from "@/components/ResultsFilterBar";
 import { SortMenu } from "@/components/SortMenu";
 import { ShareMenu } from "@/components/ShareMenu";
@@ -1089,7 +1090,7 @@ export default function SearchResultsPage() {
                 )}
               </button>
 
-              {resultsView !== "classic" ? (
+              {resultsView === "podium" ? null : resultsView !== "classic" ? (
                 <SortMenu
                   options={getRankedSortOptions(displayedProducts)}
                   value={rankedSort}
@@ -1132,6 +1133,20 @@ export default function SearchResultsPage() {
                   role="group"
                   aria-label="Tipo de vista"
                 >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSortOrder("relevance");
+                      setResultsView("podium");
+                    }}
+                    aria-pressed={resultsView === "podium"}
+                    title="Te elegimos 3 y te mostramos qué ganás si pagás más"
+                    className={`rounded-full px-3 py-1.5 font-brand text-xs font-bold transition-colors ${
+                      resultsView === "podium" ? "bg-gathering-primary text-white" : "text-gathering-on-surface-variant"
+                    }`}
+                  >
+                    Podio
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -1304,7 +1319,28 @@ export default function SearchResultsPage() {
                   !chatRecommendations ? "pointer-events-none select-none opacity-40 blur-md" : "opacity-100 blur-0"
                 }`}
               >
-                {resultsView !== "classic" ? (
+                {resultsView === "podium" ? (
+                  <PodiumResults
+                    sortMode={rankedSort}
+                    onSortModeChange={setRankedSort}
+                    hideSortBar
+                    products={displayedProducts}
+                    topPickIds={displayedTopPickIds}
+                    spotlightProductId={spotlightProductId}
+                    onViewDetails={handleViewDetails}
+                    onCompareToggle={handleCompareToggleAlt}
+                    isCompared={(id) => compareList.some((p) => p.id === id)}
+                    compareDisabled={compareList.length >= 5}
+                    searchShareToken={resolvedTokenRef.current}
+                    sessionId={sessionId}
+                    paymentMode={paymentMode}
+                    useCases={chatUseCases}
+                    budgetCash={searchSlots?.budget_cash_ars ?? null}
+                    budgetMonthly={searchSlots?.budget_monthly_ars ?? null}
+                    onCompareAdd={addSimilarToCompare}
+                    comparedIds={compareList.map((p) => p.id)}
+                  />
+                ) : resultsView !== "classic" ? (
                   <RankedResultsList
                     simple={resultsView === "simple"}
                     sortMode={rankedSort}

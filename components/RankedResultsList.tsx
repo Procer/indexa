@@ -22,7 +22,7 @@ import type { AlternativeProduct, NotebookSpecs, PhoneSpecs, TabletSpecs, UseCas
 // (RecommendedProductsGrid, sin tocar). Mismo pool de productos y las mismas
 // props — page.tsx elige cuál renderizar (ver resultsView).
 
-interface RankedResultsListProps {
+export interface RankedResultsListProps {
   products: AlternativeProduct[];
   topPickIds?: string[] | null;
   spotlightProductId?: string | null;
@@ -289,7 +289,7 @@ export function RankedResultsList({
     }).catch(() => {});
     trackEvent("product_buy_click", getOrCreateVisitId().id, {
       productId: product.id,
-      metadata: { recommended: true, rank, shareToken: searchShareToken ?? null },
+      metadata: { recommended: true, rank, view: simple ? "simple" : "ranked", shareToken: searchShareToken ?? null },
     });
   }
 

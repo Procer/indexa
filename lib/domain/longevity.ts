@@ -17,6 +17,9 @@ import type {
 export interface Outlook {
   // "4 a 5 años"
   years: string;
+  // El mismo rango en números (para compararlo entre equipos).
+  yearsMin: number;
+  yearsMax: number;
   // Una frase que explica el número, citando el uso del usuario.
   summary: string;
   // Qué suma o resta (frases cortas, la más importante primero).
@@ -34,9 +37,13 @@ export interface OutlookInput {
 
 const TIER_YEARS = { low: 3, mid: 4, high: 5, enthusiast: 5.5 } as const;
 
-function range(score: number): string {
+function bounds(score: number): { lo: number; hi: number } {
   const lo = Math.max(1, Math.round(score));
-  const hi = lo + 1;
+  return { lo, hi: lo + 1 };
+}
+
+function range(score: number): string {
+  const { lo, hi } = bounds(score);
   return `${lo} a ${hi} años`;
 }
 
@@ -106,6 +113,7 @@ function computerOutlook(
 
   const useLabel = useCases.length > 0 ? formatUseCasesLabel(useCases) : "el uso de todos los días";
   const years = range(score);
+  const { lo: yearsMin, hi: yearsMax } = bounds(score);
   const noun = category === "desktop" ? "esta PC" : "esta notebook";
 
   const canUpgrade: string[] = [];
@@ -124,6 +132,8 @@ function computerOutlook(
 
   return {
     years,
+    yearsMin,
+    yearsMax,
     summary: `Para ${useLabel}, ${noun} te debería durar entre ${years.replace(' a ', ' y ')} antes de que empieces a notarla lenta.`,
     reasons: reasons.slice(0, 4),
     canUpgrade,
@@ -153,8 +163,11 @@ function phoneOutlook(specs: Partial<PhoneSpecs>): Outlook {
     reasons.push({ good: false, text: `${st} GB de espacio: se llena con fotos y videos.` });
   }
   const years = range(score);
+  const { lo: yearsMin, hi: yearsMax } = bounds(score);
   return {
     years,
+    yearsMin,
+    yearsMax,
     summary: `Un celular así te debería andar bien entre ${years.replace(' a ', ' y ')}. La batería es lo primero que se gasta: a los 2 o 3 años dura menos.`,
     reasons: reasons.slice(0, 4),
     canUpgrade: ["La batería se puede cambiar en un service técnico."],
@@ -176,8 +189,11 @@ function tabletOutlook(specs: Partial<TabletSpecs>): Outlook {
     }
   }
   const years = range(score);
+  const { lo: yearsMin, hi: yearsMax } = bounds(score);
   return {
     years,
+    yearsMin,
+    yearsMax,
     summary: `Una tablet así te debería durar entre ${years.replace(' a ', ' y ')}, hasta que las apps nuevas empiecen a pedirle más.`,
     reasons,
     canUpgrade: specs.storage_upgradeable ? ["El espacio: podés ampliarlo con una tarjeta de memoria."] : [],
@@ -199,6 +215,8 @@ export function buildOutlook(product: OutlookInput, useCases: UseCase[]): Outloo
     case "tv":
       return {
         years: "7 a 10 años",
+        yearsMin: 7,
+        yearsMax: 10,
         summary: "Una TV suele durar entre 7 y 10 años. Lo que primero queda viejo es el sistema Smart.",
         reasons: [],
         canUpgrade: ["Si el Smart se pone lento, se arregla barato con un Chromecast o Fire TV Stick."],
