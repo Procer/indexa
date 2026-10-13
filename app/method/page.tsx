@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import { InfoList, InfoPage, InfoSection } from "@/components/InfoPage";
 
 export const metadata: Metadata = {
-  title: "Cómo funciona indexa (metodología) — indexa",
+  title: "Cómo funciona Cheka (metodología) — Cheka",
   description: "Cómo interpretamos lo que buscás, cómo ordenamos los resultados y qué parte hace la inteligencia artificial.",
 };
 
 export default function MethodPage() {
   return (
-    <InfoPage title="Cómo funciona indexa" icon="psychology" subtitle="Qué hace la inteligencia artificial, qué hacen las cuentas y cómo ordenamos.">
+    <InfoPage title="Cómo funciona Cheka" icon="psychology" subtitle="Qué hace la inteligencia artificial, qué hacen las cuentas y cómo ordenamos.">
       <InfoSection heading="1. Entendemos lo que necesitás">
         <p>
           Cuando describís qué buscás, un modelo de lenguaje (OpenAI GPT-4o mini) traduce tu pedido a datos concretos:

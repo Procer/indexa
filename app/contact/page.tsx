@@ -4,8 +4,8 @@ import { InfoPage, InfoSection } from "@/components/InfoPage";
 import { CONTACT_EMAIL } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "Contacto — indexa",
-  description: "Cómo comunicarte con el equipo de indexa.",
+  title: "Contacto — Cheka",
+  description: "Cómo comunicarte con el equipo de Cheka.",
 };
 
 export default function ContactPage() {
@@ -31,7 +31,7 @@ export default function ContactPage() {
       <InfoSection heading="Antes de escribir">
         <p>
           Si el problema es con una compra (entrega, garantía, factura, devolución), tenés que reclamarle a la tienda:
-          indexa no vende ni entrega productos. Si encontraste un precio distinto al que figura acá, es porque la
+          Cheka no vende ni entrega productos. Si encontraste un precio distinto al que figura acá, es porque la
           tienda lo cambió después de nuestra última actualización diaria.
         </p>
       </InfoSection>

@@ -14,7 +14,7 @@ export function Footer({ reserveChatSpace = false }: { reserveChatSpace?: boolea
       >
         <div className="flex items-center gap-3">
           <LogoBrand logoClass="h-6" />
-          <span className="font-brand text-sm text-gathering-on-surface-variant">© 2025 indexa — Tu asesor tecnológico personal</span>
+          <span className="font-brand text-sm text-gathering-on-surface-variant">© 2025 Cheka — Tu asesor tecnológico personal</span>
         </div>
         <nav className="flex flex-wrap gap-x-6 gap-y-2">
           <Link

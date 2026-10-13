@@ -1126,7 +1126,7 @@ export function CompareExperience({ ids, searchToken = null, mode, onClose }: Co
                 <a href={withBasePath("/method")}  className="font-brand text-sm text-gathering-on-surface-variant hover:text-gathering-on-surface">Metodología IA</a>
                 <a href={withBasePath("/contact")} className="font-brand text-sm text-gathering-on-surface-variant hover:text-gathering-on-surface">Contacto</a>
               </nav>
-              <span className="font-brand text-xs text-gathering-on-surface-variant">© 2025 indexa — Tu asesor tecnológico personal.</span>
+              <span className="font-brand text-xs text-gathering-on-surface-variant">© 2025 Cheka — Tu asesor tecnológico personal.</span>
             </div>
           </footer>
         )}

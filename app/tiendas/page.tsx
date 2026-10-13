@@ -9,9 +9,9 @@ import { formatPrice, storeLogoUrl, storeName } from "@/lib/domain/productDispla
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Tiendas comparadas — indexa",
+  title: "Tiendas comparadas — Cheka",
   description:
-    "Las tiendas de tecnología argentinas que comparamos en indexa: cuántos productos tiene cada una, desde qué precio y cuándo se actualizó por última vez.",
+    "Las tiendas de tecnología argentinas que comparamos en Cheka: cuántos productos tiene cada una, desde qué precio y cuándo se actualizó por última vez.",
 };
 
 export default async function TiendasPage() {

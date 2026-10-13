@@ -24,7 +24,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "indexa — Encontrá tu notebook o PC ideal",
+  title: "Cheka — Encontrá tu notebook o PC ideal",
   description:
     "Buscador de tecnología con IA para Argentina. Describí para qué lo vas a usar y te recomendamos el mejor equipo según tu presupuesto.",
   // Sin bloque `icons` explícito: Next.js App Router ya sirve /favicon.ico

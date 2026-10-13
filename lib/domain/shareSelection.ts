@@ -48,8 +48,8 @@ function block(p: ShareableProduct, prefix: string): string {
 
 export function buildSelectionShareText(products: ShareableProduct[]): string {
   if (products.length === 1) {
-    return `Mirá esta opción que encontré en indexa:\n\n${block(products[0], "")}`;
+    return `Mirá esta opción que encontré en Cheka:\n\n${block(products[0], "")}`;
   }
   const blocks = products.map((p, i) => block(p, `${i + 1}. `));
-  return `Mirá estas ${products.length} opciones que encontré en indexa:\n\n${blocks.join("\n\n")}`;
+  return `Mirá estas ${products.length} opciones que encontré en Cheka:\n\n${blocks.join("\n\n")}`;
 }

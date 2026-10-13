@@ -24,13 +24,13 @@ prev=$(cat "$STATE_FILE" 2>/dev/null || echo up)
 
 if [ "$code" = "200" ]; then
   if [ "$prev" = "down" ]; then
-    notify "✅ indexa se recuperó ($URL → 200)"
+    notify "✅ Cheka se recuperó ($URL → 200)"
   fi
   echo up > "$STATE_FILE"
 else
   echo "$(date -Is) health FAIL http=$code"
   if [ "$prev" != "down" ]; then
-    notify "🚨 indexa no responde: $URL → HTTP $code"
+    notify "🚨 Cheka no responde: $URL → HTTP $code"
   fi
   echo down > "$STATE_FILE"
 fi

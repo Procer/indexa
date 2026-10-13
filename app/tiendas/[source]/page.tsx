@@ -14,8 +14,8 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata({ params }: { params: { source: string } }): Promise<Metadata> {
   const name = storeName(params.source);
   return {
-    title: `${name}: notebooks, celulares y más al mejor precio — indexa`,
-    description: `Productos de ${name} con precio contado y cuotas, y cuáles bajaron de precio últimamente. Comparados con el resto de las tiendas en indexa.`,
+    title: `${name}: notebooks, celulares y más al mejor precio — Cheka`,
+    description: `Productos de ${name} con precio contado y cuotas, y cuáles bajaron de precio últimamente. Comparados con el resto de las tiendas en Cheka.`,
   };
 }
 
@@ -104,7 +104,7 @@ export default async function StorePage({ params }: { params: { source: string }
         <p className="mt-10 font-brand text-sm text-gathering-on-surface-variant">
           ¿No sabés cuál te conviene?{" "}
           <Link href="/" className="font-semibold text-gathering-primary hover:underline">
-            Contale a indexa para qué lo vas a usar
+            Contale a Cheka para qué lo vas a usar
           </Link>{" "}
           y te recomendamos según tu presupuesto.
         </p>

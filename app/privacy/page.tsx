@@ -3,15 +3,15 @@ import { InfoList, InfoPage, InfoSection } from "@/components/InfoPage";
 import { CONTACT_EMAIL, LEGAL_LAST_UPDATE } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "Política de privacidad — indexa",
-  description: "Qué datos guarda indexa cuando lo usás, para qué los usamos y cómo pedir que los borremos.",
+  title: "Política de privacidad — Cheka",
+  description: "Qué datos guarda Cheka cuando lo usás, para qué los usamos y cómo pedir que los borremos.",
 };
 
 export default function PrivacyPage() {
   return (
     <InfoPage title="Política de privacidad" updated={LEGAL_LAST_UPDATE} icon="lock" subtitle="Qué guardamos, para qué y cómo pedir que lo borremos.">
       <p>
-        indexa es un buscador de tecnología para Argentina. Acá te contamos, sin vueltas, qué información guardamos
+        Cheka es un buscador de tecnología para Argentina. Acá te contamos, sin vueltas, qué información guardamos
         cuando lo usás y para qué. No hace falta crear una cuenta para buscar.
       </p>
 
@@ -44,7 +44,7 @@ export default function PrivacyPage() {
         <InfoList
           items={[
             "OpenAI: el texto de tus búsquedas y del chat se envía a su servicio para interpretarlo y generar las respuestas. No incluyas datos personales en el chat.",
-            "Las tiendas: cuando tocás un producto salís de indexa hacia el sitio de la tienda, que aplica su propia política de privacidad. Algunos enlaces pueden ser de afiliados: si comprás, la tienda puede pagarnos una comisión sin costo extra para vos.",
+            "Las tiendas: cuando tocás un producto salís de Cheka hacia el sitio de la tienda, que aplica su propia política de privacidad. Algunos enlaces pueden ser de afiliados: si comprás, la tienda puede pagarnos una comisión sin costo extra para vos.",
             "Servicios de acceso: si iniciás sesión, la autenticación la maneja un proveedor externo (Supabase, con enlace por email o Google).",
           ]}
         />

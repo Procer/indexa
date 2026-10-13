@@ -5,7 +5,7 @@ import { Footer } from "@/components/Footer";
 import { GUIDES } from "@/lib/content/guides";
 
 export const metadata: Metadata = {
-  title: "Guías de compra de tecnología — indexa",
+  title: "Guías de compra de tecnología — Cheka",
   description:
     "Guías simples, con ejemplos, para elegir notebook, celular, RAM y almacenamiento, entender las cuotas y detectar ofertas reales en Argentina.",
 };

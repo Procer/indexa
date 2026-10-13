@@ -14,7 +14,7 @@ export function generateStaticParams() {
 export function generateMetadata({ params }: { params: { slug: string } }): Metadata {
   const guide = getGuide(params.slug);
   if (!guide) return {};
-  return { title: `${guide.title} — indexa`, description: guide.description };
+  return { title: `${guide.title} — Cheka`, description: guide.description };
 }
 
 export default function GuidePage({ params }: { params: { slug: string } }) {

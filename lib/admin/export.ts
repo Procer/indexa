@@ -79,7 +79,7 @@ export function openPrintReport(title: string, bodyHtml: string): void {
   .foot{margin-top:28px;font-size:11px;color:#9ca3af}
   @media print{body{padding:0}}
 </style></head><body>${bodyHtml}
-<p class="foot">Generado el ${escapeHtml(new Date().toLocaleString("es-AR"))} · indexa</p>
+<p class="foot">Generado el ${escapeHtml(new Date().toLocaleString("es-AR"))} · Cheka</p>
 <script>window.addEventListener("load",function(){setTimeout(function(){window.print()},300)})</script>
 </body></html>`);
   w.document.close();

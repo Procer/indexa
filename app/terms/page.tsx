@@ -3,16 +3,16 @@ import { InfoList, InfoPage, InfoSection } from "@/components/InfoPage";
 import { LEGAL_LAST_UPDATE } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "Términos de uso — indexa",
-  description: "Las reglas de uso de indexa: qué hacemos, qué no y cómo tomar las recomendaciones y los precios.",
+  title: "Términos de uso — Cheka",
+  description: "Las reglas de uso de Cheka: qué hacemos, qué no y cómo tomar las recomendaciones y los precios.",
 };
 
 export default function TermsPage() {
   return (
     <InfoPage title="Términos de uso" updated={LEGAL_LAST_UPDATE} icon="gavel" subtitle="Las reglas del sitio, cortas y en castellano simple.">
-      <p>Al usar indexa aceptás estas condiciones. Son cortas y en castellano simple.</p>
+      <p>Al usar Cheka aceptás estas condiciones. Son cortas y en castellano simple.</p>
 
-      <InfoSection heading="Qué es indexa">
+      <InfoSection heading="Qué es Cheka">
         <p>
           Un buscador y asesor de tecnología que reúne productos de tiendas online argentinas y te ayuda a elegir según
           tu uso y presupuesto. <strong>No vendemos productos</strong>: cuando querés comprar, te llevamos a la tienda
@@ -23,7 +23,7 @@ export default function TermsPage() {
       <InfoSection heading="Precios y disponibilidad">
         <InfoList
           items={[
-            "Los precios, cuotas y stock los toma indexa de cada tienda y se actualizan una vez por día. Pueden cambiar en cualquier momento.",
+            "Los precios, cuotas y stock los toma Cheka de cada tienda y se actualizan una vez por día. Pueden cambiar en cualquier momento.",
             "El precio y las condiciones válidos son siempre los que ves en el sitio de la tienda al momento de comprar. Verificá antes de pagar.",
             "El historial de precios refleja lo que registramos desde que empezamos a seguir cada producto; no incluye datos anteriores.",
             "Las cuotas que mostramos son las informadas por la tienda; algunas pueden tener interés o requerir un medio de pago específico.",
@@ -43,7 +43,7 @@ export default function TermsPage() {
       <InfoSection heading="Publicidad y comisiones">
         <p>
           Algunos resultados pueden estar patrocinados y se marcan como tales; solo aparecen si son relevantes para lo
-          que buscaste. Algunos enlaces pueden generar una comisión para indexa si comprás, sin costo adicional para vos.
+          que buscaste. Algunos enlaces pueden generar una comisión para Cheka si comprás, sin costo adicional para vos.
         </p>
       </InfoSection>
 
@@ -60,7 +60,7 @@ export default function TermsPage() {
       <InfoSection heading="Marcas y contenido de terceros">
         <p>
           Los nombres, marcas, imágenes y descripciones de productos pertenecen a sus respectivos titulares y a las
-          tiendas de origen. indexa no está afiliado a las marcas ni a las tiendas que muestra.
+          tiendas de origen. Cheka no está afiliado a las marcas ni a las tiendas que muestra.
         </p>
       </InfoSection>
 

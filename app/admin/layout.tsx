@@ -39,7 +39,7 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
         <div className="flex items-center gap-2">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-lg font-bold text-white">i</span>
           <div>
-            <h1 className="text-lg font-bold leading-tight text-gray-900">indexa admin</h1>
+            <h1 className="text-lg font-bold leading-tight text-gray-900">Cheka admin</h1>
             <p className="text-xs text-gray-400">Panel de administración</p>
           </div>
         </div>
@@ -172,7 +172,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       <aside className="hidden w-60 shrink-0 flex-col border-r border-gray-200 bg-white print:hidden lg:sticky lg:top-0 lg:flex lg:h-screen">
         <div className="flex items-center gap-2 px-5 py-5">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-base font-bold text-white">i</span>
-          <span className="text-sm font-bold text-gray-900">indexa admin</span>
+          <span className="text-sm font-bold text-gray-900">Cheka admin</span>
         </div>
         <nav className="flex-1 space-y-0.5 px-3">
           {links.map((link) => (

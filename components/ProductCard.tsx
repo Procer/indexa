@@ -79,7 +79,7 @@ export function ProductCard({ product, onCompareToggle, isCompared, compareDisab
     ? `${formatPrice(product.price_installment)}/mes en ${product.installment_count} ${product.installment_count === 1 ? "cuota" : "cuotas"}`
     : "";
   const whatsappHref = `https://wa.me/?text=${encodeURIComponent(
-    `Mirá esto que encontré en indexa.com.ar: ${product.title}${priceLine ? ` — ${priceLine}` : ""}\n${product.affiliate_url ?? product.url}`
+    `Mirá esto que encontré en Cheka: ${product.title}${priceLine ? ` — ${priceLine}` : ""}\n${product.affiliate_url ?? product.url}`
   )}`;
 
   return (

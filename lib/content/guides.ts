@@ -188,7 +188,7 @@ export const GUIDES: Guide[] = [
         ],
       },
     ],
-    cta: "Contale a indexa qué necesitás",
+    cta: "Contale a Cheka qué necesitás",
     related: ["que-notebook-comprar", "como-elegir-celular", "cuanta-ram-y-almacenamiento-necesito"],
   },
   {
@@ -255,7 +255,7 @@ export const GUIDES: Guide[] = [
           },
           {
             type: "tip",
-            text: "Si dudás entre dos tipos de equipo, contale a indexa qué vas a hacer con él y te recomendamos el que corresponde.",
+            text: "Si dudás entre dos tipos de equipo, contale a Cheka qué vas a hacer con él y te recomendamos el que corresponde.",
           },
         ],
       },
@@ -572,7 +572,7 @@ export const GUIDES: Guide[] = [
           {
             type: "steps",
             items: [
-              "Mirá el historial: el precio “de lista” lo pone la tienda. Lo que importa es cuánto costó en las últimas semanas. En indexa cada producto te dice si hoy está en su precio más bajo, en su precio habitual o por encima.",
+              "Mirá el historial: el precio “de lista” lo pone la tienda. Lo que importa es cuánto costó en las últimas semanas. En Cheka cada producto te dice si hoy está en su precio más bajo, en su precio habitual o por encima.",
               "Comparalo con otras tiendas: el mismo modelo puede variar bastante. Usá “En otras tiendas” para ver el resto.",
               "Distinguí contado de cuotas: un buen precio en 12 cuotas no es un buen precio contado, y al revés. Compará tu forma de pago real.",
             ],

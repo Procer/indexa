@@ -914,7 +914,7 @@ export default function SearchResultsPage() {
     const text = buildSelectionShareText(compareList);
     if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
       try {
-        await navigator.share({ title: "Opciones de indexa", text });
+        await navigator.share({ title: "Opciones de Cheka", text });
         return;
       } catch {
         // usuario canceló o el navegador rechazó — cae al portapapeles
@@ -1049,7 +1049,7 @@ export default function SearchResultsPage() {
             <LogoBrand logoClass="h-10 sm:h-12" />
             <span className="hidden h-6 w-px bg-gathering-outline-variant sm:block" aria-hidden="true" />
             <p className="font-brand text-xs font-medium uppercase text-gathering-on-surface-variant sm:text-sm">
-              Toda la tecnología de Argentina, indexada para vos.
+              Toda la tecnología de Argentina, chequeada para vos.
             </p>
           </a>
           {hasResults && formatSearchCriteria(searchSlots) && (

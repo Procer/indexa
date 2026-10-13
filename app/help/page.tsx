@@ -3,17 +3,17 @@ import Link from "next/link";
 import { InfoPage } from "@/components/InfoPage";
 
 export const metadata: Metadata = {
-  title: "Ayuda y preguntas frecuentes — indexa",
-  description: "Cómo usar indexa, de dónde salen los precios y cómo leer el historial y las cuotas.",
+  title: "Ayuda y preguntas frecuentes — Cheka",
+  description: "Cómo usar Cheka, de dónde salen los precios y cómo leer el historial y las cuotas.",
 };
 
 const FAQ: { q: string; a: string }[] = [
   {
-    q: "¿Cómo uso indexa?",
+    q: "¿Cómo uso Cheka?",
     a: "Contale al asesor qué estás buscando, para qué lo vas a usar y cuánto querés gastar. Te mostramos las mejores opciones y podés seguir afinando la búsqueda en el chat, por ejemplo pidiendo más batería, otra marca o algo más barato.",
   },
   {
-    q: "¿indexa vende los productos?",
+    q: "¿Cheka vende los productos?",
     a: "No. Te llevamos a la tienda oficial, que es quien te vende, cobra y entrega. Cualquier reclamo por una compra es con la tienda.",
   },
   {

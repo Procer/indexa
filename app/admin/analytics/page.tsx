@@ -320,7 +320,7 @@ function printReport(d: SearchAnalytics) {
       .join("")}</tbody></table>`;
   openPrintReport(
     `Informe de analítica — ${d.days} días`,
-    `<h1>Informe de analítica</h1><p class="sub">Últimos ${d.days} días · indexa</p>
+    `<h1>Informe de analítica</h1><p class="sub">Últimos ${d.days} días · Cheka</p>
     <div class="grid">
       ${tile("Visitas", fmtInt(d.visits.inRange))}
       ${tile("Búsquedas", fmtInt(d.totalSearches))}

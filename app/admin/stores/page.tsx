@@ -245,7 +245,7 @@ function printStores(d: StoresInsights) {
     .join("");
   openPrintReport(
     `Informe de tiendas — ${d.days} días`,
-    `<h1>Tiendas y mercado</h1><p class="sub">Últimos ${d.days} días · indexa</p>
+    `<h1>Tiendas y mercado</h1><p class="sub">Últimos ${d.days} días · Cheka</p>
     <div class="grid"><div class="tile"><span>Veces que se vio un producto</span><b>${fmtInt(d.totalImpressions)}</b></div>
     <div class="tile"><span>Clicks a tiendas</span><b>${fmtInt(d.totalClicks)}</b></div>
     <div class="tile"><span>Tiendas</span><b>${d.stores.length}</b></div></div>
@@ -279,7 +279,7 @@ export default function AdminStoresPage() {
     <div className="space-y-6">
       <PageHeader
         title="Tiendas y mercado"
-        subtitle="Qué le pasa a cada tienda en Indexa, qué tan competitiva está en precio y qué busca la gente que todavía no se puede cubrir."
+        subtitle="Qué le pasa a cada tienda en Cheka, qué tan competitiva está en precio y qué busca la gente que todavía no se puede cubrir."
         actions={
           <>
             <RangeTabs options={RANGES} value={days} onChange={setDays} />

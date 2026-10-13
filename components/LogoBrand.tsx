@@ -13,7 +13,7 @@ export function LogoBrand({ className, logoClass = "h-12", icon = false }: LogoB
   return (
     <img
       src={withBasePath(icon ? "/logo-indexa-icon.png" : "/logo-indexa.png")}
-      alt="indexa"
+      alt="Cheka"
       className={`${logoClass} w-auto shrink-0 object-contain ${className ?? ""}`}
     />
   );
