@@ -78,7 +78,10 @@ const QUERIES: Record<ProductCategory, string[]> = {
   notebook: ["notebook", "laptop"],
   desktop:  ["pc escritorio", "computadora de escritorio"],
   phone:    ["smartphone android", "celular samsung", "celular xiaomi", "celular motorola"],
-  tablet:   ["tablet android"],
+  // La categoría "E-books y Tablets" (Compra Internacional) trae modelos que el
+  // texto libre no devuelve: la Galaxy Tab S11 Ultra no aparecía con ninguna
+  // búsqueda "tablet …" de las primeras páginas.
+  tablet:   ["fq:C:/566/568/667/", "tablet android"],
   tv:       ["smart tv", "television"],
 };
 

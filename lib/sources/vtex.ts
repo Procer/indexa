@@ -298,7 +298,12 @@ export async function fetchVtexCategory<T>(
 
   while (products.length < max) {
     const to = Math.min(from + PAGE_SIZE - 1, from + max - products.length - 1);
-    const url = `${apiBase}?ft=${encodeURIComponent(query)}&_from=${from}&_to=${to}`;
+    // "fq:C:/1/2/" filtra por árbol de categoría (trae lo que el texto libre no
+    // alcanza); cualquier otra cosa es búsqueda por texto.
+    const filter = query.startsWith("fq:")
+      ? `fq=${encodeURIComponent(query.slice(3))}`
+      : `ft=${encodeURIComponent(query)}`;
+    const url = `${apiBase}?${filter}&_from=${from}&_to=${to}`;
 
     const res = await fetch(url, {
       headers: {
