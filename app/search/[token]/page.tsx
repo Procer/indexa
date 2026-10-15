@@ -1127,9 +1127,9 @@ export default function SearchResultsPage() {
                 )}
               </p>
 
-              <div className="ml-auto flex items-center gap-2">
+              <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
                 <div
-                  className="flex items-center gap-0.5 rounded-full border border-gathering-outline-variant bg-gathering-surface-container p-0.5"
+                  className="flex min-w-0 flex-1 items-center gap-0.5 rounded-full border border-gathering-outline-variant bg-gathering-surface-container p-0.5"
                   role="group"
                   aria-label="Tipo de vista"
                 >
@@ -1141,7 +1141,7 @@ export default function SearchResultsPage() {
                     }}
                     aria-pressed={resultsView === "podium"}
                     title="Te elegimos 3 y te mostramos qué ganás si pagás más"
-                    className={`rounded-full px-3 py-1.5 font-brand text-xs font-bold transition-colors ${
+                    className={`min-h-[40px] flex-1 whitespace-nowrap rounded-full px-2 py-1.5 font-brand text-xs font-bold transition-colors sm:flex-none sm:px-3 ${
                       resultsView === "podium" ? "bg-gathering-primary text-white" : "text-gathering-on-surface-variant"
                     }`}
                   >
@@ -1155,7 +1155,7 @@ export default function SearchResultsPage() {
                     }}
                     aria-pressed={resultsView === "simple"}
                     title="Lo justo y necesario, explicado simple"
-                    className={`rounded-full px-3 py-1.5 font-brand text-xs font-bold transition-colors ${
+                    className={`min-h-[40px] flex-1 whitespace-nowrap rounded-full px-2 py-1.5 font-brand text-xs font-bold transition-colors sm:flex-none sm:px-3 ${
                       resultsView === "simple" ? "bg-gathering-primary text-white" : "text-gathering-on-surface-variant"
                     }`}
                   >
@@ -1169,18 +1169,19 @@ export default function SearchResultsPage() {
                     }}
                     aria-pressed={resultsView === "ranked"}
                     title="Lista con las características a la vista"
-                    className={`rounded-full px-3 py-1.5 font-brand text-xs font-bold transition-colors ${
+                    className={`min-h-[40px] flex-1 whitespace-nowrap rounded-full px-2 py-1.5 font-brand text-xs font-bold transition-colors sm:flex-none sm:px-3 ${
                       resultsView === "ranked" ? "bg-gathering-primary text-white" : "text-gathering-on-surface-variant"
                     }`}
                   >
-                    Con detalles
+                    <span className="sm:hidden">Detalles</span>
+                    <span className="hidden sm:inline">Con detalles</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setResultsView("classic")}
                     aria-pressed={resultsView === "classic"}
                     title="Vista de tarjetas clásica"
-                    className={`rounded-full px-3 py-1.5 font-brand text-xs font-bold transition-colors ${
+                    className={`min-h-[40px] flex-1 whitespace-nowrap rounded-full px-2 py-1.5 font-brand text-xs font-bold transition-colors sm:flex-none sm:px-3 ${
                       resultsView === "classic" ? "bg-gathering-primary text-white" : "text-gathering-on-surface-variant"
                     }`}
                   >

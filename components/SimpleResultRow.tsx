@@ -103,14 +103,14 @@ export function SimpleResultRow({
               </span>
             )}
           </div>
-          <h3 className="line-clamp-2 font-brand text-base font-bold leading-snug text-gathering-on-surface sm:text-lg">
+          <h3 className="line-clamp-3 font-brand text-base font-bold leading-snug text-gathering-on-surface sm:text-lg">
             {product.title}
           </h3>
           {pb && (
             <div>
               <p className="font-brand text-2xl font-extrabold text-gathering-on-surface sm:text-3xl">
                 {pb.leadAmount}
-                <span className="ml-1.5 text-sm font-medium text-gathering-on-surface-variant">{pb.leadUnit}</span>
+                <span className="block text-sm font-medium text-gathering-on-surface-variant sm:ml-1.5 sm:inline">{pb.leadUnit}</span>
               </p>
               {pb.sub && <p className="font-brand text-xs text-gathering-on-surface-variant">{pb.sub}</p>}
               {pb.tag && (

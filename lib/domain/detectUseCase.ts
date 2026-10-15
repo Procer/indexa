@@ -18,6 +18,8 @@ const PHONE_TAG_USE_CASES: [RegExp, UseCase][] = [
   [/\bjuegos\b/i, "gaming_mobile"],
   [/\btrabajo y email\b/i, "professional_mobile"],
   [/\buso b[aá]sico\b/i, "basic_use"],
+  [/\b(sacar fotos|fotograf[ií]a|c[aá]mara)\b/i, "photography"],
+  [/\b(jugar|gamer|gaming)\b/i, "gaming_mobile"],
 ];
 
 const COMPUTER_TAG_USE_CASES: [RegExp, UseCase][] = [
@@ -26,6 +28,10 @@ const COMPUTER_TAG_USE_CASES: [RegExp, UseCase][] = [
   [/\bdise[nñ]o y edici[oó]n\b/i, "graphic_design"],
   [/\bgaming\b/i, "gaming_casual"],
   [/\bpel[ií]culas y uso diario\b/i, "multimedia"],
+  [/\b(jugar|gamer)\b/i, "gaming_casual"],
+  [/\b(dise[ñn]ar|editar (video|fotos))\b/i, "graphic_design"],
+  [/\b(estudiar|facultad|universidad|colegio)\b/i, "study"],
+  [/\b(trabajar|oficina)\b/i, "office"],
 ];
 
 // Tablet: "Para mis hijos" queda afuera a propósito, mismo criterio que
@@ -38,6 +44,12 @@ const TABLET_TAG_USE_CASES: [RegExp, UseCase][] = [
   [/\bdibujo y dise[nñ]o\b/i, "graphic_design"],
   [/\bentretenimiento\b/i, "multimedia"],
   [/\btrabajo\b/i, "office"],
+  // Texto libre: "tablet para dibujar" no matcheaba ninguna etiqueta curada y
+  // el chat volvía a preguntar "¿para qué vas a usar la tablet?".
+  [/\b(dibujar|dibujo|ilustrar|dise[ñn]ar)\b/i, "graphic_design"],
+  [/\b(estudiar|facultad|universidad|colegio|escuela)\b/i, "study"],
+  [/\b(pel[ií]culas|series|netflix|youtube|ver videos)\b/i, "multimedia"],
+  [/\b(trabajar|oficina)\b/i, "office"],
 ];
 
 export function detectTagUseCase(input: string, category: ProductCategory | null): UseCase | null {

@@ -263,7 +263,7 @@ function PodiumCard({
             <div>
               <p className={`font-brand font-extrabold text-gathering-on-surface ${hero ? "text-3xl" : "text-2xl"}`}>
                 {pb.leadAmount}
-                <span className="ml-1.5 text-sm font-medium text-gathering-on-surface-variant">{pb.leadUnit}</span>
+                <span className="block text-sm font-medium text-gathering-on-surface-variant sm:ml-1.5 sm:inline">{pb.leadUnit}</span>
               </p>
               {pb.sub && <p className="font-brand text-xs text-gathering-on-surface-variant">{pb.sub}</p>}
               {pb.tag && (
