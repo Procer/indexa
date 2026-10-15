@@ -6,6 +6,7 @@ import { LogoBrand } from "@/components/LogoBrand";
 import { Portal } from "@/components/Portal";
 import { ProductCompareCard } from "@/components/ProductCompareCard";
 import { SpecGlossary } from "@/components/SpecGlossary";
+import { buildCompareWinner } from "@/lib/domain/compareWinner";
 import { ChatMessageText } from "@/components/ChatMessageText";
 import { SpecDisplayModeToggle } from "@/components/SpecDisplayModeToggle";
 import type { SpecDisplayMode } from "@/components/SpecHighlights";
@@ -701,6 +702,66 @@ function SimilarInCompare({
   );
 }
 
+function WinnerCard({
+  items,
+  searchContext,
+  className = "",
+}: {
+  items: CompareItem[];
+  searchContext: { useCases: UseCase[]; budgetMax: number | null; budgetLabel: string | null } | null;
+  className?: string;
+}) {
+  const winner = useMemo(() => {
+    // budgetLabel dice "por mes" cuando el presupuesto es de cuotas.
+    const monthly = !!searchContext?.budgetLabel && /mes/i.test(searchContext.budgetLabel);
+    const budget = searchContext?.budgetMax ?? null;
+    return buildCompareWinner({
+      candidates: items.map((it) => ({
+        id: it.product.id,
+        name: shortName(it),
+        category: it.product.category,
+        title: it.product.title,
+        specs: it.product.specs,
+        price_cash: it.product.price_cash,
+        price_installment: it.product.price_installment,
+        quality_price_score: it.product.quality_price_score,
+      })),
+      useCases: searchContext?.useCases ?? [],
+      budgetCash: monthly ? null : budget,
+      budgetMonthly: monthly ? budget : null,
+    });
+  }, [items, searchContext]);
+  if (!winner) return null;
+  return (
+    <section
+      aria-label="Conclusión"
+      className={`rounded-2xl border-2 border-emerald-500/60 bg-emerald-50/70 p-4 sm:p-6 ${className}`}
+    >
+      <p className="font-brand text-xs font-bold uppercase tracking-wide text-emerald-700">Nuestra conclusión</p>
+      <h2 className="mt-1 font-brand text-xl font-extrabold leading-snug text-gathering-on-surface">
+        {winner.headline}
+      </h2>
+      {winner.reasons.length > 0 && (
+        <ul className="mt-3 flex flex-col gap-1.5">
+          {winner.reasons.map((r) => (
+            <li key={r} className="flex items-start gap-2 font-brand text-sm text-gathering-on-surface">
+              <span className="material-symbols-outlined text-[18px] text-emerald-600" aria-hidden="true">
+                check_circle
+              </span>
+              {r}
+            </li>
+          ))}
+        </ul>
+      )}
+      {winner.tradeoff && (
+        <p className="mt-3 rounded-xl bg-white/70 px-3 py-2 font-brand text-sm text-gathering-on-surface-variant">
+          {winner.tradeoff}
+        </p>
+      )}
+    </section>
+  );
+}
+
 function MultiCompareView({
   items,
   onRemove,
@@ -780,9 +841,11 @@ function MultiCompareView({
           ))}
         </div>
 
+        <WinnerCard items={items} searchContext={searchContext} className="mb-4 [order:-20] sm:[order:0]" />
+
         {/* Veredicto IA por producto. En celular va PRIMERO (order-first): con 3
             productos apilados la respuesta quedaba a 4+ pantallas de distancia. */}
-        <div className="gathering-glass-card order-first mb-6 rounded-2xl p-4 sm:order-none sm:p-6">
+        <div className="gathering-glass-card mb-6 rounded-2xl p-4 [order:-10] sm:[order:0] sm:p-6">
           <div className="flex items-center gap-2">
             <SparkleIcon />
             <h2 className="font-brand text-lg font-bold text-gathering-on-surface">Veredicto IA</h2>
@@ -981,6 +1044,7 @@ export function CompareExperience({ ids, searchToken = null, mode, onClose }: Co
           </section>
 
           <div className="mx-auto max-w-5xl px-4 pb-16">
+            <WinnerCard items={[a, b]} searchContext={searchContext} className="mb-6" />
             <SpecDisplayModeToggle mode={specMode} onChange={setSpecMode} />
             {/* Columna del medio más ancha que las de los productos — pedido
                 explícito ("ampliar este espacio... desplazar para los
