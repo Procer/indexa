@@ -41,12 +41,13 @@ export function ShareMenu({ copied, onCopy, whatsappHref, onOtherDevice }: Share
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="flex items-center gap-2 rounded-full border border-gathering-outline-variant bg-gathering-surface-container px-3.5 py-2 font-brand text-sm font-semibold text-gathering-on-surface transition-colors hover:bg-black/5"
+        aria-label="Compartir"
+        className="flex min-h-[40px] items-center gap-2 rounded-full border border-gathering-outline-variant bg-gathering-surface-container px-3.5 py-2 font-brand text-sm font-semibold text-gathering-on-surface transition-colors hover:bg-black/5"
       >
         <span className="material-symbols-outlined text-[18px] text-gathering-primary" aria-hidden="true">
           {copied ? "check" : "share"}
         </span>
-        {copied ? "¡Link copiado!" : "Compartir"}
+        <span className={copied ? "" : "sr-only sm:not-sr-only"}>{copied ? "¡Link copiado!" : "Compartir"}</span>
       </button>
 
       {open && (

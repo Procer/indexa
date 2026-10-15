@@ -21,7 +21,10 @@ export function SpecGlossary({ categories }: SpecGlossaryProps) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    setOpen(!getSpecGlossaryDismissed());
+    // En celular arranca cerrada: abierta, empuja la comparación/resultados
+    // fuera de la pantalla (3 pantallas de definiciones antes de ver nada).
+    const isDesktop = typeof window !== "undefined" && window.matchMedia("(min-width: 640px)").matches;
+    setOpen(isDesktop && !getSpecGlossaryDismissed());
     setReady(true);
   }, []);
 

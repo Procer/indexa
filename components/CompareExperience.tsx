@@ -768,7 +768,7 @@ function MultiCompareView({
       )}
       {!showChat && <ChatFAB onClick={openChat} />}
 
-      <main id="contenido" className="mx-auto max-w-6xl px-4 py-6">
+      <main id="contenido" className="mx-auto flex max-w-6xl flex-col px-4 py-6">
         <SpecGlossary categories={Array.from(new Set(items.map((i) => i.product.category)))} />
 
         <SpecDisplayModeToggle mode={specMode} onChange={setSpecMode} />
@@ -780,8 +780,9 @@ function MultiCompareView({
           ))}
         </div>
 
-        {/* Veredicto IA por producto */}
-        <div className="gathering-glass-card mb-6 rounded-2xl p-6">
+        {/* Veredicto IA por producto. En celular va PRIMERO (order-first): con 3
+            productos apilados la respuesta quedaba a 4+ pantallas de distancia. */}
+        <div className="gathering-glass-card order-first mb-6 rounded-2xl p-4 sm:order-none sm:p-6">
           <div className="flex items-center gap-2">
             <SparkleIcon />
             <h2 className="font-brand text-lg font-bold text-gathering-on-surface">Veredicto IA</h2>
