@@ -1,4 +1,5 @@
 import { getActiveSponsoredPlacements, getProductsByBrand, getProductsBySpec, getProductsByIds, getSearchPipelineInputs } from "@/lib/db/queries";
+import { extractModelRequests, titleMatchesModelRequest } from "@/lib/domain/modelMention";
 import { getPoolCache, setPoolCache } from "@/lib/search/cache";
 import { hybridSearch } from "@/lib/search/hybridSearch";
 import { scoreResults, qualityPriceBoost } from "@/lib/search/scorer";
@@ -420,6 +421,19 @@ export async function buildRankedPool(params: {
         ];
       }
     }
+  }
+
+  // Modelo puntual pedido ("tab s11 ultra", "moto g84"): lo que lo nombra va
+  // primero, antes que cualquier otra cosa del pool — el usuario ya sabe qué
+  // quiere, el mejor resultado ES ese equipo. Sort estable: respeta el orden
+  // por score dentro de cada grupo.
+  const modelRequests = extractModelRequests(queryText ?? "");
+  if (modelRequests.length > 0) {
+    scoredProducts = [...scoredProducts].sort(
+      (a, b) =>
+        Number(titleMatchesModelRequest(b.title, modelRequests)) -
+        Number(titleMatchesModelRequest(a.title, modelRequests))
+    );
   }
 
   // ¿El usuario está comprando puntualmente para un chico? (texto crudo de la

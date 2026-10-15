@@ -52,11 +52,11 @@ const CATEGORY_URLS: Record<ProductCategory, string[]> = {
   phone: [
     "https://www.megatone.net/listado/tecnologia/celulares/smartphones-celulares/",
   ],
-  // TODO: no se encontró una categoría "tablets" dedicada al navegar el sitio
-  // (2026-07-29) — verificar a mano en https://www.megatone.net/. Con esta
-  // URL vieja seguirá trayendo 0 resultados.
+  // Verificada 2026-10-15: la categoría dedicada vive en /listado/tecnologia/tablet/
+  // (cuelga de "tecnologia", no de "informatica"). La URL vieja devolvía 404 y
+  // el sync traía 0 tablets de Megatone en cada corrida.
   tablet: [
-    "https://www.megatone.net/Tecnologia/Computacion/Tablets",
+    "https://www.megatone.net/listado/tecnologia/tablet/",
   ],
   tv: [
     "https://www.megatone.net/listado/tv-audio-video/tv-led-smart-tv/",

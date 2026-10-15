@@ -1,4 +1,5 @@
 import { randomBytes } from "crypto";
+import { isSpecificModelRequest } from "@/lib/domain/modelMention";
 import { NextRequest, NextResponse } from "next/server";
 import {
   extractSlotsAndExpand,
@@ -219,7 +220,10 @@ export async function POST(request: NextRequest) {
         : "");
 
     // 2. Check input sufficiency
-    if (!isInputSufficient(slots)) {
+    // Pedido de un modelo puntual ("galaxy tab s11 ultra"): se muestra directo,
+    // sin preguntar uso ni forma de pago — el usuario ya sabe qué quiere.
+    const specificModel = isSpecificModelRequest(brandSearchText);
+    if (!specificModel && !isInputSufficient(slots)) {
       // Siempre prefetch de candidatos por categoría (cobertura máxima).
       if (sessionId && slots.category) {
         getProductIdsByCategory(slots.category)
@@ -331,7 +335,7 @@ export async function POST(request: NextRequest) {
       const response: SearchResponse = {
         type: "results",
         products: enrichedCached,
-        inline_questions: getInlineQuestions(slots),
+        inline_questions: specificModel ? [] : getInlineQuestions(slots),
         total_count: poolIds.length,
         share_token: shareToken,
         search_id: shareToken,
@@ -449,7 +453,7 @@ export async function POST(request: NextRequest) {
     const response: SearchResponse = {
       type: "results",
       products: enrichedResults,
-      inline_questions: getInlineQuestions(slots),
+      inline_questions: specificModel ? [] : getInlineQuestions(slots),
       total_count: merged.length,
       share_token: shareToken,
       search_id: shareToken,

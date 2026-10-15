@@ -145,7 +145,23 @@ async function runStore(
       console.log(`  descartados ${fetched.length - products.length} accesorios/no-dispositivos por título`);
     }
     await warnIfEmpty(name, products.length);
-    const stats = await upsertProducts(products, source);
+    const limits = (LIMITS as Record<string, Record<string, number>>)[source];
+    const limitKey: Record<string, string> = {
+      notebook: "notebooks", desktop: "desktops", phone: "phones", tablet: "tablets", tv: "tvs",
+    };
+    const fetchedByCat = new Map<string, number>();
+    for (const p of fetched) fetchedByCat.set(p.category, (fetchedByCat.get(p.category) ?? 0) + 1);
+    const capped = new Set<string>();
+    for (const [cat, n] of Array.from(fetchedByCat.entries())) {
+      const lim = limits?.[limitKey[cat]];
+      // 80%: los fetchers descartan algunos ítems por su cuenta antes de
+      // devolver, así que "llegó al tope" rara vez es exactamente == límite.
+      if (lim && n >= Math.floor(lim * 0.8)) capped.add(cat);
+    }
+    if (capped.size > 0) {
+      console.log(`  categorías al tope (no se desactivan ausentes): ${Array.from(capped).join(", ")}`);
+    }
+    const stats = await upsertProducts(products, source, capped);
     console.log(`  +${stats.inserted} nuevos | ~${stats.updated} actualizados | -${stats.deactivated} desactivados`);
     return stats.inserted;
   } catch (err) {
@@ -179,17 +195,17 @@ interface SyncProduct {
 // ─── Config ────────────────────────────────────────────────────────────────────
 
 const LIMITS = {
-  fravega:    { notebooks: 80, desktops: 40, phones: 80, tablets: 60, tvs: 60 },
+  fravega:    { notebooks: 80, desktops: 40, phones: 80, tablets: 150, tvs: 60 },
   cetrogar:   { notebooks: 60, desktops: 30, phones: 60, tablets: 40, tvs: 40 },
   musimundo:  { notebooks: 60, desktops: 30, phones: 60, tablets: 40, tvs: 40 },
   garbarino:  { notebooks: 60, desktops: 30, phones: 60, tablets: 40, tvs: 40 },
   compumundo: { notebooks: 60, desktops: 30, phones: 40, tablets: 30, tvs: 30 },
   megatone:   { notebooks: 40, desktops: 20, phones: 40, tablets: 20, tvs: 20 },
   coppel:     { notebooks: 60, desktops: 30, phones: 60, tablets: 40, tvs: 40 },
-  naldo:      { notebooks: 60, desktops: 30, phones: 60, tablets: 40, tvs: 40 },
+  naldo:      { notebooks: 60, desktops: 30, phones: 60, tablets: 80, tvs: 40 },
   jumbo:      { notebooks: 40, desktops: 20, phones: 40, tablets: 30, tvs: 40 },
   carrefour:  { notebooks: 60, desktops: 30, phones: 60, tablets: 40, tvs: 40 },
-  oncity:     { notebooks: 60, desktops: 30, phones: 40, tablets: 30, tvs: 40 },
+  oncity:     { notebooks: 60, desktops: 30, phones: 40, tablets: 60, tvs: 40 },
   disco:      { notebooks: 40, desktops: 20, phones: 30, tablets: 20, tvs: 30 },
   vea:        { notebooks: 40, desktops: 20, phones: 30, tablets: 20, tvs: 30 },
   changomas:  { notebooks: 40, desktops: 20, phones: 30, tablets: 20, tvs: 30 },
@@ -198,7 +214,11 @@ const LIMITS = {
 
 // ─── DB upsert ────────────────────────────────────────────────────────────────
 
-async function upsertProducts(products: SyncProduct[], source: string) {
+async function upsertProducts(
+  products: SyncProduct[],
+  source: string,
+  cappedCategories: Set<string> = new Set()
+) {
   // Defensa contra duplicados dentro del mismo batch: si el mismo producto
   // aparece más de una vez en `products` (ej. un mismo item matcheado tanto
   // por la búsqueda "notebook" como por "smart tv" en un origen VTEX), el
@@ -224,12 +244,13 @@ async function upsertProducts(products: SyncProduct[], source: string) {
     id: string;
     external_id: string;
     available: boolean;
+    category: string;
     price_cash: number | null;
     price_installment: number | null;
   }[];
   try {
     existing = await sql`
-      SELECT id, external_id, available, price_cash, price_installment
+      SELECT id, external_id, available, category, price_cash, price_installment
       FROM products
       WHERE source = ${source}
     `;
@@ -309,6 +330,11 @@ async function upsertProducts(products: SyncProduct[], source: string) {
   }
 
   for (const [extId, prod] of Array.from(existingMap.entries())) {
+    // En una categoría donde el fetch llegó al tope (LIMITS) la ausencia NO
+    // significa que la tienda dejó de venderlo — solo quedó fuera de la
+    // ventana. Antes se desactivaba igual (visto 2026-10-15: Tab S11 Ultra de
+    // Frávega, publicada y retirable, estaba available=false desde julio).
+    if (cappedCategories.has(prod.category)) continue;
     if (!incomingIds.has(extId) && prod.available) {
       await sql`
         UPDATE products

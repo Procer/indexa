@@ -10,6 +10,7 @@ import { getOrBuildPoolIds } from "@/lib/search/pipeline";
 import { checkGlobalLlmBudget, checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { detectCategoryLocally } from "@/lib/domain/detectCategory";
 import { detectBrandMentions } from "@/lib/domain/detectBrand";
+import { isOpinionQuestion, findUnmetModelPhrase } from "@/lib/domain/modelMention";
 import { detectProcessorMention } from "@/lib/domain/detectProcessor";
 import { classifyBudgetFit } from "@/lib/domain/budgetFit";
 import { getUpgradeNote } from "@/lib/domain/upgradeability";
@@ -391,6 +392,10 @@ function detectDeterministicRedirect(
   preferredProcessor: string | null,
   budgetLabel: string | null
 ): { reply: string; suggestedRefinement?: string; highlightFilter?: "store" } | null {
+  // "¿Por qué es mejor una Lenovo que Samsung o Xiaomi?" nombra marcas pero pide
+  // una explicación, no un filtro: lo responde el LLM, no se re-busca.
+  if (isOpinionQuestion(message)) return null;
+
   const impliedCategory = detectCategoryLocally(message);
   if (impliedCategory && currentCategory && impliedCategory !== currentCategory) {
     return { reply: "Listo, te busco eso.", suggestedRefinement: message.trim() };
@@ -1264,7 +1269,8 @@ export async function POST(request: NextRequest) {
         const currentCategory = category ?? search?.slots.category ?? null;
         // askAbout: consulta sobre un equipo puntual — no es un cambio de
         // categoría/marca/procesador aunque el texto nombre todo eso.
-        const impliedCategory = !greeting && !askAbout ? detectCategoryLocally(message) : null;
+        const opinionQuestion = !greeting && isOpinionQuestion(message);
+        const impliedCategory = !greeting && !askAbout && !opinionQuestion ? detectCategoryLocally(message) : null;
         const categoryChanged = !!(impliedCategory && currentCategory && impliedCategory !== currentCategory);
         if (categoryChanged) {
           recommendedProducts = undefined;
@@ -1287,7 +1293,8 @@ export async function POST(request: NextRequest) {
         // modelo.
         // Todas las marcas nombradas, no solo la primera ("quiero iphone y
         // samsung" antes perdía Samsung o iPhone según el orden).
-        const mentionedBrands = !greeting && !askAbout && !categoryChanged ? detectBrandMentions(message) : [];
+        const mentionedBrands =
+          !greeting && !askAbout && !categoryChanged && !opinionQuestion ? detectBrandMentions(message) : [];
         const newBrands = mentionedBrands.filter((b) => !currentPreferredBrands.includes(b.toLowerCase()));
         const brandMentionIsNew = newBrands.length > 0;
         if (brandMentionIsNew) {
@@ -1327,7 +1334,9 @@ export async function POST(request: NextRequest) {
         // las dos cosas a la vez (la marca ya arma su propia frase de búsqueda).
         const currentPreferredProcessor = (search?.slots.preferences.processor_model_preferred ?? "").toLowerCase();
         const mentionedProcessor =
-          !greeting && !askAbout && !categoryChanged && !brandMentionIsNew ? detectProcessorMention(message) : null;
+          !greeting && !askAbout && !categoryChanged && !brandMentionIsNew && !opinionQuestion
+            ? detectProcessorMention(message)
+            : null;
         const processorMentionIsNew =
           !!mentionedProcessor && !currentPreferredProcessor.includes(mentionedProcessor.toLowerCase());
         if (processorMentionIsNew) {
@@ -1344,6 +1353,35 @@ export async function POST(request: NextRequest) {
           reply = budgetLabel
             ? `Listo, busco ${categoryWord} con procesador **${mentionedProcessor}**. En los resultados te marco cuáles entran en tu presupuesto y cuáles se pasan.`
             : `Listo, busco ${categoryWord} con procesador **${mentionedProcessor}**.`;
+        }
+
+        // Modelo puntual que no está entre los productos disponibles ("Galaxy Tab
+        // S10 Ultra" cuando solo hay S10 FE/Lite, o la Ultra está dada de baja).
+        // Antes el chat prometía "busco eso" o elogiaba otro equipo "dentro de tu
+        // presupuesto" sin avisar que lo pedido no existe, y la re-búsqueda
+        // devolvía lo mismo. Se avisa explícito y no se dispara re-búsqueda.
+        let modelUnmet = false;
+        if (!categoryChanged && !brandMentionIsNew && !processorMentionIsNew) {
+          const askedText = greeting ? (rawInput ?? "") : message;
+          const unmetPhrase = findUnmetModelPhrase(
+            askedText,
+            [...poolProducts, ...loadedProducts].map((p) => p.title)
+          );
+          if (unmetPhrase) {
+            modelUnmet = true;
+            const brandPrefix = detectBrandMentions(askedText)[0];
+            const label = `**${brandPrefix ? `${brandPrefix} ` : ""}${unmetPhrase}**`;
+            const notice = `No encontré ${label} disponible en este momento.`;
+            if (greeting) {
+              reply = `${notice} Te muestro lo más parecido:
+
+${reply}`;
+            } else {
+              reply = `${notice} Lo más parecido son los resultados que ya ves — te los dejo marcados.`;
+              suggestedRefinement = undefined;
+            }
+            console.log(`[CHAT] unmet_model shareToken=${shareToken} phrase=${JSON.stringify(unmetPhrase)} greeting=${greeting}`);
+          }
         }
 
         // Red de seguridad determinística: el modelo a veces dice "no
@@ -1394,9 +1432,19 @@ export async function POST(request: NextRequest) {
         // se leía como si el bot hubiera respondido dos veces lo mismo (bug
         // reportado en vivo).
         const looksLikeQuestion = message.trim().endsWith("?");
+        // Si el texto ya nombra un producto cargado ("Quiero la mejor" → "la
+        // mejor es la **Tablet X**") es una respuesta, no una promesa vacía:
+        // no se re-busca con el mensaje crudo.
+        const replyNamesLoadedProduct = loadedProducts.some((p) => p.title && reply.includes(p.title));
         const finalSuggestedRefinement =
           suggestedRefinement ??
-          (!greeting && !looksLikeQuestion && (!recommendedProducts || recommendedProducts.length === 0) && message.trim()
+          (!greeting &&
+          !looksLikeQuestion &&
+          !opinionQuestion &&
+          !modelUnmet &&
+          !replyNamesLoadedProduct &&
+          (!recommendedProducts || recommendedProducts.length === 0) &&
+          message.trim()
             ? message.trim()
             : undefined);
 
