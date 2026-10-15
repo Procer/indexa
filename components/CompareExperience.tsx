@@ -45,7 +45,10 @@ const GENERIC_PREFIXES = ["celular", "notebook", "laptop", "tablet", "pc", "comp
 function shortName(item: CompareItem): string {
   const words = item.product.title.split(" ");
   const filtered = words.filter((w) => !GENERIC_PREFIXES.includes(w.toLowerCase()));
-  const name = filtered.slice(0, 4).join(" ");
+  const kept = filtered.slice(0, 4);
+  // No terminar en conector ("de", "con", "para") ni dejar un "+" huérfano.
+  while (kept.length > 1 && /^(de|con|para|y|e|-|–)$/i.test(kept[kept.length - 1])) kept.pop();
+  const name = kept.join(" ").replace(/\s+\+/g, " +");
   return name || (item.product.brand ?? item.product.title);
 }
 
